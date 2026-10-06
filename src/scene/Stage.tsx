@@ -71,7 +71,8 @@ function CameraRig({ flats, view, instant }: { flats: FlatData[]; view: View; in
         fitH: TOWER.floor * 0.8,
       }
     }
-    return { target: new Vector3(0, height * 0.47, 0.6), az: 0.36, el: 0.17, fitW: TOWER.width + 7.5, fitH: height + 2.2 }
+    // Room for the roof and the street, plus the header and the hint at the bottom of the screen.
+    return { target: new Vector3(0, height * 0.5, 0.6), az: 0.36, el: 0.17, fitW: TOWER.width + 7.5, fitH: height + 3.4 }
   }, [inside, view, flats, height])
 
   useEffect(() => {

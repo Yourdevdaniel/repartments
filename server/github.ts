@@ -7,12 +7,13 @@
  */
 
 /** Manifests we look for, at the root and in the usual monorepo folders. */
+// Kept short on purpose: every path costs a lookup per repo, and a heavy query makes GitHub time out.
 export const MANIFESTS = {
-  packageJson: ['package.json', 'frontend/package.json', 'web/package.json', 'client/package.json', 'app/package.json', 'server/package.json', 'backend/package.json', 'api/package.json'],
-  python: ['requirements.txt', 'backend/requirements.txt', 'server/requirements.txt', 'api/requirements.txt', 'pyproject.toml', 'backend/pyproject.toml', 'requirements-dev.txt', 'requirements/base.txt'],
+  packageJson: ['package.json', 'frontend/package.json', 'web/package.json', 'client/package.json', 'backend/package.json', 'server/package.json'],
+  python: ['requirements.txt', 'backend/requirements.txt', 'pyproject.toml', 'backend/pyproject.toml'],
   compose: ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml'],
-  docker: ['Dockerfile', 'backend/Dockerfile', 'frontend/Dockerfile', 'server/Dockerfile'],
-  other: ['pom.xml', 'build.gradle', 'build.gradle.kts', 'go.mod', 'Cargo.toml', 'Gemfile', 'composer.json', 'pubspec.yaml'],
+  docker: ['Dockerfile', 'backend/Dockerfile'],
+  other: ['pom.xml', 'build.gradle', 'go.mod', 'Cargo.toml', 'Gemfile', 'composer.json', 'pubspec.yaml'],
 } as const
 
 const ALL = [...MANIFESTS.packageJson, ...MANIFESTS.python, ...MANIFESTS.compose, ...MANIFESTS.docker, ...MANIFESTS.other]
@@ -43,7 +44,7 @@ export const QUERY = `query Building($login: String!) {
         workflows: object(expression: "HEAD:.github/workflows") { ... on Tree { entries { name } } }
         ${files}
         openPrs: pullRequests(states: OPEN) { totalCount }
-        prs: pullRequests(states: OPEN, first: 10) { nodes { mergeable } }
+        prs: pullRequests(states: OPEN, first: 5, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { mergeable } }
         defaultBranchRef { target { ... on Commit { statusCheckRollup { state } } } }
       }
     }
@@ -85,20 +86,34 @@ export class GitHubError extends Error {
 
 export type Fetcher = (url: string, init: RequestInit) => Promise<Response>
 
-export async function fetchOwner(login: string, token: string, fetcher: Fetcher = fetch): Promise<RawOwner> {
-  const res = await fetcher('https://api.github.com/graphql', {
-    method: 'POST',
-    headers: {
-      Authorization: `bearer ${token}`,
-      'Content-Type': 'application/json',
-      'User-Agent': 'repartments',
-    },
-    body: JSON.stringify({ query: QUERY, variables: { login } }),
-  })
-  if (res.status === 401) throw new GitHubError('unavailable', 'GitHub rejected the server token')
-  if (res.status === 403 || res.status === 429) throw new GitHubError('rate-limited', 'GitHub rate limit')
-  if (!res.ok) throw new GitHubError('unavailable', `GitHub answered ${res.status}`)
-  const json = (await res.json()) as { data?: { repositoryOwner: RawOwner | null }; errors?: { type?: string; message: string }[] }
+type GraphQLAnswer = { data?: { repositoryOwner: RawOwner | null }; errors?: { type?: string; message: string }[] }
+
+export async function fetchOwner(login: string, token: string, fetcher: Fetcher = fetch, tries = 2): Promise<RawOwner> {
+  let res: Response
+  let json: GraphQLAnswer
+  try {
+    res = await fetcher('https://api.github.com/graphql', {
+      method: 'POST',
+      headers: {
+        Authorization: `bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'repartments',
+      },
+      body: JSON.stringify({ query: QUERY, variables: { login } }),
+    })
+    if (res.status === 401) throw new GitHubError('unavailable', 'GitHub rejected the server token')
+    if (res.status === 403 || res.status === 429) throw new GitHubError('rate-limited', 'GitHub rate limit')
+    if (!res.ok) throw new GitHubError('unavailable', `GitHub answered ${res.status}`)
+    json = (await res.json()) as GraphQLAnswer
+  } catch (err) {
+    // GitHub sometimes times out on a cold query (a 502 page instead of JSON); one more try usually works.
+    const retryable = !(err instanceof GitHubError) || (err.kind === 'unavailable' && !err.message.includes('token'))
+    if (retryable && tries > 1) {
+      await new Promise((r) => setTimeout(r, 700))
+      return fetchOwner(login, token, fetcher, tries - 1)
+    }
+    throw err instanceof GitHubError ? err : new GitHubError('unavailable', String(err))
+  }
   if (json.errors?.some((e) => e.type === 'RATE_LIMITED')) throw new GitHubError('rate-limited', 'GitHub rate limit')
   const owner = json.data?.repositoryOwner
   if (!owner) throw new GitHubError('not-found', `No GitHub user or organization called ${login}`)
