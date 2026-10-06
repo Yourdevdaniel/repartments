@@ -1,7 +1,8 @@
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
-import { useMemo, useRef } from 'react'
-import { CanvasTexture, SRGBColorSpace, type Group, type MeshStandardMaterial } from 'three'
-import { Box } from './Flat'
+import { useLayoutEffect, useMemo, useRef } from 'react'
+import { CanvasTexture, Color, type InstancedMesh, type MeshStandardMaterial, Object3D, PlaneGeometry, SRGBColorSpace } from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { Boxes, type BoxSpec } from './merge'
 import type { Vec3 } from './story'
 import type { FlatData } from './types'
 import { LOOK, useWeather } from './weather'
@@ -24,6 +25,10 @@ const TRIM = '#fbf6ee'
 /** One pastel per floor, so every repo reads as its own block. */
 const FACADES = ['#f1d3b3', '#f4bfa9', '#c6e3c9', '#cfc6f0', '#f2dc98', '#bcd9f2', '#f0c2d8']
 const LOBBY = '#e7a98c'
+const SIDE_WALL = '#efe2d0'
+const WIN_H = TOWER.floor - SLAB - SILL - LINTEL
+const WIN_Y = SLAB + SILL + WIN_H / 2
+const WINDOW_XS = [0, 1, 2].map((k) => EDGE + WINDOW_W / 2 + k * (WINDOW_W + PIER))
 
 export function towerHeight(floors: number) {
   return TOWER.lobby + floors * TOWER.floor
@@ -101,55 +106,175 @@ function Sign({ flat, at, lit }: { flat: FlatData; at: Vec3; lit: boolean }) {
   )
 }
 
-/** Behind the frosted glass: a lit room and the residents as soft shapes pacing about. */
-function Inside({ flat, seed }: { flat: FlatData; seed: number }) {
-  const people = useRef<Group>(null)
-  const wall = flat.layout.rooms[0]?.wall ?? '#f3e6d6'
-  const residents = flat.cast.slice(0, 6)
-  useFrame(({ clock }) => {
-    const g = people.current
-    if (!g) return
-    const t = clock.elapsedTime
-    g.children.forEach((child, i) => {
-      const phase = seed * 1.7 + i * 2.1
-      child.position.x = child.userData.home + Math.sin(t * (0.35 + i * 0.07) + phase) * 0.45
-      child.position.y = Math.abs(Math.sin(t * 3 + phase)) * 0.015
+/**
+ * Every static box of the tower (slabs, façade, window frames, balconies, walls, lobby, roof), as
+ * plain data. They're merged into one mesh per colour, so the whole building costs a handful of draw
+ * calls instead of the ~1,800 it took when each box was its own mesh.
+ */
+function towerBoxes(flats: FlatData[]): { lit: BoxSpec[]; unlit: BoxSpec[] } {
+  const W = TOWER.width
+  const D = TOWER.depth
+  const height = towerHeight(flats.length)
+  const lit: BoxSpec[] = []
+  const unlit: BoxSpec[] = []
+  const add = (size: Vec3, at: Vec3, color: string) => lit.push({ size, at, color })
+
+  flats.forEach((flat, i) => {
+    const y = floorBase(i)
+    const facade = FACADES[i % FACADES.length]
+    add([W + 0.1, SLAB, D + 0.1], [W / 2, y + SLAB / 2, 0], TRIM)
+    // The room behind the glass: a floor, a warm unlit back wall and a light strip.
+    add([W, 0.02, FRONT + 0.4], [W / 2, y + SLAB + 0.01, (FRONT - 0.4) / 2], '#e6d6bf')
+    unlit.push({
+      size: [W, TOWER.floor - SLAB, 0.02],
+      at: [W / 2, y + SLAB + (TOWER.floor - SLAB) / 2, -0.4],
+      color: flat.layout.rooms[0]?.wall ?? '#f3e6d6',
     })
+    unlit.push({ size: [W - 0.6, 0.03, 0.1], at: [W / 2, y + TOWER.floor - 0.05, -0.1], color: '#fff3d1' })
+    // Façade around three windows.
+    add([W, SILL, 0.1], [W / 2, y + SLAB + SILL / 2, FRONT], facade)
+    add([W, LINTEL, 0.1], [W / 2, y + TOWER.floor - LINTEL / 2, FRONT], facade)
+    for (const x of [EDGE / 2, W - EDGE / 2]) add([EDGE, WIN_H, 0.1], [x, y + WIN_Y, FRONT], facade)
+    for (const k of [0, 1]) add([PIER, WIN_H, 0.1], [EDGE + WINDOW_W + PIER / 2 + k * (WINDOW_W + PIER), y + WIN_Y, FRONT], facade)
+    for (const x of WINDOW_XS) {
+      const wy = y + WIN_Y
+      add([WINDOW_W + 0.06, 0.04, 0.06], [x, wy + WIN_H / 2, FRONT + 0.02], TRIM)
+      add([WINDOW_W + 0.1, 0.05, 0.12], [x, wy - WIN_H / 2 - 0.01, FRONT + 0.04], TRIM)
+      add([0.04, WIN_H, 0.06], [x - WINDOW_W / 2, wy, FRONT + 0.02], TRIM)
+      add([0.04, WIN_H, 0.06], [x + WINDOW_W / 2, wy, FRONT + 0.02], TRIM)
+      add([0.03, WIN_H, 0.05], [x, wy, FRONT + 0.02], TRIM)
+    }
+    // A little balcony on every other floor.
+    if (i % 2 === 1) {
+      const bx = WINDOW_XS[1]
+      const by = y + SLAB + SILL
+      const bz = FRONT + 0.2
+      add([WINDOW_W + 0.3, 0.05, 0.38], [bx, by - 0.02, bz], TRIM)
+      add([WINDOW_W + 0.3, 0.035, 0.035], [bx, by + 0.26, bz + 0.18], '#ffffff')
+      for (let r = 0; r < 9; r++) add([0.02, 0.26, 0.02], [bx - WINDOW_W / 2 - 0.12 + r * ((WINDOW_W + 0.24) / 8), by + 0.13, bz + 0.18], '#ffffff')
+    }
+    // Small window on the side wall the camera sees.
+    add([0.006, 0.42, 0.5], [W + 0.124, y + 0.62, -0.2], TRIM)
+    add([0.006, 0.34, 0.42], [W + 0.128, y + 0.62, -0.2], '#cfe6f7')
   })
-  const span = TOWER.width - 0.8
+
+  // Side and back walls.
+  for (const x of [-0.06, W + 0.06]) add([0.12, height, D + 0.06], [x, height / 2, 0], SIDE_WALL)
+  add([W, height, 0.1], [W / 2, height / 2, -FRONT], SIDE_WALL)
+
+  // Lobby.
+  const LH = TOWER.lobby
+  const door = { w: 0.8, h: 0.85 }
+  add([W, LH, D], [W / 2, LH / 2, 0], '#efe5d8')
+  add([(W - door.w) / 2, LH, 0.1], [(W - door.w) / 4, LH / 2, FRONT], LOBBY)
+  add([(W - door.w) / 2, LH, 0.1], [W - (W - door.w) / 4, LH / 2, FRONT], LOBBY)
+  add([door.w, LH - door.h, 0.1], [W / 2, (LH + door.h) / 2, FRONT], LOBBY)
+  add([0.03, door.h, 0.05], [W / 2, door.h / 2, FRONT + 0.04], TRIM)
+  for (const x of [W * 0.17, W * 0.83]) {
+    add([0.7, 0.55, 0.01], [x, 0.62, FRONT + 0.055], TRIM)
+    add([0.74, 0.04, 0.09], [x, 0.32, FRONT + 0.085], TRIM)
+  }
+
+  // Roof: slab, parapet, the water tank's legs and an antenna.
+  const ry = height
+  const parapet = 0.22
+  add([W + 0.14, SLAB, D + 0.14], [W / 2, ry + SLAB / 2, 0], TRIM)
+  add([W + 0.14, parapet, 0.08], [W / 2, ry + SLAB + parapet / 2, D / 2 + 0.03], FACADES[0])
+  add([W + 0.14, parapet, 0.08], [W / 2, ry + SLAB + parapet / 2, -D / 2 - 0.03], FACADES[0])
+  add([0.08, parapet, D + 0.14], [-0.03, ry + SLAB + parapet / 2, 0], FACADES[0])
+  add([0.08, parapet, D + 0.14], [W + 0.03, ry + SLAB + parapet / 2, 0], FACADES[0])
+  for (const [x, z] of [
+    [-0.18, -0.18],
+    [0.18, -0.18],
+    [-0.18, 0.18],
+    [0.18, 0.18],
+  ])
+    add([0.04, 0.32, 0.04], [W - 1.0 + x, ry + SLAB + 0.16, -0.3 + z], '#9aa3b5')
+  add([0.025, 0.75, 0.025], [W * 0.35, ry + SLAB + 0.37, -0.5], '#9aa3b5')
+  add([0.32, 0.02, 0.02], [W * 0.35, ry + SLAB + 0.62, -0.5], '#9aa3b5')
+  add([0.3, 0.12, 0.3], [0.6, ry + SLAB + 0.06, 0.2], '#d9cbb8')
+  return { lit, unlit }
+}
+
+/** The three window panes of a floor as a single plane geometry. */
+const PANES = mergeGeometries(
+  WINDOW_XS.map((x) => {
+    const g = new PlaneGeometry(WINDOW_W, WIN_H)
+    g.translate(x, WIN_Y, FRONT)
+    return g
+  }),
+)
+
+/**
+ * Everyone behind the frosted glass, in the whole tower, as two instanced meshes (bodies and heads):
+ * two draw calls however many floors there are.
+ */
+function TowerPeople({ flats }: { flats: FlatData[] }) {
+  const bodies = useRef<InstancedMesh>(null)
+  const heads = useRef<InstancedMesh>(null)
+  const people = useMemo(
+    () =>
+      flats.flatMap((flat, floor) => {
+        const residents = flat.cast.slice(0, 6)
+        const span = TOWER.width - 0.8
+        return residents.map((r, i) => ({
+          floor,
+          i,
+          home: 0.4 + ((i + 0.5) / residents.length) * span,
+          z: -0.05 + (i % 2) * 0.25,
+          color: r.color,
+        }))
+      }),
+    [flats],
+  )
+  const dummy = useMemo(() => new Object3D(), [])
+
+  useLayoutEffect(() => {
+    const color = new Color()
+    people.forEach((p, n) => {
+      bodies.current?.setColorAt(n, color.set(p.color))
+      heads.current?.setColorAt(n, color.set('#f2c7a5'))
+    })
+    if (bodies.current?.instanceColor) bodies.current.instanceColor.needsUpdate = true
+    if (heads.current?.instanceColor) heads.current.instanceColor.needsUpdate = true
+  }, [people])
+
+  useFrame(({ clock }) => {
+    const b = bodies.current
+    const h = heads.current
+    if (!b || !h) return
+    const t = clock.elapsedTime
+    people.forEach((p, n) => {
+      const phase = p.floor * 1.7 + p.i * 2.1
+      const x = p.home + Math.sin(t * (0.35 + p.i * 0.07) + phase) * 0.45
+      const y = floorBase(p.floor) + SLAB + Math.abs(Math.sin(t * 3 + phase)) * 0.015
+      dummy.position.set(x, y + 0.22, p.z)
+      dummy.updateMatrix()
+      b.setMatrixAt(n, dummy.matrix)
+      dummy.position.set(x, y + 0.48, p.z)
+      dummy.updateMatrix()
+      h.setMatrixAt(n, dummy.matrix)
+    })
+    b.instanceMatrix.needsUpdate = true
+    h.instanceMatrix.needsUpdate = true
+  })
+
+  const count = Math.max(1, people.length)
   return (
     <group>
-      {/* Lit from inside: unlit warm wall so the windows glow through the frosted glass */}
-      <mesh position={[TOWER.width / 2, (TOWER.floor - SLAB) / 2, -0.4]}>
-        <planeGeometry args={[TOWER.width, TOWER.floor - SLAB]} />
-        <meshBasicMaterial color={wall} />
-      </mesh>
-      <Box size={[TOWER.width, 0.02, FRONT + 0.4]} at={[TOWER.width / 2, 0.01, (FRONT - 0.4) / 2]} color="#e6d6bf" cast={false} />
-      <mesh position={[TOWER.width / 2, TOWER.floor - SLAB - 0.05, -0.1]}>
-        <boxGeometry args={[TOWER.width - 0.6, 0.03, 0.1]} />
-        <meshBasicMaterial color="#fff3d1" toneMapped={false} />
-      </mesh>
-      <group ref={people}>
-        {residents.map((r, i) => {
-          const home = 0.4 + ((i + 0.5) / residents.length) * span
-          return (
-            <group key={r.id} position={[home, 0, -0.05 + (i % 2) * 0.25]} userData={{ home }}>
-              <mesh position={[0, 0.22, 0]}>
-                <capsuleGeometry args={[0.11, 0.2, 4, 10]} />
-                <meshBasicMaterial color={r.color} toneMapped={false} />
-              </mesh>
-              <mesh position={[0, 0.48, 0]}>
-                <sphereGeometry args={[0.12, 14, 12]} />
-                <meshBasicMaterial color="#f2c7a5" toneMapped={false} />
-              </mesh>
-            </group>
-          )
-        })}
-      </group>
+      <instancedMesh key={`b${count}`} ref={bodies} args={[undefined, undefined, count]} frustumCulled={false}>
+        <capsuleGeometry args={[0.11, 0.2, 3, 8]} />
+        <meshBasicMaterial toneMapped={false} />
+      </instancedMesh>
+      <instancedMesh key={`h${count}`} ref={heads} args={[undefined, undefined, count]} frustumCulled={false}>
+        <sphereGeometry args={[0.12, 10, 8]} />
+        <meshBasicMaterial toneMapped={false} />
+      </instancedMesh>
     </group>
   )
 }
 
+/** The parts of a floor that react: frosted glass that glows, the sign, the hover frame, the click target. */
 function Floor({
   flat,
   index,
@@ -164,20 +289,15 @@ function Floor({
   onSelect: (id: string) => void
 }) {
   const H = TOWER.floor
-  const facade = FACADES[index % FACADES.length]
-  const winH = H - SLAB - SILL - LINTEL
-  const winY = SLAB + SILL + winH / 2
-  const xs = [0, 1, 2].map((k) => EDGE + WINDOW_W / 2 + k * (WINDOW_W + PIER))
-  const glass = useRef<MeshStandardMaterial[]>([])
+  const glass = useRef<MeshStandardMaterial>(null)
   const weather = useWeather()
 
   useFrame((_, delta) => {
-    for (const m of glass.current) {
-      if (!m) continue
-      // Windows light up at night and in the rain, and brighten under the pointer.
-      const target = (hovered ? 0.55 : 0.12) + LOOK[weather].glow * 0.5
-      m.emissiveIntensity += (target - m.emissiveIntensity) * Math.min(1, delta * 8)
-    }
+    const m = glass.current
+    if (!m) return
+    // Windows light up at night and in the rain, and brighten under the pointer.
+    const target = (hovered ? 0.55 : 0.12) + LOOK[weather].glow * 0.5
+    m.emissiveIntensity += (target - m.emissiveIntensity) * Math.min(1, delta * 8)
   })
 
   const events = {
@@ -199,74 +319,38 @@ function Floor({
 
   return (
     <group position={[0, floorBase(index), 0]}>
-      <Box size={[TOWER.width + 0.1, SLAB, TOWER.depth + 0.1]} at={[TOWER.width / 2, SLAB / 2, 0]} color={TRIM} />
-      <group position={[0, SLAB, 0]}>
-        <Inside flat={flat} seed={index} />
-      </group>
-
-      {/* Façade: spandrel, lintel and piers around three windows */}
-      <Box size={[TOWER.width, SILL, 0.1]} at={[TOWER.width / 2, SLAB + SILL / 2, FRONT]} color={facade} />
-      <Box size={[TOWER.width, LINTEL, 0.1]} at={[TOWER.width / 2, H - LINTEL / 2, FRONT]} color={facade} />
-      {[EDGE / 2, TOWER.width - EDGE / 2].map((x) => (
-        <Box key={x} size={[EDGE, winH, 0.1]} at={[x, winY, FRONT]} color={facade} />
-      ))}
-      {[0, 1].map((k) => (
-        <Box key={k} size={[PIER, winH, 0.1]} at={[EDGE + WINDOW_W + PIER / 2 + k * (WINDOW_W + PIER), winY, FRONT]} color={facade} />
-      ))}
-
-      {xs.map((x, k) => (
-        <group key={x} position={[x, winY, FRONT]}>
-          {/* Frosted glass: the rooms behind it go soft, which is the point from out here */}
-          <mesh>
-            <planeGeometry args={[WINDOW_W, winH]} />
-            <meshPhysicalMaterial
-              transmission={1}
-              roughness={0.38}
-              thickness={0.25}
-              ior={1.25}
-              color="#f2f7ff"
-              emissive="#ffdca0"
-              emissiveIntensity={0.12}
-              ref={(m) => {
-                if (m) glass.current[k] = m
-              }}
-            />
-          </mesh>
-          <Box size={[WINDOW_W + 0.06, 0.04, 0.06]} at={[0, winH / 2, 0.02]} color={TRIM} />
-          <Box size={[WINDOW_W + 0.1, 0.05, 0.12]} at={[0, -winH / 2 - 0.01, 0.04]} color={TRIM} />
-          <Box size={[0.04, winH, 0.06]} at={[-WINDOW_W / 2, 0, 0.02]} color={TRIM} />
-          <Box size={[0.04, winH, 0.06]} at={[WINDOW_W / 2, 0, 0.02]} color={TRIM} />
-          <Box size={[0.03, winH, 0.05]} at={[0, 0, 0.02]} color={TRIM} />
-        </group>
-      ))}
-
-      {/* A little balcony on every other floor */}
-      {index % 2 === 1 && (
-        <group position={[xs[1], SLAB + SILL, FRONT + 0.2]}>
-          <Box size={[WINDOW_W + 0.3, 0.05, 0.38]} at={[0, -0.02, 0]} color={TRIM} />
-          <Box size={[WINDOW_W + 0.3, 0.035, 0.035]} at={[0, 0.26, 0.18]} color="#ffffff" />
-          {Array.from({ length: 9 }, (_, i) => (
-            <Box key={i} size={[0.02, 0.26, 0.02]} at={[-WINDOW_W / 2 - 0.12 + i * ((WINDOW_W + 0.24) / 8), 0.13, 0.18]} color="#ffffff" />
-          ))}
-        </group>
-      )}
+      {/* Frosted glass, faked cheaply: a milky, half-transparent pane over the lit room. Real
+          transmission rendered the whole scene a second time every frame. */}
+      <mesh geometry={PANES}>
+        <meshStandardMaterial
+          ref={glass}
+          color="#eef4ff"
+          transparent
+          opacity={0.62}
+          roughness={0.3}
+          emissive="#ffdca0"
+          emissiveIntensity={0.12}
+          depthWrite={false}
+        />
+      </mesh>
 
       <Sign flat={flat} at={[TOWER.width / 2, SLAB + SILL / 2 + 0.01, FRONT + 0.056]} lit={hovered} />
 
-      {/* Glow outline when hovered */}
-      <group visible={hovered}>
-        {[
-          { size: [TOWER.width + 0.14, 0.035, 0.03] as Vec3, at: [TOWER.width / 2, H, FRONT + 0.09] as Vec3 },
-          { size: [TOWER.width + 0.14, 0.035, 0.03] as Vec3, at: [TOWER.width / 2, SLAB, FRONT + 0.09] as Vec3 },
-          { size: [0.035, H - SLAB, 0.03] as Vec3, at: [-0.07, (H + SLAB) / 2, FRONT + 0.09] as Vec3 },
-          { size: [0.035, H - SLAB, 0.03] as Vec3, at: [TOWER.width + 0.07, (H + SLAB) / 2, FRONT + 0.09] as Vec3 },
-        ].map((b, i) => (
-          <mesh key={i} position={b.at}>
-            <boxGeometry args={b.size} />
-            <meshBasicMaterial color="#ffffff" toneMapped={false} />
-          </mesh>
-        ))}
-      </group>
+      {hovered && (
+        <group>
+          {[
+            { size: [TOWER.width + 0.14, 0.035, 0.03] as Vec3, at: [TOWER.width / 2, H, FRONT + 0.09] as Vec3 },
+            { size: [TOWER.width + 0.14, 0.035, 0.03] as Vec3, at: [TOWER.width / 2, SLAB, FRONT + 0.09] as Vec3 },
+            { size: [0.035, H - SLAB, 0.03] as Vec3, at: [-0.07, (H + SLAB) / 2, FRONT + 0.09] as Vec3 },
+            { size: [0.035, H - SLAB, 0.03] as Vec3, at: [TOWER.width + 0.07, (H + SLAB) / 2, FRONT + 0.09] as Vec3 },
+          ].map((b, i) => (
+            <mesh key={i} position={b.at}>
+              <boxGeometry args={b.size} />
+              <meshBasicMaterial color="#ffffff" toneMapped={false} />
+            </mesh>
+          ))}
+        </group>
+      )}
 
       {/* One click target for the whole floor */}
       <mesh position={[TOWER.width / 2, H / 2, FRONT + 0.1]} {...events}>
@@ -277,8 +361,8 @@ function Floor({
   )
 }
 
-/** Ground floor with the entrance and the owner's name over the door. */
-function Lobby({ owner }: { owner: string }) {
+/** The lobby's pieces that aren't plain boxes: glass door, awning, the owner's sign, window panes. */
+function LobbyDetails({ owner }: { owner: string }) {
   const W = TOWER.width
   const H = TOWER.lobby
   const sign = useMemo(
@@ -303,15 +387,10 @@ function Lobby({ owner }: { owner: string }) {
   const door = { w: 0.8, h: 0.85 }
   return (
     <group>
-      <Box size={[W, H, TOWER.depth]} at={[W / 2, H / 2, 0]} color="#efe5d8" cast={false} />
-      <Box size={[(W - door.w) / 2, H, 0.1]} at={[(W - door.w) / 4, H / 2, FRONT]} color={LOBBY} />
-      <Box size={[(W - door.w) / 2, H, 0.1]} at={[W - (W - door.w) / 4, H / 2, FRONT]} color={LOBBY} />
-      <Box size={[door.w, H - door.h, 0.1]} at={[W / 2, (H + door.h) / 2, FRONT]} color={LOBBY} />
       <mesh position={[W / 2, door.h / 2, FRONT + 0.02]}>
         <boxGeometry args={[door.w - 0.06, door.h, 0.03]} />
         <meshStandardMaterial color="#bfe2f5" roughness={0.1} emissive="#fff1c9" emissiveIntensity={0.25} />
       </mesh>
-      <Box size={[0.03, door.h, 0.05]} at={[W / 2, door.h / 2, FRONT + 0.04]} color={TRIM} />
       <mesh position={[W / 2, door.h + 0.08, FRONT + 0.2]} rotation={[0.35, 0, 0]} castShadow>
         <boxGeometry args={[door.w + 0.36, 0.035, 0.42]} />
         <meshStandardMaterial color="#3f9c8f" roughness={0.7} />
@@ -321,58 +400,32 @@ function Lobby({ owner }: { owner: string }) {
         <meshBasicMaterial map={sign} toneMapped={false} />
       </mesh>
       {[W * 0.17, W * 0.83].map((x) => (
-        <group key={x} position={[x, 0.62, FRONT + 0.055]}>
-          <mesh>
-            <planeGeometry args={[0.7, 0.55]} />
-            <meshBasicMaterial color={TRIM} />
-          </mesh>
-          <mesh position={[0, 0, 0.002]}>
-            <planeGeometry args={[0.6, 0.46]} />
-            <meshStandardMaterial color="#cfe6f7" roughness={0.15} emissive="#fff1c9" emissiveIntensity={0.25} />
-          </mesh>
-          <Box size={[0.74, 0.04, 0.09]} at={[0, -0.3, 0.03]} color={TRIM} />
-        </group>
+        <mesh key={x} position={[x, 0.62, FRONT + 0.062]}>
+          <planeGeometry args={[0.6, 0.46]} />
+          <meshStandardMaterial color="#cfe6f7" roughness={0.15} emissive="#fff1c9" emissiveIntensity={0.25} />
+        </mesh>
       ))}
     </group>
   )
 }
 
-function Roof({ y }: { y: number }) {
+/** Roof pieces that aren't boxes: the water tank and a bush. */
+function RoofDetails({ y }: { y: number }) {
   const W = TOWER.width
-  const D = TOWER.depth
-  const parapet = 0.22
   return (
-    <group position={[0, y, 0]}>
-      <Box size={[W + 0.14, SLAB, D + 0.14]} at={[W / 2, SLAB / 2, 0]} color={TRIM} />
-      <Box size={[W + 0.14, parapet, 0.08]} at={[W / 2, SLAB + parapet / 2, D / 2 + 0.03]} color={FACADES[0]} />
-      <Box size={[W + 0.14, parapet, 0.08]} at={[W / 2, SLAB + parapet / 2, -D / 2 - 0.03]} color={FACADES[0]} />
-      <Box size={[0.08, parapet, D + 0.14]} at={[-0.03, SLAB + parapet / 2, 0]} color={FACADES[0]} />
-      <Box size={[0.08, parapet, D + 0.14]} at={[W + 0.03, SLAB + parapet / 2, 0]} color={FACADES[0]} />
-      <group position={[W - 1.0, SLAB, -0.3]}>
-        {[
-          [-0.18, -0.18],
-          [0.18, -0.18],
-          [-0.18, 0.18],
-          [0.18, 0.18],
-        ].map(([x, z]) => (
-          <Box key={`${x}${z}`} size={[0.04, 0.32, 0.04]} at={[x, 0.16, z]} color="#9aa3b5" />
-        ))}
-        <mesh position={[0, 0.55, 0]} castShadow>
-          <cylinderGeometry args={[0.3, 0.3, 0.46, 20]} />
-          <meshStandardMaterial color="#8fb7d8" roughness={0.6} />
-        </mesh>
-        <mesh position={[0, 0.82, 0]} castShadow>
-          <coneGeometry args={[0.32, 0.13, 20]} />
-          <meshStandardMaterial color="#6f97ba" roughness={0.6} />
-        </mesh>
-      </group>
-      <Box size={[0.025, 0.75, 0.025]} at={[W * 0.35, SLAB + 0.37, -0.5]} color="#9aa3b5" />
-      <Box size={[0.32, 0.02, 0.02]} at={[W * 0.35, SLAB + 0.62, -0.5]} color="#9aa3b5" />
-      <mesh position={[0.6, SLAB + 0.2, 0.2]} castShadow>
+    <group position={[0, y + SLAB, 0]}>
+      <mesh position={[W - 1.0, 0.55, -0.3]} castShadow>
+        <cylinderGeometry args={[0.3, 0.3, 0.46, 16]} />
+        <meshStandardMaterial color="#8fb7d8" roughness={0.6} />
+      </mesh>
+      <mesh position={[W - 1.0, 0.82, -0.3]} castShadow>
+        <coneGeometry args={[0.32, 0.13, 16]} />
+        <meshStandardMaterial color="#6f97ba" roughness={0.6} />
+      </mesh>
+      <mesh position={[0.6, 0.2, 0.2]}>
         <icosahedronGeometry args={[0.22, 0]} />
         <meshStandardMaterial color="#8fcf8a" flatShading roughness={0.85} />
       </mesh>
-      <Box size={[0.3, 0.12, 0.3]} at={[0.6, SLAB + 0.06, 0.2]} color="#d9cbb8" />
     </group>
   )
 }
@@ -387,30 +440,17 @@ type Props = {
 
 export function Tower({ flats, owner, hovered, onHover, onSelect }: Props) {
   const height = towerHeight(flats.length)
+  const boxes = useMemo(() => towerBoxes(flats), [flats])
   return (
     <group position={[-TOWER.width / 2, 0, 0]}>
-      <Lobby owner={owner} />
+      <Boxes boxes={boxes.lit} cast />
+      <Boxes boxes={boxes.unlit} unlit />
+      <TowerPeople flats={flats} />
+      <LobbyDetails owner={owner} />
       {flats.map((flat, i) => (
         <Floor key={flat.id} flat={flat} index={i} hovered={hovered === flat.id} onHover={onHover} onSelect={onSelect} />
       ))}
-      {/* Side and back walls, with small windows on the side the camera sees */}
-      {[-0.06, TOWER.width + 0.06].map((x) => (
-        <Box key={x} size={[0.12, height, TOWER.depth + 0.06]} at={[x, height / 2, 0]} color="#efe2d0" />
-      ))}
-      <Box size={[TOWER.width, height, 0.1]} at={[TOWER.width / 2, height / 2, -FRONT]} color="#efe2d0" />
-      {flats.map((_, i) => (
-        <group key={i} position={[TOWER.width + 0.125, floorBase(i) + 0.62, -0.2]} rotation={[0, Math.PI / 2, 0]}>
-          <mesh>
-            <planeGeometry args={[0.5, 0.42]} />
-            <meshBasicMaterial color={TRIM} />
-          </mesh>
-          <mesh position={[0, 0, 0.002]}>
-            <planeGeometry args={[0.42, 0.34]} />
-            <meshStandardMaterial color="#cfe6f7" roughness={0.2} emissive="#fff1c9" emissiveIntensity={0.2} />
-          </mesh>
-        </group>
-      ))}
-      <Roof y={height} />
+      <RoofDetails y={height} />
     </group>
   )
 }

@@ -29,8 +29,9 @@ const WEATHER_ICON: Record<Weather, string> = { sun: '☀️', clouds: '☁️',
 /** Seconds each weather lasts when it changes on its own. */
 const WEATHER_SECONDS = 22
 
-const glass =
-  'rounded-[22px] border border-white/70 bg-white/70 shadow-[0_18px_50px_-22px_rgba(40,52,110,0.45)] backdrop-blur-xl'
+// No backdrop blur: blurring a WebGL canvas that redraws every frame was one of the costliest parts of
+// the page. A more opaque white reads just as well.
+const glass = 'rounded-[22px] border border-white/80 bg-white/[0.86] shadow-[0_18px_50px_-22px_rgba(40,52,110,0.45)]'
 
 type CaptionState = { text: Caption | null; step: number; total: number }
 
@@ -154,7 +155,7 @@ export default function App() {
       ))}
       <Backdrop near={flat !== null} weather={weather} />
       {ready && (
-        <div className={`absolute inset-0 transition-[filter,opacity] duration-700 ${landing ? 'opacity-70 blur-[3px]' : ''}`}>
+        <div className={`absolute inset-0 transition-opacity duration-700 ${landing ? 'opacity-60' : ''}`}>
           <Stage
             lang={lang}
             weather={weather}
@@ -171,7 +172,7 @@ export default function App() {
       )}
       <div
         aria-hidden="true"
-        className={`pointer-events-none absolute inset-0 bg-white/70 backdrop-blur-md transition-opacity duration-200 ${veil ? 'opacity-100' : 'opacity-0'}`}
+        className={`pointer-events-none absolute inset-0 bg-white/80 transition-opacity duration-200 ${veil ? 'opacity-100' : 'opacity-0'}`}
       />
 
       <header className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4 md:p-6">

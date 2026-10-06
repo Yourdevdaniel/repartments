@@ -2,31 +2,42 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 
 /**
  * In development, serve /api/building from the same handler the Vercel function uses. The token
  * comes from GITHUB_TOKEN, or else from the GitHub CLI if it's logged in; it stays in this process
  * and is never written anywhere. Answers are cached for ten minutes to go easy on GitHub.
- */
+ *
+ * GITHUB_TOKEN from the environment or .env.local, else the GitHub CLI's token (on PATH or its usual install path). */
+function readToken(): string | undefined {
+  const fromEnv = process.env.GITHUB_TOKEN || loadEnv('development', process.cwd(), '').GITHUB_TOKEN
+  if (fromEnv) return fromEnv
+  for (const gh of ['gh', String.raw`"C:\Program Files\GitHub CLI\gh.exe"`]) {
+    try {
+      const token = execSync(`${gh} auth token`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+      if (token) return token
+    } catch {
+      // Try the next way.
+    }
+  }
+  return undefined
+}
+
 function devApi(): Plugin {
   const cache = new Map<string, { at: number; status: number; body: string }>()
   return {
     name: 'repartments-dev-api',
     configureServer(server) {
-      let token = process.env.GITHUB_TOKEN
-      if (!token) {
-        try {
-          token = execSync('gh auth token', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
-        } catch {
-          server.config.logger.warn('No GITHUB_TOKEN and no logged-in GitHub CLI: /api/building will answer 503.')
-        }
-      }
+      let token = readToken()
+      if (!token) server.config.logger.warn('No GITHUB_TOKEN and no logged-in GitHub CLI yet: /api/building will answer 503 until one is available.')
       server.middlewares.use('/api/building', async (req, res) => {
         const user = new URL(req.url ?? '', 'http://local').searchParams.get('user') ?? ''
         const key = user.toLowerCase()
         const hit = cache.get(key)
         let answer = hit && Date.now() - hit.at < 10 * 60_000 ? hit : null
+        // Look again if there was no token at start-up (the CLI may have been logged in since).
+        if (!token) token = readToken()
         if (!answer) {
           const { buildingFor } = (await server.ssrLoadModule('/server/handler.ts')) as typeof import('./server/handler')
           const result = await buildingFor(user, token)

@@ -2,6 +2,7 @@ import { useFrame } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 import type { MeshStandardMaterial, PointLight } from 'three'
 import { Box } from './Flat'
+import { Boxes, type BoxSpec } from './merge'
 import { LOOK, useWeather } from './weather'
 
 
@@ -89,11 +90,21 @@ export function Street({ width, depth }: { width: number; depth: number }) {
   const walk = 1.3
   const road = 1.5
   const span = width + 30
-  const tiles = useMemo(() => {
-    const list: number[] = []
-    for (let x = -span / 2 + 0.5; x < span / 2; x += 0.5) list.push(x)
+  // Sidewalks, curb, road and their lines, merged into a few meshes (they were ~110 separate boxes).
+  const paving = useMemo(() => {
+    const list: BoxSpec[] = []
+    const tiles: number[] = []
+    for (let x = -span / 2 + 0.5; x < span / 2; x += 0.5) tiles.push(x)
+    list.push({ size: [span, 0.06, walk], at: [0, -0.03, FRONT + walk / 2], color: '#ece7df' })
+    for (const x of tiles) list.push({ size: [0.012, 0.004, walk], at: [x, 0.001, FRONT + walk / 2], color: '#ddd5ca' })
+    list.push({ size: [span, 0.09, 0.08], at: [0, -0.015, FRONT + walk + 0.04], color: '#d4cdc2' })
+    list.push({ size: [200, 0.05, road], at: [0, -0.035, FRONT + walk + 0.08 + road / 2], color: '#8c90a3' })
+    list.push({ size: [200, 0.06, walk], at: [0, -0.03, FRONT + walk + 0.16 + road + walk / 2], color: '#ece7df' })
+    tiles
+      .filter((_, i) => i % 3 === 0)
+      .forEach((x) => list.push({ size: [0.5, 0.004, 0.05], at: [x, -0.008, FRONT + walk + 0.08 + road / 2], color: '#f4f1ea' }))
     return list
-  }, [span])
+  }, [span, FRONT])
 
   return (
     <group>
@@ -102,18 +113,7 @@ export function Street({ width, depth }: { width: number; depth: number }) {
         <boxGeometry args={[200, 0.1, 22]} />
         <meshStandardMaterial color="#d3ebc4" roughness={1} />
       </mesh>
-      <Box size={[span, 0.06, walk]} at={[0, -0.03, FRONT + walk / 2]} color="#ece7df" cast={false} />
-      {tiles.map((x) => (
-        <Box key={x} size={[0.012, 0.004, walk]} at={[x, 0.001, FRONT + walk / 2]} color="#ddd5ca" cast={false} />
-      ))}
-      <Box size={[span, 0.09, 0.08]} at={[0, -0.015, FRONT + walk + 0.04]} color="#d4cdc2" />
-      <Box size={[200, 0.05, road]} at={[0, -0.035, FRONT + walk + 0.08 + road / 2]} color="#8c90a3" cast={false} />
-      <Box size={[200, 0.06, walk]} at={[0, -0.03, FRONT + walk + 0.16 + road + walk / 2]} color="#ece7df" cast={false} />
-      {tiles
-        .filter((_, i) => i % 3 === 0)
-        .map((x) => (
-          <Box key={`d${x}`} size={[0.5, 0.004, 0.05]} at={[x, -0.008, FRONT + walk + 0.08 + road / 2]} color="#f4f1ea" cast={false} />
-        ))}
+      <Boxes boxes={paving} />
 
       {/* Planters along the ground floor, low enough not to hide anything */}
       <Bush x={-half + 0.6} z={FRONT + 0.22} />

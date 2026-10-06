@@ -1,6 +1,6 @@
-import { ContactShadows, useGLTF } from '@react-three/drei'
+import { ContactShadows, PerformanceMonitor, useGLTF } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Suspense, useEffect, useMemo, useRef } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { OrthographicCamera as OrthoCam, Vector3 } from 'three'
 import { Interior } from './Interior'
 import { Pedestrians, Traffic } from './Life'
@@ -131,6 +131,15 @@ function CameraRig({ flats, view, instant }: { flats: FlatData[]; view: View; in
   return null
 }
 
+/** Development only: exposes draw calls and triangles on window so performance can be measured. */
+function RenderStats() {
+  const { gl } = useThree()
+  useFrame(() => {
+    ;(window as unknown as { __render?: object }).__render = { calls: gl.info.render.calls, triangles: gl.info.render.triangles, programs: gl.info.programs?.length, geometries: gl.info.memory.geometries, textures: gl.info.memory.textures }
+  })
+  return null
+}
+
 function Clock({
   time,
   narrator,
@@ -171,17 +180,20 @@ export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onS
   const reduce = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, [])
   const time = useMemo<StoryTime>(() => ({ current: reduce ? 9 : 0, paused: reduce }), [reduce])
   const inside = view.mode === 'inside' ? (flats.find((f) => f.id === view.id) ?? null) : null
+  // Sharp on capable screens, softer when the frame rate drops (PerformanceMonitor below).
+  const [dpr, setDpr] = useState(() => Math.min(window.devicePixelRatio || 1, 1.5))
 
   return (
     <Canvas
       shadows
       flat
       orthographic
-      dpr={[1, 2]}
+      dpr={dpr}
       gl={{ antialias: true, alpha: true }}
       camera={{ position: [10, 8, 30], near: 0.1, far: 200, zoom: 60 }}
       onPointerMissed={() => inside && onBack()}
     >
+      <PerformanceMonitor onDecline={() => setDpr(1)} onIncline={() => setDpr(Math.min(window.devicePixelRatio || 1, 1.5))} />
       <WeatherContext.Provider value={weather}>
       {/* No tone mapping (flat), so the pastels come out as picked instead of washed out. */}
       <WeatherLights shadowTop={inside ? 4 : 12} indoor={inside !== null} />
@@ -189,6 +201,7 @@ export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onS
       <StoryTimeContext.Provider value={time}>
         <Clock time={time} narrator={inside} onCaption={onCaption} />
         <CameraRig flats={flats} view={view} instant={reduce} />
+        {import.meta.env.DEV && <RenderStats />}
         <Suspense fallback={null}>
           {inside ? (
             <Interior flat={inside} />
@@ -206,7 +219,8 @@ export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onS
       </StoryTimeContext.Provider>
       </SceneLangContext.Provider>
       </WeatherContext.Provider>
-      <ContactShadows position={[0, inside ? -0.33 : -0.019, 0]} opacity={0.22} scale={inside ? 14 : 22} blur={2.4} far={3} />
+      {/* Rendered once per view: the soft ground shadow doesn't need redrawing every frame. */}
+      <ContactShadows key={inside ? inside.id : 'out'} frames={1} position={[0, inside ? -0.33 : -0.019, 0]} opacity={0.22} scale={inside ? 14 : 22} blur={2.4} far={3} resolution={256} />
     </Canvas>
   )
 }
