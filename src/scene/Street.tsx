@@ -1,8 +1,6 @@
 import { useMemo } from 'react'
 import { Box } from './Flat'
 
-const DEPTH = 1.8
-const FRONT = DEPTH / 2
 
 /** A chunky low-poly tree: trunk plus a few flat-shaded blobs of leaves. */
 function Tree({ x, z, size = 1, hue = 0 }: { x: number; z: number; size?: number; hue?: number }) {
@@ -72,8 +70,9 @@ function Bench({ x, z }: { x: number; z: number }) {
 }
 
 /** Sidewalk, curb, a strip of road, grass on the sides, trees and lamps. Kept off the flats' faces. */
-export function Street({ width }: { width: number }) {
+export function Street({ width, depth }: { width: number; depth: number }) {
   const half = width / 2
+  const FRONT = depth / 2
   const walk = 1.3
   const road = 1.5
   const span = width + 30

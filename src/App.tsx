@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { demoFlats, demoOwner } from './scene/demo'
-import { Stage } from './scene/Stage'
+import { Stage, type View } from './scene/Stage'
 import type { Caption } from './scene/story'
 import { Backdrop } from './ui/Backdrop'
 import { copy, roles, type Lang } from './ui/roles'
@@ -22,11 +22,13 @@ type CaptionState = { text: Caption | null; step: number; total: number }
 
 export default function App() {
   const [lang, setLangState] = useState<Lang>(initialLang)
-  const [focused, setFocused] = useState<string | null>(null)
+  const [view, setView] = useState<View>({ mode: 'building', entering: null })
+  const [veil, setVeil] = useState(false)
   const [hovered, setHovered] = useState<string | null>(null)
   const [caption, setCaption] = useState<CaptionState>({ text: null, step: -1, total: 0 })
+  const timers = useRef<number[]>([])
   const flats = demoFlats
-  const flat = flats.find((f) => f.id === focused) ?? null
+  const flat = view.mode === 'inside' ? (flats.find((f) => f.id === view.id) ?? null) : null
 
   const setLang = (next: Lang) => {
     setLangState(next)
@@ -38,17 +40,39 @@ export default function App() {
     }
   }
 
-  const select = useCallback((id: string | null) => {
+  const later = (ms: number, fn: () => void) => timers.current.push(window.setTimeout(fn, ms))
+  useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
+
+  /** Dive at the floor, fade through a soft veil, come out inside the flat. */
+  const select = useCallback((id: string) => {
     setHovered(null)
-    setFocused(id)
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduce) {
+      setView({ mode: 'inside', id })
+      return
+    }
+    setView({ mode: 'building', entering: id })
+    later(520, () => setVeil(true))
+    later(760, () => {
+      setView({ mode: 'inside', id })
+      setVeil(false)
+    })
+  }, [])
+
+  const back = useCallback(() => {
+    setVeil(true)
+    later(240, () => {
+      setView({ mode: 'building', entering: null })
+      setVeil(false)
+    })
   }, [])
   const onCaption = useCallback((text: Caption | null, step: number, total: number) => setCaption({ text, step, total }), [])
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setFocused(null)
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && back()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [back])
 
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-[linear-gradient(180deg,#cfe0ff_0%,#e6ecff_45%,#f1f0ff_100%)] text-ink">
@@ -57,13 +81,18 @@ export default function App() {
         <Stage
           flats={flats}
           owner={demoOwner.login}
-          focused={focused}
+          view={view}
           hovered={hovered}
           onHover={setHovered}
           onSelect={select}
+          onBack={back}
           onCaption={onCaption}
         />
       </div>
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-0 bg-white/70 backdrop-blur-md transition-opacity duration-200 ${veil ? 'opacity-100' : 'opacity-0'}`}
+      />
 
       <header className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4 md:p-6">
         <div className={`${glass} pointer-events-auto flex items-center gap-3 px-4 py-3`}>
@@ -100,7 +129,7 @@ export default function App() {
           <>
             <button
               type="button"
-              onClick={() => select(null)}
+              onClick={back}
               className="mb-3 inline-flex h-8 items-center gap-1.5 rounded-full bg-ink/5 px-3 text-xs font-extrabold text-ink-soft transition-colors hover:bg-ink/10 hover:text-ink"
             >
               <span aria-hidden="true">←</span> {copy.back[lang]}
@@ -128,7 +157,7 @@ export default function App() {
             <p className="text-xs font-bold tracking-wide text-ink-soft uppercase">@{demoOwner.login}</p>
             <h2 className="mt-1 text-base font-extrabold">{copy.residents(flats.length)[lang]}</h2>
             <ul className="mt-3 grid gap-2">
-              {flats.map((f, i) => (
+              {flats.map((f, i) => ({ f, i })).reverse().map(({ f, i }) => (
                 <li key={f.id}>
                   <button
                     type="button"
