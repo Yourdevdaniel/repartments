@@ -2,8 +2,8 @@
  * Vercel function: GET /api/building?user=<login>. The GitHub token lives only in the server's
  * environment (GITHUB_TOKEN, a fine-grained token with no repository permissions: public data only).
  */
-import { buildingFor, CACHE_HEADER } from '../server/handler'
-import { clientKey, createLimiter } from '../server/limiter'
+import { buildingFor, CACHE_HEADER } from '../server/handler.js'
+import { clientKey, createLimiter } from '../server/limiter.js'
 
 /** Requests that reach the function (the edge cache answers the rest): 20 a minute per visitor. */
 const allow = createLimiter(20, 60_000)

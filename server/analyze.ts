@@ -6,7 +6,7 @@
  * the code does, and nothing from here but the resulting tags leaves the server.
  */
 import type { Apartment, RepoStatus, Resident, Role } from '../src/shared/types'
-import { alias, MANIFESTS, type RawBlob, type RawRepo } from './github'
+import { alias, MANIFESTS, type RawBlob, type RawRepo } from './github.js'
 
 /** Brand-ish colours for the name tags. */
 const COLOR: Record<string, string> = {
