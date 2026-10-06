@@ -9,13 +9,18 @@ import { fetchOwner, GitHubError, type Fetcher } from './github.js'
 /** GitHub's own rules: letters, digits and single hyphens, up to 39 characters. */
 export const USERNAME = /^[a-zA-Z\d](?:[a-zA-Z\d]|-(?=[a-zA-Z\d])){0,38}$/
 
+/** GitHub's page cursors are short base64 strings. */
+const CURSOR = /^[A-Za-z0-9+/=_-]{1,200}$/
+
 export type Answer = { status: number; body: Building | BuildingError; cache: boolean }
 
-export async function buildingFor(login: string | null, token: string | undefined, fetcher?: Fetcher): Promise<Answer> {
-  if (!login || !USERNAME.test(login)) return { status: 400, body: { error: 'invalid-user' }, cache: false }
+/** `after` asks for the next building down the street: the repos after the ones already shown. */
+export async function buildingFor(login: string | null, token: string | undefined, fetcher?: Fetcher, after: string | null = null): Promise<Answer> {
+  if (!login || !USERNAME.test(login) || (after !== null && !CURSOR.test(after))) return { status: 400, body: { error: 'invalid-user' }, cache: false }
   if (!token) return { status: 503, body: { error: 'unavailable' }, cache: false }
   try {
-    const owner = await fetchOwner(login, token, fetcher)
+    const owner = await fetchOwner(login, token, fetcher, after)
+    const page = owner.repositories
     // Archived repos stay out while at least three active ones remain; otherwise they're kept, so an
     // account of mostly finished projects still gets a building instead of an empty lot.
     const active = owner.repositories.nodes.filter((r) => !r.isArchived)
@@ -24,7 +29,13 @@ export async function buildingFor(login: string | null, token: string | undefine
     const apartments = repos.map(analyze).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     return {
       status: 200,
-      body: { owner: { login: owner.login, name: owner.name ?? null, avatarUrl: owner.avatarUrl }, apartments },
+      body: {
+        owner: { login: owner.login, name: owner.name ?? null, avatarUrl: owner.avatarUrl },
+        apartments,
+        next: page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null,
+        total: page.totalCount,
+        fetched: page.nodes.length,
+      },
       cache: true,
     }
   } catch (err) {

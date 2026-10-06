@@ -3,12 +3,13 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { OrthographicCamera as OrthoCam, Vector3 } from 'three'
 import { Interior } from './Interior'
-import { Pedestrians, Traffic } from './Life'
+import { Manager, Pedestrians, Traffic } from './Life'
+import { neighborhood } from './lot'
 import { Clouds, Rain, WeatherLights } from './Sky'
 import { ALL_MODELS } from './rooms'
 import { clampOrbit, HOME, isHome, zoomAt, type Orbit } from './orbit'
 import { captionAt, sample, type Caption } from './story'
-import { Street } from './Street'
+import { Neighbors, Street } from './Street'
 import { SceneLangContext, type SceneLang } from './lang'
 import { StoryTimeContext, useStoryTime, type StoryTime } from './time'
 import { floorBase, Tower, TOWER, towerHeight } from './Tower'
@@ -53,12 +54,14 @@ const TURN_PER_PX = 0.006
  */
 function CameraRig({
   flats,
+  lot,
   view,
   instant,
   recenter,
   onMoved,
 }: {
   flats: FlatData[]
+  lot: number
   view: View
   instant: boolean
   recenter: number
@@ -95,9 +98,16 @@ function CameraRig({
       }
     }
     // Room for the roof and the street, plus the header and the hint at the bottom of the screen. A
-    // phone held upright frames the tower tighter and lets the trees at the sides go off screen.
-    const side = size.width < size.height ? 2.6 : 7.5
-    return { target: new Vector3(0, height * 0.5, 0.6), az: 0.36, el: 0.17, fitW: TOWER.width + side, fitH: height + 3.4 }
+    // phone held upright frames the tower tighter at the sides (the trees can go off screen) and
+    // leaves more above and below, where its header and buttons stack up.
+    const upright = size.width < size.height
+    return {
+      target: new Vector3(0, height * 0.5, 0.6),
+      az: 0.36,
+      el: 0.17,
+      fitW: TOWER.width + (upright ? 2.6 : 7.5),
+      fitH: upright ? height * 1.45 + 1.2 : height + 3.4,
+    }
   }, [inside, view, flats, height, size.width, size.height])
 
   // The latest of what the input handlers read, so they're bound once instead of every render.
@@ -265,7 +275,7 @@ function CameraRig({
   }, [cam, size.width, size.height])
 
   useFrame((_, delta) => {
-    const key = inside ? `in:${inside.id}` : 'out'
+    const key = inside ? `in:${inside.id}` : `out:${lot}`
     if (key !== mode.current) {
       // Changing worlds: start from a wider shot of the new one and settle in, instead of sliding across.
       mode.current = key
@@ -365,9 +375,12 @@ type Props = {
   recenter: number
   /** Whether the visitor has turned, zoomed or slid away from the whole-tower shot. */
   onMoved: (moved: boolean) => void
+  /** Which building on the owner's street this is (0 = the first). */
+  lot: number
 }
 
-export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption, recenter, onMoved }: Props) {
+export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption, recenter, onMoved, lot }: Props) {
+  const hood = useMemo(() => neighborhood(owner, lot), [owner, lot])
   const reduce = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, [])
   const time = useMemo<StoryTime>(() => ({ current: reduce ? 9 : 0, paused: reduce }), [reduce])
   const inside = view.mode === 'inside' ? (flats.find((f) => f.id === view.id) ?? null) : null
@@ -391,16 +404,18 @@ export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onS
       <SceneLangContext.Provider value={lang}>
       <StoryTimeContext.Provider value={time}>
         <Clock time={time} narrator={inside} onCaption={onCaption} />
-        <CameraRig flats={flats} view={view} instant={reduce} recenter={recenter} onMoved={onMoved} />
+        <CameraRig flats={flats} lot={lot} view={view} instant={reduce} recenter={recenter} onMoved={onMoved} />
         {import.meta.env.DEV && <RenderStats />}
         <Suspense fallback={null}>
           {inside ? (
             <Interior flat={inside} />
           ) : (
             <>
-              <Tower flats={flats} owner={owner} hovered={hovered} onHover={onHover} onSelect={onSelect} />
-              <Street width={TOWER.width} depth={TOWER.depth} />
+              <Tower flats={flats} owner={owner} hood={hood} hovered={hovered} onHover={onHover} onSelect={onSelect} />
+              <Street width={TOWER.width} depth={TOWER.depth} variant={hood.street} />
+              <Neighbors specs={hood.neighbors} />
               <Pedestrians />
+              <Manager owner={owner} />
               <Traffic />
               <Clouds top={towerHeight(flats.length)} />
               <Rain top={towerHeight(flats.length)} />

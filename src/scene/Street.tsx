@@ -3,6 +3,8 @@ import { useMemo, useRef } from 'react'
 import type { MeshStandardMaterial, PointLight } from 'three'
 import { Box } from './Flat'
 import { Boxes, type BoxSpec } from './merge'
+import { NEIGHBOR_FLOOR, type Neighbor } from './lot'
+import { TOWER } from './Tower'
 import { LOOK, useWeather } from './weather'
 
 
@@ -83,8 +85,74 @@ function Bench({ x, z }: { x: number; z: number }) {
   )
 }
 
+/** Trees beside the tower, by distance from its side wall (negative: the left side). */
+const TREES = [
+  { x: -1.1, z: -0.3, size: 1.25, hue: 0 },
+  { x: -2.3, z: 0.4, size: 0.95, hue: 1 },
+  { x: -1.6, z: 1.95, size: 0.8, hue: 2 },
+  { x: 1.15, z: -0.4, size: 1.3, hue: 3 },
+  { x: 2.4, z: 0.3, size: 1, hue: 1 },
+]
+const SPARSE = [
+  { x: -1.3, z: -0.2, size: 1.15, hue: 2 },
+  { x: -2.4, z: 0.5, size: 0.9, hue: 3 },
+  { x: 1.1, z: -0.3, size: 1.1, hue: 0 },
+]
+
+/**
+ * The buildings next door: scenery, nobody lives there. Plain blocks with rows of windows, some with
+ * a shop and its awning on the ground floor, all merged into a handful of meshes.
+ */
+export function Neighbors({ specs }: { specs: Neighbor[] }) {
+  const boxes = useMemo(() => {
+    const list: BoxSpec[] = []
+    const front = TOWER.depth / 2
+    const ground = 1
+    for (const n of specs) {
+      const height = ground + n.floors * NEIGHBOR_FLOOR
+      const z = front - n.depth / 2
+      list.push({ size: [n.width, height, n.depth], at: [n.x, height / 2, z], color: n.color })
+      list.push({ size: [n.width + 0.1, 0.1, n.depth + 0.1], at: [n.x, height + 0.05, z], color: n.trim })
+      if (n.floors > 3) list.push({ size: [0.5, 0.3, 0.4], at: [n.x + n.width * 0.2, height + 0.25, z - 0.2], color: '#b8bfd0' })
+      const cols = Math.max(2, Math.floor(n.width / 0.75))
+      const step = n.width / cols
+      for (let f = 0; f < n.floors; f++) {
+        const y = ground + f * NEIGHBOR_FLOOR + NEIGHBOR_FLOOR / 2
+        for (let c = 0; c < cols; c++) {
+          const x = n.x - n.width / 2 + step * (c + 0.5)
+          list.push({ size: [step * 0.52, 0.42, 0.04], at: [x, y, front + 0.01], color: '#eef3fb' })
+          list.push({ size: [step * 0.62, 0.04, 0.08], at: [x, y - 0.23, front + 0.03], color: n.trim })
+        }
+      }
+      if (n.shop) {
+        list.push({ size: [n.width * 0.72, 0.56, 0.04], at: [n.x, 0.42, front + 0.01], color: '#d7ecf8' })
+        list.push({ size: [n.width * 0.8, 0.05, 0.42], at: [n.x, 0.86, front + 0.2], color: n.shop })
+      } else {
+        list.push({ size: [0.46, 0.72, 0.04], at: [n.x, 0.36, front + 0.01], color: '#8a6f5a' })
+        for (const dx of [-1, 1]) list.push({ size: [0.5, 0.36, 0.04], at: [n.x + dx * n.width * 0.3, 0.52, front + 0.01], color: '#eef3fb' })
+      }
+    }
+    return list
+  }, [specs])
+  return <Boxes boxes={boxes} cast />
+}
+
+/** A bus stop: posts, a glass back, a roof and a bench. */
+function BusStop({ x, z }: { x: number; z: number }) {
+  return (
+    <group position={[x, 0, z]}>
+      {[-0.42, 0.42].map((dx) => (
+        <Box key={dx} size={[0.04, 0.78, 0.04]} at={[dx, 0.39, -0.1]} color="#4a4f66" />
+      ))}
+      <Box size={[0.96, 0.05, 0.36]} at={[0, 0.8, 0]} color="#5b8def" />
+      <Box size={[0.86, 0.5, 0.02]} at={[0, 0.48, -0.12]} color="#cfe6f7" />
+      <Bench x={0} z={0.02} />
+    </group>
+  )
+}
+
 /** Sidewalk, curb, a strip of road, grass on the sides, trees and lamps. Kept off the flats' faces. */
-export function Street({ width, depth }: { width: number; depth: number }) {
+export function Street({ width, depth, variant = 0 }: { width: number; depth: number; variant?: 0 | 1 | 2 }) {
   const half = width / 2
   const FRONT = depth / 2
   const walk = 1.3
@@ -119,16 +187,20 @@ export function Street({ width, depth }: { width: number; depth: number }) {
       <Bush x={-half + 0.6} z={FRONT + 0.22} />
       <Bush x={half - 0.6} z={FRONT + 0.22} />
 
-      {/* Trees and lamps sit beside the building, never in front of a flat */}
-      <Tree x={-half - 1.1} z={-0.3} size={1.25} />
-      <Tree x={-half - 2.3} z={0.4} size={0.95} hue={1} />
-      <Tree x={-half - 1.6} z={FRONT + 0.75} size={0.8} hue={2} />
-      <Tree x={half + 1.15} z={-0.4} size={1.3} hue={3} />
-      <Tree x={half + 2.4} z={0.3} size={1} hue={1} />
+      {/* Trees and lamps sit beside the building, never in front of a flat. Each building down the
+          street lines its pavement a little differently: mirrored, or with a bus stop instead. */}
+      {(variant === 2 ? SPARSE : TREES).map((t, i) => {
+        const side = variant === 1 ? -1 : 1
+        return <Tree key={i} x={side * (t.x < 0 ? t.x - half : t.x + half)} z={t.z} size={t.size} hue={t.hue} />
+      })}
       <Lamp x={-half - 0.55} z={FRONT + walk - 0.15} />
       <Lamp x={half + 0.55} z={FRONT + walk - 0.15} />
-      <Bench x={half + 1.4} z={FRONT + 0.75} />
-      <mesh position={[half + 0.8, 0.09, FRONT + walk - 0.2]} castShadow>
+      {variant === 2 ? (
+        <BusStop x={half + 1.6} z={FRONT + 0.7} />
+      ) : (
+        <Bench x={(variant === 1 ? -1 : 1) * (half + 1.4)} z={FRONT + 0.75} />
+      )}
+      <mesh position={[(variant === 1 ? -1 : 1) * (half + 0.8), 0.09, FRONT + walk - 0.2]} castShadow>
         <cylinderGeometry args={[0.05, 0.06, 0.18, 10]} />
         <meshStandardMaterial color="#e2554f" roughness={0.6} />
       </mesh>

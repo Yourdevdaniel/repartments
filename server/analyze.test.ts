@@ -176,8 +176,19 @@ describe('signals', () => {
 })
 
 describe('buildingFor', () => {
-  const okFetch = (repos: RawRepo[]) => async () =>
-    new Response(JSON.stringify({ data: { repositoryOwner: { login: 'x', avatarUrl: 'a', name: 'X', repositories: { nodes: repos } } } }))
+  const okFetch = (repos: RawRepo[], page = { total: repos.length, next: null as string | null }) => async () =>
+    new Response(
+      JSON.stringify({
+        data: {
+          repositoryOwner: {
+            login: 'x',
+            avatarUrl: 'a',
+            name: 'X',
+            repositories: { totalCount: page.total, pageInfo: { hasNextPage: page.next !== null, endCursor: page.next }, nodes: repos },
+          },
+        },
+      }),
+    )
 
   it('rejects names GitHub would not allow, without calling it', async () => {
     expect(USERNAME.test('-bad')).toBe(false)
@@ -213,6 +224,23 @@ describe('buildingFor', () => {
     }
     expect((await buildingFor('x', 't', slowForTwelve)).status).toBe(200)
     expect(asked).toEqual([12, 6])
+  })
+
+  it('says where the next building starts when there are more repos than fit', async () => {
+    const answer = await buildingFor('x', 't', okFetch([repo({})], { total: 20, next: 'Y3Vyc29yOjEy' }))
+    expect(answer.body).toMatchObject({ next: 'Y3Vyc29yOjEy', total: 20, fetched: 1 })
+  })
+
+  it('opens the next building with six more repos, starting after the last one', async () => {
+    let sent: { query: string; variables: { after?: string } } | null = null
+    const spy = async (_url: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body))
+      return okFetch([repo({})])()
+    }
+    expect((await buildingFor('x', 't', spy, 'Y3Vyc29yOjEy')).status).toBe(200)
+    expect(sent!.variables.after).toBe('Y3Vyc29yOjEy')
+    expect(sent!.query).toContain('repositories(first: 6, after: $after')
+    expect((await buildingFor('x', 't', spy, 'not a cursor!')).status).toBe(400)
   })
 
   it('builds without pull requests and checks when even fewer repos time out', async () => {

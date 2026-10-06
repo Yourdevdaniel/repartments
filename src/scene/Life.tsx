@@ -2,7 +2,9 @@ import { useFrame } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 import type { Group, MeshStandardMaterial } from 'three'
 import { Resident } from './Resident'
+import { managerModel } from './rooms'
 import { compile, type Beat, type Vec2 } from './story'
+import { useSceneLang } from './lang'
 import { TOWER } from './Tower'
 import { LOOK, useWeather } from './weather'
 
@@ -96,6 +98,47 @@ export function Pedestrians() {
         />
       ))}
     </group>
+  )
+}
+
+/**
+ * The síndico: the owner of the repos. Every so often they pop up out of nowhere on the pavement,
+ * look the building over from one corner to the other, nod at it and walk off down the street.
+ */
+export function Manager({ owner }: { owner: string }) {
+  const lang = useSceneLang()
+  const id = 'manager'
+  const story = useMemo(() => {
+    const look = (x: number): Vec2 => [x, FRONT - 1]
+    const corner = TOWER.width / 2 - 0.3
+    const beats: Beat[] = [
+      { dur: 6, flags: hide(id, true), acts: { [id]: { anim: 'idle' } } },
+      {
+        dur: 1.4,
+        flags: hide(id, false),
+        say: { [id]: { icon: '✨', text: { en: 'surprise visit', pt: 'visita surpresa' } } },
+        acts: { [id]: { anim: 'emote-yes', face: look(0.8) } },
+      },
+      { acts: { [id]: { walk: [-corner, NEAR] } } },
+      { dur: 2.4, say: { [id]: { icon: '🧐', text: { en: 'inspecting', pt: 'vistoriando' } } }, acts: { [id]: { anim: 'idle', face: look(-corner) } } },
+      { acts: { [id]: { walk: [corner, NEAR] } } },
+      { dur: 2.2, say: { [id]: { icon: '📋', text: { en: 'all in order', pt: 'tudo em ordem' } } }, acts: { [id]: { anim: 'interact-right', face: look(corner) } } },
+      { dur: 1, say: { [id]: { icon: '👍' } }, acts: { [id]: { anim: 'emote-yes', face: look(corner) } } },
+      { acts: { [id]: { walk: [EDGE, NEAR] } } },
+      { dur: 16, flags: hide(id, true), acts: { [id]: { anim: 'idle' } } },
+    ]
+    return compile({ [id]: { at: [0.8, NEAR], yaw: Math.PI } }, beats)
+  }, [])
+  return (
+    <Resident
+      id={id}
+      model={managerModel(owner)}
+      story={story}
+      label={`${{ en: 'Manager', pt: 'Síndico' }[lang]} @${owner}`}
+      color="#2f8fe6"
+      hideFlag={`${id}:hidden`}
+      umbrella
+    />
   )
 }
 

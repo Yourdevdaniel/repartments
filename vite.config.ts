@@ -32,15 +32,17 @@ function devApi(): Plugin {
       let token = readToken()
       if (!token) server.config.logger.warn('No GITHUB_TOKEN and no logged-in GitHub CLI yet: /api/building will answer 503 until one is available.')
       server.middlewares.use('/api/building', async (req, res) => {
-        const user = new URL(req.url ?? '', 'http://local').searchParams.get('user') ?? ''
-        const key = user.toLowerCase()
+        const params = new URL(req.url ?? '', 'http://local').searchParams
+        const user = params.get('user') ?? ''
+        const after = params.get('after')
+        const key = `${user.toLowerCase()}|${after ?? ''}`
         const hit = cache.get(key)
         let answer = hit && Date.now() - hit.at < 10 * 60_000 ? hit : null
         // Look again if there was no token at start-up (the CLI may have been logged in since).
         if (!token) token = readToken()
         if (!answer) {
           const { buildingFor } = (await server.ssrLoadModule('/server/handler.ts')) as typeof import('./server/handler')
-          const result = await buildingFor(user, token)
+          const result = await buildingFor(user, token, undefined, after)
           answer = { at: Date.now(), status: result.status, body: JSON.stringify(result.body) }
           if (result.cache) cache.set(key, answer)
         }

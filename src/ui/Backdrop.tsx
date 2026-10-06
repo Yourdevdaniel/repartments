@@ -12,7 +12,7 @@ const PALETTE: Record<Weather, { a: string; b: string; win: string; tree1: strin
  * sharp diorama stands out. It follows the weather (lit windows and stars at night) and drifts closer,
  * blurring more, when you step into a flat.
  */
-export function Backdrop({ near, weather }: { near: boolean; weather: Weather }) {
+export function Backdrop({ near, weather, mirror = false }: { near: boolean; weather: Weather; mirror?: boolean }) {
   const far = [
     [40, 330], [150, 260], [250, 380], [370, 300], [470, 410], [560, 280], [690, 350],
     [820, 300], [930, 420], [1040, 290], [1150, 360], [1270, 270], [1380, 390], [1490, 310],
@@ -26,7 +26,8 @@ export function Backdrop({ near, weather }: { near: boolean; weather: Weather })
       className="absolute inset-0 transition-[transform,filter] duration-[1200ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
       style={{ transform: near ? 'scale(1.12)' : 'scale(1)', filter: near ? 'blur(12px)' : 'blur(6px)' }}
     >
-      <svg className="absolute inset-0 size-full" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
+      {/* Every other building down the street sees the city the other way round. */}
+      <svg className="absolute inset-0 size-full" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice" style={mirror ? { transform: 'scaleX(-1)' } : undefined}>
         <defs>
           <radialGradient id="sun" cx="0.78" cy="0.18" r="0.35">
             <stop offset="0" stopColor="#fff4d6" stopOpacity="0.95" />

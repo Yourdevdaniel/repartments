@@ -505,6 +505,7 @@ type FlatProps = {
 
 export function Flat({ flat, hovered, interactive, onHover, onSelect }: FlatProps) {
   const { layout, cast, stories } = flat
+  const lang = useSceneLang()
   const narrator = stories[flat.narrator]
 
   const events = interactive
@@ -539,7 +540,7 @@ export function Flat({ flat, hovered, interactive, onHover, onSelect }: FlatProp
           id={v.id}
           model={v.model}
           story={stories[v.story]}
-          label={v.tech}
+          label={v.title ? `${v.title[lang]} ${v.tech}` : v.tech}
           color={v.color}
           hideFlag={`${v.id}:hidden`}
         />

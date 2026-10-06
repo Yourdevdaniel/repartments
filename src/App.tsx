@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { loginFrom, parseRoute, useBuilding, type BuildingState, type Route } from './data/building'
+import { lotCount } from './scene/lot'
 import { demoFlats, demoOwner } from './scene/demo'
 import { Stage, type View } from './scene/Stage'
 import type { Caption } from './scene/story'
@@ -43,7 +44,10 @@ const EXAMPLES = ['Yourdevdaniel', 'tiangolo', 'gaearon']
 const DEMO: BuildingState = {
   kind: 'ready',
   owner: { login: demoOwner.login, name: demoOwner.name, avatarUrl: '' },
-  flats: demoFlats,
+  total: demoFlats.length,
+  lots: [{ flats: demoFlats, next: null, fetched: demoFlats.length }],
+  at: 0,
+  trip: 'idle',
 }
 
 export default function App() {
@@ -58,11 +62,12 @@ export default function App() {
   const [recenter, setRecenter] = useState(0)
   const timers = useRef<number[]>([])
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname))
-  const remote = useBuilding(route.login)
+  const street = useBuilding(route.login)
   const landing = !route.login && !route.demo
-  const data: BuildingState | null = route.login ? remote : DEMO
+  const data: BuildingState | null = route.login ? street.state : DEMO
   const ready = data?.kind === 'ready' ? data : null
-  const flats = ready?.flats ?? []
+  const flats = ready?.lots[ready.at].flats ?? []
+  const lots = ready ? lotCount(ready.total, ready.lots[0].fetched) : 1
   const flat = view.mode === 'inside' ? (flats.find((f) => f.id === view.id) ?? null) : null
 
   const go = useCallback((path: string) => {
@@ -122,6 +127,18 @@ export default function App() {
   }, [])
   const onCaption = useCallback((text: Caption | null, step: number, total: number) => setCaption({ text, step, total }), [])
 
+  /** Walk down the street: wait for the next building's repos if needed, then swap behind the veil. */
+  const visit = async (step: 1 | -1) => {
+    if (!(await street.prepare(step))) return
+    setHovered(null)
+    setVeil(true)
+    later(320, () => {
+      street.go(step)
+      setView({ mode: 'building', entering: null })
+      setVeil(false)
+    })
+  }
+
   // The weather moves on by itself unless someone picks one.
   useEffect(() => {
     if (!autoWeather) return
@@ -148,7 +165,7 @@ export default function App() {
           style={{ background: SKY[w], opacity: weather === w ? 1 : 0 }}
         />
       ))}
-      <Backdrop near={flat !== null} weather={weather} />
+      <Backdrop near={flat !== null} weather={weather} mirror={(ready?.at ?? 0) % 2 === 1} />
       {ready && (
         <div className={`absolute inset-0 transition-opacity duration-700 ${landing ? 'opacity-60' : ''}`}>
           <Stage
@@ -164,6 +181,7 @@ export default function App() {
             onCaption={onCaption}
             recenter={recenter}
             onMoved={setMoved}
+            lot={ready.at}
           />
         </div>
       )}
@@ -292,8 +310,14 @@ export default function App() {
               <div className="min-w-0">
                 <p className="truncate text-xs font-bold tracking-wide text-ink-soft uppercase">@{ready.owner.login}</p>
                 <h2 className="text-base font-extrabold">{copy.residents(flats.length)[lang]}</h2>
+                {lots > 1 && <p className="text-xs font-semibold text-ink-soft">{copy.lotOf(ready.at + 1, lots)[lang]}</p>}
               </div>
             </div>
+            {lots > 1 && (
+              <div className="mt-3">
+                <StreetNav state={ready} lots={lots} lang={lang} onVisit={visit} />
+              </div>
+            )}
             {route.demo && <p className="mt-2 text-xs font-semibold text-accent">{copy.demoNote[lang]}</p>}
             <ul className="mt-3 grid gap-2">
               {flats.map((f, i) => ({ f, i })).reverse().map(({ f, i }) => (
@@ -338,6 +362,12 @@ export default function App() {
             <span aria-hidden="true">←</span> {copy.back[lang]}
           </button>
         )}
+        {/* Phones have no side panel: the way down the street sits above the hint instead. */}
+        {ready && !landing && !flat && lots > 1 && (
+          <div className="pointer-events-auto lg:hidden">
+            <StreetNav state={ready} lots={lots} lang={lang} onVisit={visit} label />
+          </div>
+        )}
         {landing || !ready ? null : flat && !flat.cast.length ? (
           <div className={`${glass} px-4 py-2.5 text-center text-sm font-bold text-ink-soft`}>{copy.vacant[lang]}</div>
         ) : flat ? (
@@ -364,6 +394,51 @@ export default function App() {
         <Credits lang={lang} />
       </div>
     </div>
+  )
+}
+
+/** Walking down the owner's street: back to the previous building, on to the next one. */
+function StreetNav({
+  state,
+  lots,
+  lang,
+  onVisit,
+  label = false,
+}: {
+  state: Extract<BuildingState, { kind: 'ready' }>
+  lots: number
+  lang: Lang
+  onVisit: (step: 1 | -1) => void
+  /** Say which building this is (the side panel already does, phones don't have it). */
+  label?: boolean
+}) {
+  const ahead = state.at + 1 < state.lots.length || state.lots[state.at].next !== null
+  return (
+    <nav className="flex flex-wrap items-center justify-center gap-2" aria-label={copy.lotOf(state.at + 1, lots)[lang]}>
+      {state.at > 0 && (
+        <button
+          type="button"
+          onClick={() => onVisit(-1)}
+          aria-label={copy.prevBuilding[lang]}
+          title={copy.prevBuilding[lang]}
+          className={`${glass} grid size-11 place-items-center text-base font-extrabold text-ink transition-colors hover:bg-white`}
+        >
+          <span aria-hidden="true">←</span>
+        </button>
+      )}
+      {label && <span className={`${glass} px-3.5 py-2.5 text-xs font-extrabold text-ink-soft`}>{copy.lotOf(state.at + 1, lots)[lang]}</span>}
+      {ahead && (
+        <button
+          type="button"
+          onClick={() => onVisit(1)}
+          disabled={state.trip === 'moving'}
+          className="h-11 rounded-full bg-ink px-5 text-sm font-extrabold text-white shadow-[0_18px_50px_-22px_rgba(40,52,110,0.6)] transition-transform active:scale-[0.97] disabled:opacity-70"
+        >
+          {state.trip === 'moving' ? copy.walking[lang] : state.trip === 'failed' ? copy.lost[lang] : copy.nextBuilding[lang]}{' '}
+          <span aria-hidden="true">→</span>
+        </button>
+      )}
+    </nav>
   )
 }
 

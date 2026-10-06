@@ -120,4 +120,9 @@ export const copy = {
   /** A repo with no code in it yet (no commits, or just a README): an empty flat. */
   vacant: { en: 'No code here yet, so nobody has moved in.', pt: 'Ainda não tem código aqui, então ninguém se mudou.' },
   noCode: { en: 'no code', pt: 'sem código' },
+  nextBuilding: { en: 'Visit the next building', pt: 'Visitar o próximo prédio' },
+  prevBuilding: { en: 'Previous building', pt: 'Prédio anterior' },
+  walking: { en: 'Walking over…', pt: 'Indo até lá…' },
+  lost: { en: "Couldn't get there, try again", pt: 'Não deu para chegar, tente de novo' },
+  lotOf: (n: number, of: number): L => ({ en: `Building ${n} of ${of}`, pt: `Prédio ${n} de ${of}` }),
 }
