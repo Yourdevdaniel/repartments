@@ -89,7 +89,30 @@ export default function App() {
     document.title = route.login ? `@${route.login} · Repartments` : 'Repartments'
   }, [route.login])
 
+  // Someone who landed in a language they don't read gets pointed at the other one, once.
+  const [langHint, setLangHint] = useState(() => {
+    try {
+      return !localStorage.getItem('langHintSeen')
+    } catch {
+      return true
+    }
+  })
+  const hideLangHint = useCallback(() => {
+    setLangHint(false)
+    try {
+      localStorage.setItem('langHintSeen', '1')
+    } catch {
+      // Fine for this visit.
+    }
+  }, [])
+  useEffect(() => {
+    if (!langHint) return
+    const id = window.setTimeout(hideLangHint, 15000)
+    return () => window.clearTimeout(id)
+  }, [langHint, hideLangHint])
+
   const setLang = (next: Lang) => {
+    hideLangHint()
     setLangState(next)
     document.documentElement.lang = next === 'pt' ? 'pt-BR' : 'en'
     try {
@@ -243,17 +266,19 @@ export default function App() {
           </div>
           <div className={`${glass} flex p-1`} role="group" aria-label="Language">
             {(['en', 'pt'] as const).map((l) => (
-              <button
-                key={l}
-                type="button"
-                aria-pressed={lang === l}
-                onClick={() => setLang(l)}
-                className={`h-8 rounded-full px-3 text-xs font-extrabold transition-colors ${
-                  lang === l ? 'bg-ink text-white' : 'text-ink-soft hover:text-ink'
-                }`}
-              >
-                {l.toUpperCase()}
-              </button>
+              <span key={l} className="relative">
+                <button
+                  type="button"
+                  aria-pressed={lang === l}
+                  onClick={() => setLang(l)}
+                  className={`h-8 rounded-full px-3 text-xs font-extrabold transition-colors ${
+                    lang === l ? 'bg-ink text-white' : 'text-ink-soft hover:text-ink'
+                  }`}
+                >
+                  {l.toUpperCase()}
+                </button>
+                {langHint && l !== lang && <LangHint lang={lang} onSwitch={() => setLang(l)} onClose={hideLangHint} />}
+              </span>
             ))}
           </div>
         </div>
@@ -395,6 +420,40 @@ export default function App() {
         <Credits lang={lang} />
       </div>
     </div>
+  )
+}
+
+/**
+ * Points at the other language's button, written in that language: someone reading English is told
+ * about Portuguese in Portuguese, and the other way round. Clicking it switches.
+ */
+const LANG_HINT: Record<Lang, { text: string; close: string; lang: string }> = {
+  en: { text: 'Não sabe inglês? Troque para português', close: 'Fechar', lang: 'pt-BR' },
+  pt: { text: "Don't speak Portuguese? Switch to English", close: 'Close', lang: 'en' },
+}
+
+function LangHint({ lang, onSwitch, onClose }: { lang: Lang; onSwitch: () => void; onClose: () => void }) {
+  const hint = LANG_HINT[lang]
+  return (
+    <span
+      lang={hint.lang}
+      className="absolute top-full right-0 mt-3.5 flex w-max max-w-[min(15rem,calc(100vw-2rem))] items-center gap-1 rounded-2xl bg-ink py-1.5 pr-1.5 pl-3.5 text-white shadow-[0_18px_40px_-16px_rgba(35,38,58,0.7)] transition-opacity duration-500 starting:opacity-0 motion-safe:animate-bob"
+    >
+      {/* The tip, centred under the button it points at. */}
+      <span aria-hidden="true" className="absolute -top-1.5 right-[14px] size-3 rotate-45 rounded-[2px] bg-ink" />
+      <button type="button" onClick={onSwitch} className="relative py-1 text-left text-[13px] leading-snug font-bold">
+        <span aria-hidden="true">↑ </span>
+        {hint.text}
+      </button>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={hint.close}
+        className="relative grid size-7 shrink-0 place-items-center rounded-full text-base text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+      >
+        ×
+      </button>
+    </span>
   )
 }
 

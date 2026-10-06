@@ -6,6 +6,18 @@
   --color-ink: #23263a;
   --color-ink-soft: #5b6078;
   --color-accent: #2f8fe6;
+  /* A gentle nudge for hints that point at something. */
+  --animate-bob: bob 1.6s ease-in-out infinite;
+
+  @keyframes bob {
+    0%,
+    100% {
+      translate: 0 0;
+    }
+    50% {
+      translate: 0 4px;
+    }
+  }
 }
 
 html,
