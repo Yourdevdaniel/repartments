@@ -8,6 +8,7 @@ export type Decor = { kind: 'window' | 'picture' | 'board'; x: number; y: number
 
 export type Room = {
   id: string
+  label?: Caption
   x0: number
   x1: number
   wall: string

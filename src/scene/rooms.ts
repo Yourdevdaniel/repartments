@@ -19,6 +19,8 @@ const DOCKER_BLUE = '#2f8fe6'
 
 type Template = {
   kind: string
+  /** The little sign over the room. */
+  label: Caption
   width: number
   wall: string
   floor: string
@@ -34,6 +36,7 @@ type Template = {
 const T: Record<string, Template> = {
   living: {
     kind: 'living',
+    label: { en: 'Front end', pt: 'Front-end' },
     width: 3.0,
     wall: '#f7d9c9',
     floor: '#ecd2b0',
@@ -61,6 +64,7 @@ const T: Record<string, Template> = {
   },
   hall: {
     kind: 'hall',
+    label: { en: 'Security', pt: 'Segurança' },
     width: 1.8,
     wall: '#cfe9dc',
     floor: '#dcd5c8',
@@ -77,6 +81,7 @@ const T: Record<string, Template> = {
   },
   office: {
     kind: 'office',
+    label: { en: 'API', pt: 'API' },
     width: 3.0,
     wall: '#ddd6f3',
     floor: '#e3cfae',
@@ -98,6 +103,7 @@ const T: Record<string, Template> = {
   },
   lab: {
     kind: 'lab',
+    label: { en: 'Tests', pt: 'Testes' },
     width: 1.8,
     wall: '#d6eef5',
     floor: '#e0d3bf',
@@ -113,6 +119,7 @@ const T: Record<string, Template> = {
   },
   archive: {
     kind: 'archive',
+    label: { en: 'Database', pt: 'Banco de dados' },
     width: 2.4,
     wall: '#f4e6b8',
     floor: '#d9cdb5',
@@ -131,6 +138,7 @@ const T: Record<string, Template> = {
   },
   pantry: {
     kind: 'pantry',
+    label: { en: 'Cache', pt: 'Cache' },
     width: 1.7,
     wall: '#fde3d2',
     floor: '#e9dccb',
@@ -144,6 +152,7 @@ const T: Record<string, Template> = {
   },
   mailroom: {
     kind: 'mailroom',
+    label: { en: 'Background jobs', pt: 'Fila de tarefas' },
     width: 2.0,
     wall: '#e4f0d4',
     floor: '#ddd2bd',
@@ -160,6 +169,7 @@ const T: Record<string, Template> = {
   },
   workshop: {
     kind: 'workshop',
+    label: { en: 'Docker', pt: 'Docker' },
     width: 2.0,
     wall: '#dcebfb',
     floor: '#d3dbe6',
@@ -176,6 +186,7 @@ const T: Record<string, Template> = {
   },
   balcony: {
     kind: 'balcony',
+    label: { en: 'Mobile', pt: 'Mobile' },
     width: 1.8,
     wall: '#e8e0fb',
     floor: '#dfe7d9',
@@ -190,6 +201,7 @@ const T: Record<string, Template> = {
   },
   studio: {
     kind: 'studio',
+    label: { en: 'Code', pt: 'Código' },
     width: 3.2,
     wall: '#d5ecd9',
     floor: '#e6cfa9',
@@ -212,6 +224,7 @@ const T: Record<string, Template> = {
   },
   kitchen: {
     kind: 'kitchen',
+    label: { en: 'Kitchen', pt: 'Cozinha' },
     width: 2.3,
     wall: '#fbe0cf',
     floor: '#e9dccb',
@@ -230,6 +243,7 @@ const T: Record<string, Template> = {
   },
   bedroom: {
     kind: 'bedroom',
+    label: { en: 'Bedroom', pt: 'Quarto' },
     width: 2.6,
     wall: '#f6d6e2',
     floor: '#e3cdb2',
@@ -275,8 +289,17 @@ const ROOM_FOR: Record<Role, string> = {
   coder: 'studio',
 }
 
-/** Left to right: the front end by the street side, the data at the far end, the workshop last. */
-const ORDER: Role[] = ['mobile', 'frontend', 'security', 'backend', 'tests', 'database', 'cache', 'worker', 'devops', 'coder']
+/**
+ * Left to right in the order a request travels: front end, guard, back end, the cache right next door,
+ * tests on the way back, the database at the far end; jobs and the workshop after that.
+ */
+const ORDER: Role[] = ['mobile', 'frontend', 'security', 'backend', 'cache', 'tests', 'database', 'worker', 'devops', 'coder']
+
+/** Every model a flat can use, so they can all be fetched before anyone steps inside. */
+export const ALL_MODELS = {
+  furniture: [...new Set(Object.values(T).flatMap((t) => t.furniture.map((f) => f.model)))],
+  characters: [...new Set(Object.values(MODEL))],
+}
 
 export type ResidentSpec = { tech: string; role: Role; color: string }
 
@@ -338,6 +361,7 @@ export function buildFlat(spec: FlatSpec): FlatData {
 
   const rooms: Room[] = placed.map(({ template: t, x0 }) => ({
     id: t.kind,
+    label: t.label,
     x0,
     x1: x0 + t.width,
     wall: t.wall,
@@ -420,7 +444,8 @@ export function buildFlat(spec: FlatSpec): FlatData {
 
     if (F) {
       beats.push({
-        caption: { en: `${tech('frontend')} asks the API for some data`, pt: `O ${tech('frontend')} pede dados para a API` },
+        caption: { en: `${tech('frontend')} asks the API for some data`, pt: `O ${tech('frontend')} pede dados para a API`, icon: '📨' },
+        say: { frontend: { icon: '📨', text: { en: 'request!', pt: 'pedido!' } } },
         props: { letter: 'frontend', box: null },
         flags: { tv: false },
         acts: { frontend: { walk: S ? spot('hall', 'check') : spot('office', 'deliver') } },
@@ -428,29 +453,36 @@ export function buildFlat(spec: FlatSpec): FlatData {
       if (S) {
         beats.push(
           {
-            caption: { en: `${tech('security')} checks the login token`, pt: `O ${tech('security')} confere o token de login` },
+            caption: { en: `${tech('security')} checks the login token`, pt: `O ${tech('security')} confere o token de login`, icon: '🔑' },
+            say: { security: { icon: '🔑', text: { en: 'token?', pt: 'token?' } } },
             dur: 1.3,
             acts: {
               security: { anim: 'interact-right', face: spot('hall', 'check') },
               frontend: { anim: 'idle', face: spot('hall', 'post') },
             },
           },
-          { dur: 0.9, acts: { security: { anim: 'emote-yes', face: spot('hall', 'check') } } },
           {
-            caption: { en: `The request reaches ${B}`, pt: `O pedido chega no ${B}` },
+            dur: 0.9,
+            say: { security: { icon: '✅', text: { en: 'come in', pt: 'pode entrar' } } },
+            acts: { security: { anim: 'emote-yes', face: spot('hall', 'check') } },
+          },
+          {
+            caption: { en: `The request reaches ${B}`, pt: `O pedido chega no ${B}`, icon: '🚶' },
             acts: { frontend: { walk: spot('office', 'deliver') }, security: { anim: 'idle', face: [spot('hall', 'post')[0], 1] } },
           },
         )
       }
       beats.push({
-        caption: { en: `${B} reads the request`, pt: `O ${B} lê o pedido` },
+        caption: { en: `${B} reads the request`, pt: `O ${B} lê o pedido`, icon: '🧐' },
+        say: { backend: { icon: '🧐', text: { en: 'on it', pt: 'deixa comigo' } } },
         dur: 1.4,
         props: { letter: tray },
         acts: { frontend: { walk: spot('living', 'home') }, backend: { anim: 'interact-right', face: spot('office', 'tray') } },
       })
     } else {
       beats.push({
-        caption: { en: `A request lands on ${B}'s desk`, pt: `Um pedido chega na mesa do ${B}` },
+        caption: { en: `A request lands on ${B}'s desk`, pt: `Um pedido chega na mesa do ${B}`, icon: '📨' },
+        say: { backend: { icon: '📨', text: { en: 'new request', pt: 'pedido novo' } } },
         dur: 1.6,
         props: { letter: tray, box: null },
         acts: { backend: { anim: 'interact-right', face: spot('office', 'tray') } },
@@ -460,13 +492,15 @@ export function buildFlat(spec: FlatSpec): FlatData {
     if (C) {
       beats.push(
         {
-          caption: { en: `${B} checks the ${tech('cache')} cache first`, pt: `O ${B} olha primeiro no cache do ${tech('cache')}` },
+          caption: { en: `${B} checks the ${tech('cache')} cache first`, pt: `O ${B} olha primeiro no cache do ${tech('cache')}`, icon: '⚡' },
+          say: { backend: { icon: '⚡', text: { en: 'got it saved?', pt: 'tem guardado?' } } },
           props: { letter: null },
           acts: { backend: { path: [spot('office', 'aisle'), spot('pantry', 'ask')] } },
         },
-        { dur: 1.1, acts: { cache: { anim: 'interact-right', face: spot('pantry', 'fridge') } } },
+        { dur: 1.1, say: { cache: { icon: '🔎' } }, acts: { cache: { anim: 'interact-right', face: spot('pantry', 'fridge') } } },
         {
-          caption: { en: 'Not there yet', pt: 'Ainda não tem lá' },
+          caption: { en: 'Not there yet', pt: 'Ainda não tem lá', icon: '❌' },
+          say: { cache: { icon: '❌', text: { en: 'not yet', pt: 'ainda não' } } },
           dur: 0.9,
           acts: { cache: { anim: 'emote-no', face: spot('pantry', 'ask') } },
         },
@@ -478,21 +512,28 @@ export function buildFlat(spec: FlatSpec): FlatData {
       const meet: Vec2 = [handoff[0] - 0.42, handoff[1]]
       beats.push(
         {
-          caption: { en: `${B} asks ${tech('database')} for the rows`, pt: `O ${B} pede os dados ao ${tech('database')}` },
+          caption: { en: `${B} asks ${tech('database')} for the rows`, pt: `O ${B} pede os dados ao ${tech('database')}`, icon: '💾' },
+          say: { backend: { icon: '💾', text: { en: 'the data, please', pt: 'os dados, por favor' } } },
           props: { letter: null },
           acts: { backend: C ? { walk: meet } : { path: [spot('office', 'aisle'), meet] } },
         },
         {
           dur: 1.0,
           props: { box: point('archive', 'shelf') },
+          say: { database: { icon: '📦' } },
           acts: { database: { anim: 'pick-up', face: spot('archive', 'shelf') }, backend: { anim: 'idle', face: handoff } },
         },
-        { props: { box: 'database' }, acts: { database: { walk: handoff } } },
+        {
+          props: { box: 'database' },
+          say: { database: { icon: '📦', text: { en: 'here you go', pt: 'tá aqui' } } },
+          acts: { database: { walk: handoff } },
+        },
         { dur: 0.4, props: { box: 'backend' }, acts: { database: { anim: 'idle', face: meet } } },
       )
     } else {
       beats.push({
-        caption: { en: `${B} packs the answer`, pt: `O ${B} monta a resposta` },
+        caption: { en: `${B} packs the answer`, pt: `O ${B} monta a resposta`, icon: '📦' },
+        say: { backend: { icon: '📦' } },
         dur: 1.2,
         props: { letter: null, box: 'backend' },
         acts: { backend: { anim: 'interact-right', face: spot('office', 'tray') } },
@@ -504,18 +545,27 @@ export function buildFlat(spec: FlatSpec): FlatData {
       const wait: Vec2 = [check[0] - 0.45, check[1] - 0.1]
       beats.push(
         {
-          caption: { en: `${tech('tests')} checks the answer before it leaves`, pt: `O ${tech('tests')} confere a resposta antes de sair` },
+          caption: { en: `${tech('tests')} checks the answer before it leaves`, pt: `O ${tech('tests')} confere a resposta antes de sair`, icon: '🔍' },
           acts: { backend: { walk: wait }, tests: { walk: check }, ...(D ? { database: { walk: spot('archive', 'home') } } : {}) },
         },
-        { dur: 1.2, acts: { tests: { anim: 'interact-right', face: wait }, backend: { anim: 'idle', face: check } } },
-        { dur: 0.8, acts: { tests: { anim: 'emote-yes', face: wait } } },
+        {
+          dur: 1.2,
+          say: { tests: { icon: '🔍', text: { en: 'checking…', pt: 'conferindo…' } } },
+          acts: { tests: { anim: 'interact-right', face: wait }, backend: { anim: 'idle', face: check } },
+        },
+        {
+          dur: 0.8,
+          say: { tests: { icon: '✅', text: { en: 'all good', pt: 'tudo certo' } } },
+          acts: { tests: { anim: 'emote-yes', face: wait } },
+        },
       )
     }
 
     if (F) {
       beats.push(
         {
-          caption: { en: `${B} sends the response back`, pt: `O ${B} manda a resposta de volta` },
+          caption: { en: `${B} sends the response back`, pt: `O ${B} manda a resposta de volta`, icon: '📦' },
+          say: { backend: { icon: '📦', text: { en: 'response!', pt: 'resposta!' } } },
           acts: {
             backend: { walk: spot('living', 'drop') },
             ...(Te ? { tests: { walk: spot('lab', 'home') } } : {}),
@@ -524,7 +574,7 @@ export function buildFlat(spec: FlatSpec): FlatData {
           },
         },
         {
-          caption: { en: `${tech('frontend')} opens the parcel…`, pt: `O ${tech('frontend')} abre o pacote…` },
+          caption: { en: `${tech('frontend')} opens the parcel…`, pt: `O ${tech('frontend')} abre o pacote…`, icon: '🎁' },
           props: { box: point('living', 'onTable') },
           acts: {
             frontend: { walk: spot('living', 'table') },
@@ -532,9 +582,10 @@ export function buildFlat(spec: FlatSpec): FlatData {
             ...(S ? { security: { anim: 'idle', face: [spot('hall', 'post')[0], 1] } } : {}),
           },
         },
-        { dur: 1.2, acts: { frontend: { anim: 'interact-right', face: spot('living', 'tableFace') } } },
+        { dur: 1.2, say: { frontend: { icon: '🎁' } }, acts: { frontend: { anim: 'interact-right', face: spot('living', 'tableFace') } } },
         {
-          caption: { en: '…and the page shows up on screen', pt: '…e a página aparece na tela' },
+          caption: { en: '…and the page shows up on screen', pt: '…e a página aparece na tela', icon: '🖥️' },
+          say: { frontend: { icon: '✨', text: { en: 'on screen!', pt: 'na tela!' } } },
           props: { box: null },
           flags: { tv: true },
           acts: { frontend: { anim: 'emote-yes', face: spot('living', 'tv') }, backend: { walk: spot('office', 'work') } },
@@ -545,7 +596,8 @@ export function buildFlat(spec: FlatSpec): FlatData {
       const exit = S ? spot('hall', 'check') : spot('office', 'exit')
       beats.push(
         {
-          caption: { en: `${B} sends the answer out`, pt: `O ${B} manda a resposta para fora` },
+          caption: { en: `${B} sends the answer out`, pt: `O ${B} manda a resposta para fora`, icon: '📤' },
+          say: { backend: { icon: '📦', text: { en: 'response!', pt: 'resposta!' } } },
           acts: {
             backend: { walk: exit },
             ...(Te ? { tests: { walk: spot('lab', 'home') } } : {}),
@@ -569,13 +621,14 @@ export function buildFlat(spec: FlatSpec): FlatData {
       case 'frontend':
         return one(spot('living', 'home'), [
           {
-            caption: { en: `${r.tech} builds the page`, pt: `O ${r.tech} monta a página` },
+            caption: { en: `${r.tech} builds the page`, pt: `O ${r.tech} monta a página`, icon: '🧩' },
             flags: { tv: false },
             acts: { frontend: { walk: spot('living', 'table') } },
           },
-          { dur: 1.6, acts: { frontend: { anim: 'interact-right', face: spot('living', 'tableFace') } } },
+          { dur: 1.6, say: { frontend: { icon: '🧩' } }, acts: { frontend: { anim: 'interact-right', face: spot('living', 'tableFace') } } },
           {
-            caption: { en: '…and puts it on screen', pt: '…e coloca na tela' },
+            caption: { en: '…and puts it on screen', pt: '…e coloca na tela', icon: '🖥️' },
+            say: { frontend: { icon: '✨', text: { en: 'looks good', pt: 'ficou bom' } } },
             flags: { tv: true },
             dur: 1.2,
             acts: { frontend: { anim: 'emote-yes', face: spot('living', 'tv') } },
@@ -587,7 +640,8 @@ export function buildFlat(spec: FlatSpec): FlatData {
         const home = spot('mailroom', 'home')
         return one(home, [
           {
-            caption: { en: `${r.tech} sorts the background jobs`, pt: `O ${r.tech} separa as tarefas em segundo plano` },
+            caption: { en: `${r.tech} sorts the background jobs`, pt: `O ${r.tech} separa as tarefas em segundo plano`, icon: '✉️' },
+            say: { worker: { icon: '✉️', text: { en: 'for later', pt: 'pra depois' } } },
             dur: 2.2,
             acts: { worker: { anim: 'interact-right', face: spot('mailroom', 'sort') } },
           },
@@ -600,7 +654,8 @@ export function buildFlat(spec: FlatSpec): FlatData {
         const home = spot('workshop', 'home')
         return one(home, [
           {
-            caption: { en: `${r.tech} packs the app into containers`, pt: `O ${r.tech} empacota o app em contêineres` },
+            caption: { en: `${r.tech} packs the app into containers`, pt: `O ${r.tech} empacota o app em contêineres`, icon: '🐳' },
+            say: { devops: { icon: '🐳', text: { en: 'packing', pt: 'empacotando' } } },
             dur: 2.4,
             acts: { devops: { anim: 'interact-right', face: spot('workshop', 'pack') } },
           },
@@ -613,7 +668,8 @@ export function buildFlat(spec: FlatSpec): FlatData {
       case 'mobile':
         return one(spot('balcony', 'home'), [
           {
-            caption: { en: `${r.tech} takes the app out on a phone`, pt: `O ${r.tech} leva o app pro celular` },
+            caption: { en: `${r.tech} takes the app out on a phone`, pt: `O ${r.tech} leva o app pro celular`, icon: '📱' },
+            say: { mobile: { icon: '📱' } },
             dur: 2,
             acts: { mobile: { anim: 'interact-left', face: spot('balcony', 'sky') } },
           },
@@ -625,16 +681,18 @@ export function buildFlat(spec: FlatSpec): FlatData {
       case 'tests':
         return one(spot('lab', 'home'), [
           {
-            caption: { en: `${r.tech} runs the checks`, pt: `O ${r.tech} roda as verificações` },
+            caption: { en: `${r.tech} runs the checks`, pt: `O ${r.tech} roda as verificações`, icon: '🔍' },
+            say: { tests: { icon: '🔍', text: { en: 'checking…', pt: 'conferindo…' } } },
             dur: 2.4,
             acts: { tests: { anim: 'interact-right', face: [spot('lab', 'home')[0], BACK] } },
           },
-          { dur: 0.8, acts: { tests: { anim: 'emote-yes' } } },
+          { dur: 0.8, say: { tests: { icon: '✅' } }, acts: { tests: { anim: 'emote-yes' } } },
         ])
       case 'database':
         return one(spot('archive', 'home'), [
           {
-            caption: { en: `${r.tech} tidies the shelves`, pt: `O ${r.tech} arruma as prateleiras` },
+            caption: { en: `${r.tech} tidies the shelves`, pt: `O ${r.tech} arruma as prateleiras`, icon: '💾' },
+            say: { database: { icon: '💾' } },
             dur: 2.2,
             acts: { database: { anim: 'interact-right', face: spot('archive', 'shelf') } },
           },
@@ -652,27 +710,28 @@ export function buildFlat(spec: FlatSpec): FlatData {
     const desk = spot('studio', 'desk')
     const beats: Beat[] = [
       {
-        caption: { en: `${name} writes the code`, pt: `O ${name} escreve o código` },
+        caption: { en: `${name} writes the code`, pt: `O ${name} escreve o código`, icon: '⌨️' },
+        say: { [role]: { icon: '⌨️', text: { en: 'coding', pt: 'codando' } } },
         dur: 3.2,
         acts: { [role]: { anim: 'interact-right', face: spot('studio', 'laptop') } },
       },
       {
-        caption: { en: '…checks something in the docs', pt: '…confere algo na documentação' },
+        caption: { en: '…checks something in the docs', pt: '…confere algo na documentação', icon: '📚' },
         acts: { [role]: { walk: spot('studio', 'shelf') } },
       },
-      { dur: 1.6, acts: { [role]: { anim: 'interact-left', face: spot('studio', 'shelfFace') } } },
+      { dur: 1.6, say: { [role]: { icon: '📚' } }, acts: { [role]: { anim: 'interact-left', face: spot('studio', 'shelfFace') } } },
     ]
     if (room('kitchen')) {
       const exit = spot('studio', 'exit')
       const entry = spot('kitchen', 'entry')
       beats.push(
-        { caption: { en: 'Coffee break', pt: 'Pausa pro café' }, acts: { [role]: { path: [exit, entry, spot('kitchen', 'coffee')] } } },
-        { dur: 1.6, acts: { [role]: { anim: 'interact-right', face: spot('kitchen', 'coffeeFace') } } },
+        { caption: { en: 'Coffee break', pt: 'Pausa pro café', icon: '☕' }, acts: { [role]: { path: [exit, entry, spot('kitchen', 'coffee')] } } },
+        { dur: 1.6, say: { [role]: { icon: '☕' } }, acts: { [role]: { anim: 'interact-right', face: spot('kitchen', 'coffeeFace') } } },
         { dur: 0.9, acts: { [role]: { anim: 'emote-yes', face: [spot('kitchen', 'coffee')[0], 1] } } },
-        { caption: { en: 'Back to work', pt: 'De volta ao trabalho' }, acts: { [role]: { path: [entry, exit, desk] } } },
+        { caption: { en: 'Back to work', pt: 'De volta ao trabalho', icon: '💪' }, acts: { [role]: { path: [entry, exit, desk] } } },
       )
     } else {
-      beats.push({ caption: { en: 'Back to work', pt: 'De volta ao trabalho' }, acts: { [role]: { walk: desk } } })
+      beats.push({ caption: { en: 'Back to work', pt: 'De volta ao trabalho', icon: '💪' }, acts: { [role]: { walk: desk } } })
     }
     return compile({ [role]: { at: desk, yaw: Math.PI / 2 } }, beats)
   }
