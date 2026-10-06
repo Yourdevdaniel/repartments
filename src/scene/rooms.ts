@@ -57,6 +57,7 @@ const T: Record<string, Template> = {
       { kind: 'window', x: 0.55, y: 0.95, w: 0.62, h: 0.62 },
       { kind: 'picture', x: 1.5, y: 1.13, w: 0.5, h: 0.3, color: '#f2a65a' },
       { kind: 'picture', x: 2.45, y: 1.0, w: 0.3, h: 0.38, color: '#7c83ff' },
+      { kind: 'clock', x: 0.2, y: 1.22, w: 0.2, h: 0.2, color: '#3f9c8f' },
     ],
     spots: { home: [1.05, 1.0], table: [2.15, 0.85], tableFace: [1.7, 0.3], tv: [1.5, BACK], drop: [2.45, 0.6] },
     points: { onTable: [1.7, 0.235, 0.3] },
@@ -97,7 +98,10 @@ const T: Record<string, Template> = {
       { model: 'trashcan', at: [0.25, 0, BACK + 0.2] },
       { model: 'lampSquareFloor', at: [2.2, 0, BACK + 0.15] },
     ],
-    decor: [{ kind: 'board', x: 0.85, y: 0.95, w: 0.9, h: 0.5 }],
+    decor: [
+      { kind: 'board', x: 0.85, y: 0.95, w: 0.9, h: 0.5 },
+      { kind: 'clock', x: 2.05, y: 1.12, w: 0.26, h: 0.26, color: '#7c83ff' },
+    ],
     spots: { work: [1.22, -0.62], tray: [1.66, -0.3], deliver: [1.35, 0.42], aisle: [1.2, LANE], exit: [2.75, LANE] },
     points: { tray: [1.66, 0.39, -0.3] },
   },
@@ -238,7 +242,10 @@ const T: Record<string, Template> = {
       { model: 'chair', at: [0.55, 0, 0.6] },
       { model: 'chair', at: [1.15, 0, 0.6] },
     ],
-    decor: [{ kind: 'window', x: 1.15, y: 1.05, w: 0.55, h: 0.45 }],
+    decor: [
+      { kind: 'window', x: 1.15, y: 1.05, w: 0.55, h: 0.45 },
+      { kind: 'clock', x: 1.9, y: 1.18, w: 0.24, h: 0.24, color: '#e2554f' },
+    ],
     spots: { coffee: [0.5, -0.62], coffeeFace: [0.5, BACK], entry: [0.25, LANE] },
   },
   bedroom: {

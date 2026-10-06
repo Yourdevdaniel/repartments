@@ -183,7 +183,7 @@ export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onS
     >
       <WeatherContext.Provider value={weather}>
       {/* No tone mapping (flat), so the pastels come out as picked instead of washed out. */}
-      <WeatherLights shadowTop={inside ? 4 : 12} />
+      <WeatherLights shadowTop={inside ? 4 : 12} indoor={inside !== null} />
       <SceneLangContext.Provider value={lang}>
       <StoryTimeContext.Provider value={time}>
         <Clock time={time} narrator={inside} onCaption={onCaption} />

@@ -3,6 +3,7 @@ import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 import { CanvasTexture, Color, SRGBColorSpace, type Group, type Mesh, type MeshBasicMaterial, type MeshStandardMaterial } from 'three'
 import { useSceneLang } from './lang'
+import { useWeather, type Weather } from './weather'
 import { Resident } from './Resident'
 import { flagAt, propAt, sample, type Story, type Vec3 } from './story'
 import { useStoryTime } from './time'
@@ -29,7 +30,87 @@ function Furniture({ model, at, rotY = 0, scale = 1, tint }: Placement) {
     })
     return copy
   }, [gltf.scene, tint])
+  const sway = useRef<Group>(null)
+  const isPlant = /plant/i.test(model)
+  const phase = useMemo(() => at[0] * 3.1 + at[2], [at])
+  useFrame(({ clock }) => {
+    if (sway.current) sway.current.rotation.z = Math.sin(clock.elapsedTime * 1.3 + phase) * 0.035
+  })
+  if (isPlant) {
+    // Plants sway a little, as if there were a breeze through the window.
+    return (
+      <group position={at} rotation={[0, rotY, 0]} scale={scale}>
+        <group ref={sway}>
+          <primitive object={scene} />
+        </group>
+      </group>
+    )
+  }
   return <primitive object={scene} position={at} rotation={[0, rotY, 0]} scale={scale} />
+}
+
+/** A puff of steam rising from a coffee machine, on a loop. */
+function Steam({ at }: { at: Vec3 }) {
+  const group = useRef<Group>(null)
+  useFrame(({ clock }) => {
+    group.current?.children.forEach((puff, i) => {
+      const k = (clock.elapsedTime * 0.45 + i / 4) % 1
+      puff.position.set(Math.sin(k * 6 + i) * 0.02, k * 0.32, 0)
+      puff.scale.setScalar(0.02 + k * 0.05)
+      const m = (puff as Mesh).material as MeshBasicMaterial
+      m.opacity = Math.sin(k * Math.PI) * 0.7
+    })
+  })
+  return (
+    <group ref={group} position={at}>
+      {[0, 1, 2, 3].map((i) => (
+        <mesh key={i}>
+          <sphereGeometry args={[1, 10, 8]} />
+          <meshBasicMaterial color="#ffffff" transparent opacity={0} depthWrite={false} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+/** A wall clock telling the visitor's real time. */
+function Clock({ decor, z }: { decor: Decor; z: number }) {
+  const hour = useRef<Mesh>(null)
+  const minute = useRef<Mesh>(null)
+  useFrame(() => {
+    const now = new Date()
+    const m = now.getMinutes() + now.getSeconds() / 60
+    const h = (now.getHours() % 12) + m / 60
+    if (minute.current) minute.current.rotation.z = -(m / 60) * Math.PI * 2
+    if (hour.current) hour.current.rotation.z = -(h / 12) * Math.PI * 2
+  })
+  const r = decor.w / 2
+  return (
+    <group position={[decor.x, decor.y, z]}>
+      <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <cylinderGeometry args={[r + 0.02, r + 0.02, 0.03, 24]} />
+        <meshStandardMaterial color={decor.color ?? '#e2554f'} roughness={0.6} />
+      </mesh>
+      <mesh position={[0, 0, 0.017]}>
+        <circleGeometry args={[r, 24]} />
+        <meshStandardMaterial color="#fffaf2" roughness={0.9} />
+      </mesh>
+      {[0, 1, 2, 3].map((i) => (
+        <mesh key={i} position={[Math.sin((i * Math.PI) / 2) * r * 0.8, Math.cos((i * Math.PI) / 2) * r * 0.8, 0.02]}>
+          <boxGeometry args={[0.012, 0.012, 0.004]} />
+          <meshBasicMaterial color="#23263a" />
+        </mesh>
+      ))}
+      <mesh ref={hour} position={[0, 0, 0.024]}>
+        <boxGeometry args={[0.012, r * 0.5, 0.004]} />
+        <meshBasicMaterial color="#23263a" />
+      </mesh>
+      <mesh ref={minute} position={[0, 0, 0.028]}>
+        <boxGeometry args={[0.008, r * 0.75, 0.004]} />
+        <meshBasicMaterial color="#23263a" />
+      </mesh>
+    </group>
+  )
 }
 
 export function Box({ size, at, color, cast = true }: { size: Vec3; at: Vec3; color: string; cast?: boolean }) {
@@ -41,7 +122,7 @@ export function Box({ size, at, color, cast = true }: { size: Vec3; at: Vec3; co
   )
 }
 
-function decorTexture(d: Decor) {
+function decorTexture(d: Decor, weather: Weather) {
   const c = document.createElement('canvas')
   const scale = 256
   c.width = Math.round(d.w * scale)
@@ -50,26 +131,55 @@ function decorTexture(d: Decor) {
   const W = c.width
   const H = c.height
   if (d.kind === 'window') {
+    // The view outside follows the weather: blue sky, grey clouds, rain streaks, or stars and a moon.
+    const skies: Record<Weather, [string, string]> = {
+      sun: ['#9fc9ff', '#dcebff'],
+      clouds: ['#b9c4d9', '#e1e6ef'],
+      rain: ['#8d98b0', '#b9c1d2'],
+      night: ['#1b2250', '#36407a'],
+    }
     const sky = g.createLinearGradient(0, 0, 0, H)
-    sky.addColorStop(0, '#9fc9ff')
-    sky.addColorStop(1, '#dcebff')
+    sky.addColorStop(0, skies[weather][0])
+    sky.addColorStop(1, skies[weather][1])
     g.fillStyle = sky
     g.fillRect(0, 0, W, H)
-    g.fillStyle = 'rgba(255,255,255,0.9)'
-    ;[
-      [0.25, 0.3, 0.12],
-      [0.38, 0.27, 0.15],
-      [0.72, 0.5, 0.1],
-    ].forEach(([x, y, r]) => {
+    if (weather === 'night') {
+      g.fillStyle = '#fff8e1'
+      for (let i = 0; i < 14; i++) g.fillRect(((i * 53) % 100) / 100 * W, ((i * 37) % 60) / 100 * H, 3, 3)
       g.beginPath()
-      g.arc(x * W, y * H, r * W, 0, Math.PI * 2)
+      g.arc(W * 0.75, H * 0.25, W * 0.09, 0, Math.PI * 2)
       g.fill()
-    })
-    g.fillStyle = '#b9dcb0'
+    } else {
+      g.fillStyle = weather === 'sun' ? 'rgba(255,255,255,0.9)' : weather === 'clouds' ? 'rgba(245,247,252,0.95)' : 'rgba(170,178,198,0.95)'
+      const puffs = weather === 'sun' ? 3 : 7
+      for (let i = 0; i < puffs; i++) {
+        g.beginPath()
+        g.arc(((i * 0.29 + 0.18) % 1) * W, (0.22 + (i % 3) * 0.1) * H, (0.1 + (i % 2) * 0.05) * W, 0, Math.PI * 2)
+        g.fill()
+      }
+    }
+    g.fillStyle = weather === 'night' ? '#2b4f47' : '#b9dcb0'
     g.fillRect(0, H * 0.82, W, H * 0.18)
-    g.fillStyle = '#c9d3f5'
+    g.fillStyle = weather === 'night' ? '#3a4380' : '#c9d3f5'
     g.fillRect(W * 0.08, H * 0.6, W * 0.18, H * 0.3)
     g.fillRect(W * 0.62, H * 0.52, W * 0.22, H * 0.4)
+    if (weather === 'night') {
+      g.fillStyle = '#ffe39a'
+      g.fillRect(W * 0.12, H * 0.66, W * 0.04, H * 0.04)
+      g.fillRect(W * 0.68, H * 0.6, W * 0.05, H * 0.04)
+    }
+    if (weather === 'rain') {
+      g.strokeStyle = 'rgba(235,242,255,0.75)'
+      g.lineWidth = 2
+      for (let i = 0; i < 26; i++) {
+        const x = ((i * 41) % 100) / 100 * W
+        const y = ((i * 67) % 100) / 100 * H
+        g.beginPath()
+        g.moveTo(x, y)
+        g.lineTo(x - 5, y + 16)
+        g.stroke()
+      }
+    }
   } else if (d.kind === 'picture') {
     g.fillStyle = '#fffaf2'
     g.fillRect(0, 0, W, H)
@@ -104,7 +214,8 @@ function decorTexture(d: Decor) {
 
 /** A window, a framed picture or a sticky-note board hung on a back wall. */
 function WallDecor({ decor, z }: { decor: Decor; z: number }) {
-  const map = useMemo(() => decorTexture(decor), [decor])
+  const weather = useWeather()
+  const map = useMemo(() => decorTexture(decor, decor.kind === 'window' ? weather : 'sun'), [decor, weather])
   const frame = decor.kind === 'window' ? '#ffffff' : decor.kind === 'board' ? '#c9c2b8' : '#7b5a43'
   const border = decor.kind === 'window' ? 0.05 : 0.03
   return (
@@ -225,7 +336,18 @@ function Rooms({ layout }: { layout: FlatLayout }) {
       {parts}
       {layout.rooms.flatMap((room) => room.furniture.map((f, j) => <Furniture key={`${room.id}-${j}`} {...f} />))}
       {layout.rooms.flatMap((room) =>
-        (room.decor ?? []).map((d, j) => <WallDecor key={`${room.id}-d${j}`} decor={d} z={back + 0.016} />),
+        (room.decor ?? []).map((d, j) =>
+          d.kind === 'clock' ? (
+            <Clock key={`${room.id}-d${j}`} decor={d} z={back + 0.02} />
+          ) : (
+            <WallDecor key={`${room.id}-d${j}`} decor={d} z={back + 0.016} />
+          ),
+        ),
+      )}
+      {layout.rooms.flatMap((room) =>
+        room.furniture
+          .filter((f) => f.model === 'kitchenCoffeeMachine')
+          .map((f, j) => <Steam key={`${room.id}-steam${j}`} at={[f.at[0] + 0.09, f.at[1] + 0.19, f.at[2] - 0.1]} />),
       )}
       {layout.rooms.map(
         (room) =>
@@ -275,7 +397,9 @@ function Screen({ tv, story }: { tv: NonNullable<FlatLayout['tv']>; story: Story
   useFrame((_, delta) => {
     const m = material.current
     if (!m) return
-    const target = flagAt(story, 'tv', time.current) ? 1 : 0
+    // A gentle flicker while it's on, like a real screen.
+    const on = flagAt(story, 'tv', time.current)
+    const target = on ? 0.93 + Math.sin(time.current * 11) * 0.04 + Math.sin(time.current * 3.7) * 0.03 : 0
     m.opacity += (target - m.opacity) * Math.min(1, delta * (time.paused ? 1000 : 6))
   })
   const [w, h] = tv.size
