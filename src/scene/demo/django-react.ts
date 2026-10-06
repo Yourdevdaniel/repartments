@@ -1,53 +1,20 @@
 /**
- * Milestone 1, the look probe: one hand-placed flat for a Django + React + PostgreSQL project with a
- * JWT guard, pytest and Docker. Everything here is data, in the same shape the generator will later
- * produce from a real repository, so the components don't know it's hand-made.
+ * Demo flat: a Django + React + PostgreSQL project with a JWT guard, pytest and Docker. Hand-placed,
+ * but in the same shape the generator will produce from a real repository, so the components don't
+ * know it's hand-made.
  */
-import type { Role } from '../shared/types'
-import { compile, type Beat, type Story, type Vec2, type Vec3 } from './story'
-
-export type Placement = { model: string; at: Vec3; rotY?: number; scale?: number }
-
-export type Room = {
-  id: string
-  x0: number
-  x1: number
-  wall: string
-  floor: string
-  furniture: Placement[]
-}
-
-export type CastMember = {
-  id: string
-  tech: string
-  role: Role
-  /** Kenney Mini Characters file name, without extension. */
-  model: string
-  color: string
-  /** Which story drives this resident. */
-  story: 'main' | 'roof'
-}
-
-export type FlatLayout = {
-  width: number
-  depth: number
-  height: number
-  rooms: Room[]
-  /** z range of the door gap in every inner wall. */
-  door: [number, number]
-  docker: boolean
-  tv: { at: Vec3; size: [number, number] }
-}
+import { compile, type Beat, type Vec2, type Vec3 } from '../story'
+import type { FlatData, FlatLayout } from '../types'
 
 const D = 1.8
 const BACK = -D / 2
+const DOCKER_BLUE = '#2f8fe6'
 
-export const layout: FlatLayout = {
-  width: 6.6,
+const layout: FlatLayout = {
+  width: 7.6,
   depth: D,
   height: 1.15,
   door: [-0.05, 0.62],
-  docker: true,
   tv: { at: [1.0, 0.56, -0.67], size: [0.58, 0.33] },
   rooms: [
     {
@@ -98,29 +65,33 @@ export const layout: FlatLayout = {
     {
       id: 'storage',
       x0: 5.2,
-      x1: 6.6,
+      x1: 6.4,
       wall: '#f4e6b8',
       floor: '#d9cdb5',
       furniture: [
-        { model: 'bookcaseClosedWide', at: [5.33, 0, BACK + 0.25] },
-        { model: 'bookcaseOpen', at: [6.14, 0, BACK + 0.25] },
+        { model: 'bookcaseClosedWide', at: [5.3, 0, BACK + 0.25] },
         { model: 'cardboardBoxClosed', at: [6.12, 0, 0.36] },
-        { model: 'cardboardBoxClosed', at: [6.35, 0, 0.36] },
-        { model: 'cardboardBoxClosed', at: [6.23, 0.28, 0.32] },
-        { model: 'cardboardBoxOpen', at: [6.1, 0, 0.8] },
+        { model: 'cardboardBoxClosed', at: [6.12, 0.28, 0.33] },
+        { model: 'cardboardBoxOpen', at: [5.95, 0, 0.82] },
+      ],
+    },
+    {
+      // Docker's corner: the app gets packed into blue boxes here, a quieter nod than a whole container.
+      id: 'docker',
+      x0: 6.4,
+      x1: 7.6,
+      wall: '#dcebfb',
+      floor: '#d3dbe6',
+      furniture: [
+        { model: 'cardboardBoxClosed', at: [7.0, 0, BACK + 0.25], tint: DOCKER_BLUE },
+        { model: 'cardboardBoxClosed', at: [7.23, 0, BACK + 0.25], tint: DOCKER_BLUE },
+        { model: 'cardboardBoxClosed', at: [7.12, 0.28, BACK + 0.27], tint: DOCKER_BLUE },
+        { model: 'cardboardBoxClosed', at: [7.3, 0, 0.5], tint: DOCKER_BLUE },
+        { model: 'cardboardBoxOpen', at: [6.62, 0, -0.38], tint: DOCKER_BLUE },
       ],
     },
   ],
 }
-
-export const cast: CastMember[] = [
-  { id: 'react', tech: 'React', role: 'frontend', model: 'character-female-b', color: '#61dafb', story: 'main' },
-  { id: 'guard', tech: 'SimpleJWT', role: 'security', model: 'character-male-c', color: '#7c5cff', story: 'main' },
-  { id: 'django', tech: 'Django', role: 'backend', model: 'character-male-d', color: '#0c4b33', story: 'main' },
-  { id: 'tester', tech: 'pytest', role: 'tests', model: 'character-female-e', color: '#0a9edc', story: 'main' },
-  { id: 'postgres', tech: 'PostgreSQL', role: 'database', model: 'character-male-b', color: '#4169e1', story: 'main' },
-  { id: 'docker', tech: 'Docker', role: 'devops', model: 'character-male-e', color: '#2496ed', story: 'roof' },
-]
 
 // Spots on the floor, [x, z].
 const P = {
@@ -133,9 +104,9 @@ const P = {
   deskAisle: [3.82, 0.3] as Vec2,
   tray: [4.18, -0.08] as Vec2,
   storageDoor: [5.0, 0.25] as Vec2,
-  pgHome: [5.78, -0.32] as Vec2,
-  pgHandoff: [5.4, 0.22] as Vec2,
-  shelf: [5.78, -0.9] as Vec2,
+  pgHome: [5.7, -0.32] as Vec2,
+  pgHandoff: [5.42, 0.22] as Vec2,
+  shelf: [5.7, -0.9] as Vec2,
   testerHome: [4.95, -0.28] as Vec2,
   testerCheck: [4.66, 0.08] as Vec2,
   djangoCheck: [4.12, 0.3] as Vec2,
@@ -144,10 +115,12 @@ const P = {
   tv: [1.0, -0.75] as Vec2,
   hallOut: [2.6, 0.3] as Vec2,
   officeIn: [3.4, 0.3] as Vec2,
+  dockerHome: [6.95, -0.2] as Vec2,
+  dockerFront: [6.9, 0.35] as Vec2,
 }
 
 const deskTray: Vec3 = [4.2, 0.39, -0.1]
-const onShelf: Vec3 = [5.7, 0.42, -0.74]
+const onShelf: Vec3 = [5.62, 0.42, -0.74]
 const onTable: Vec3 = [1.08, 0.235, 0.1]
 
 const mainBeats: Beat[] = [
@@ -211,27 +184,45 @@ const mainBeats: Beat[] = [
   { dur: 1.6, acts: { django: { anim: 'idle', face: P.tray }, react: { anim: 'idle', face: P.tv } } },
 ]
 
-const roofBeats: Beat[] = [
-  { dur: 2.4, acts: { docker: { anim: 'interact-right', face: [5.6, 0.4] } } },
-  { acts: { docker: { walk: [4.3, -0.55] } } },
-  { dur: 1.8, acts: { docker: { anim: 'interact-left', face: [4.3, 0.4] } } },
-  { dur: 0.8, acts: { docker: { anim: 'emote-yes', face: [4.3, 0.4] } } },
-  { acts: { docker: { walk: [5.6, -0.55] } } },
+/** Docker packs the app into boxes in his own corner, on his own loop. */
+const dockerBeats: Beat[] = [
+  { dur: 2.6, acts: { docker: { anim: 'interact-right', face: [7.1, -0.9] } } },
+  { acts: { docker: { walk: P.dockerFront } } },
+  { dur: 1.8, acts: { docker: { anim: 'interact-left', face: [7.4, 0.4] } } },
+  { dur: 0.8, acts: { docker: { anim: 'emote-yes', face: [7.4, 0.4] } } },
+  { acts: { docker: { walk: P.dockerHome } } },
 ]
 
-export const stories: Record<CastMember['story'], Story> = {
-  main: compile(
-    {
-      react: { at: P.reactHome, yaw: Math.PI },
-      guard: { at: P.guard, yaw: 0 },
-      django: { at: P.djangoDesk, yaw: Math.PI / 2 },
-      tester: { at: P.testerHome, yaw: 0 },
-      postgres: { at: P.pgHome, yaw: 0 },
-    },
-    mainBeats,
-  ),
-  roof: compile({ docker: { at: [5.6, -0.55], yaw: 0 } }, roofBeats),
+export const djangoReact: FlatData = {
+  id: 'django-react-app',
+  repo: 'django-react-app',
+  language: { name: 'Python', color: '#3572A5' },
+  docker: true,
+  layout,
+  narrator: 'main',
+  intro: {
+    en: 'A web app: React on screen, Django behind it, PostgreSQL for the data, all packed in Docker.',
+    pt: 'Um app web: React na tela, Django por trás, PostgreSQL guardando os dados, tudo empacotado no Docker.',
+  },
+  cast: [
+    { id: 'react', tech: 'React', role: 'frontend', model: 'character-female-b', color: '#61dafb', story: 'main' },
+    { id: 'guard', tech: 'SimpleJWT', role: 'security', model: 'character-male-c', color: '#7c5cff', story: 'main' },
+    { id: 'django', tech: 'Django', role: 'backend', model: 'character-male-d', color: '#0c4b33', story: 'main' },
+    { id: 'tester', tech: 'pytest', role: 'tests', model: 'character-female-e', color: '#0a9edc', story: 'main' },
+    { id: 'postgres', tech: 'PostgreSQL', role: 'database', model: 'character-male-b', color: '#4169e1', story: 'main' },
+    { id: 'docker', tech: 'Docker', role: 'devops', model: 'character-male-e', color: DOCKER_BLUE, story: 'docker' },
+  ],
+  stories: {
+    main: compile(
+      {
+        react: { at: P.reactHome, yaw: Math.PI },
+        guard: { at: P.guard, yaw: 0 },
+        django: { at: P.djangoDesk, yaw: Math.PI / 2 },
+        tester: { at: P.testerHome, yaw: 0 },
+        postgres: { at: P.pgHome, yaw: 0 },
+      },
+      mainBeats,
+    ),
+    docker: compile({ docker: { at: P.dockerHome, yaw: 0 } }, dockerBeats),
+  },
 }
-
-/** Residents on the roof stand on the container. */
-export const ROOF_Y = 1.305
