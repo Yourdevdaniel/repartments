@@ -3,6 +3,7 @@ import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 import { CanvasTexture, Color, SRGBColorSpace, type Group, type Mesh, type MeshBasicMaterial, type MeshStandardMaterial } from 'three'
 import { useSceneLang } from './lang'
+import { Boxes, type BoxSpec } from './merge'
 import { useWeather, type Weather } from './weather'
 import { Resident } from './Resident'
 import { flagAt, propAt, sample, type Story, type Vec3 } from './story'
@@ -310,30 +311,29 @@ function Rooms({ layout }: { layout: FlatLayout }) {
   const lang = useSceneLang()
   const back = -D / 2
   const front = D / 2
-  const parts: React.ReactNode[] = []
-
-  layout.rooms.forEach((room, i) => {
-    const w = room.x1 - room.x0
-    const cx = (room.x0 + room.x1) / 2
-    parts.push(<Box key={`f${i}`} size={[w, 0.04, D]} at={[cx, -0.02, 0]} color={room.floor} cast={false} />)
-    parts.push(<Box key={`b${i}`} size={[w, H, WALL]} at={[cx, H / 2, back - WALL / 2]} color={room.wall} />)
-    // Skirting along the back wall: a tiny detail that makes the rooms read as rooms.
-    parts.push(<Box key={`s${i}`} size={[w, 0.05, 0.015]} at={[cx, 0.025, back + 0.008]} color="#ffffff" />)
-
-    if (i > 0) {
-      const x = room.x0
-      const color = '#f5f1ea'
-      parts.push(
-        <Box key={`ib${i}`} size={[WALL, H, door[0] - back]} at={[x, H / 2, (back + door[0]) / 2]} color={color} />,
+  // Floors, walls and skirting merged into one mesh per colour (they were dozens of boxes).
+  const shell = useMemo(() => {
+    const list: BoxSpec[] = []
+    layout.rooms.forEach((room, i) => {
+      const w = room.x1 - room.x0
+      const cx = (room.x0 + room.x1) / 2
+      list.push({ size: [w, 0.04, D], at: [cx, -0.02, 0], color: room.floor })
+      list.push({ size: [w, H, WALL], at: [cx, H / 2, back - WALL / 2], color: room.wall })
+      // Skirting along the back wall: a tiny detail that makes the rooms read as rooms.
+      list.push({ size: [w, 0.05, 0.015], at: [cx, 0.025, back + 0.008], color: '#ffffff' })
+      if (i > 0) {
+        const x = room.x0
+        list.push({ size: [WALL, H, door[0] - back], at: [x, H / 2, (back + door[0]) / 2], color: '#f5f1ea' })
         // Low stub at the front: keeps the rooms apart without hiding whoever walks through the door.
-        <Box key={`if${i}`} size={[WALL, STUB, front - door[1]]} at={[x, STUB / 2, (door[1] + front) / 2]} color={color} />,
-      )
-    }
-  })
+        list.push({ size: [WALL, STUB, front - door[1]], at: [x, STUB / 2, (door[1] + front) / 2], color: '#f5f1ea' })
+      }
+    })
+    return list
+  }, [layout, D, H, back, front, door])
 
   return (
     <group>
-      {parts}
+      <Boxes boxes={shell} cast />
       {layout.rooms.flatMap((room) => room.furniture.map((f, j) => <Furniture key={`${room.id}-${j}`} {...f} />))}
       {layout.rooms.flatMap((room) =>
         (room.decor ?? []).map((d, j) =>

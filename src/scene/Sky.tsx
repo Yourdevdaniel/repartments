@@ -55,7 +55,7 @@ export function WeatherLights({ shadowTop, indoor = false }: { shadowTop: number
         position={[5, 11, 9]}
         intensity={1.5}
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[1024, 1024]}
         shadow-camera-left={-8}
         shadow-camera-right={8}
         shadow-camera-top={shadowTop}
