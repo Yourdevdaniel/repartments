@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { useBuilding, type BuildingState } from './data/building'
+import { loginFrom, parseRoute, useBuilding, type BuildingState, type Route } from './data/building'
 import { demoFlats, demoOwner } from './scene/demo'
 import { Stage, type View } from './scene/Stage'
 import type { Caption } from './scene/story'
@@ -37,16 +37,6 @@ const glass = 'rounded-[22px] border border-white/80 bg-white/[0.86] shadow-[0_1
 const TOUCH = window.matchMedia('(pointer: coarse)').matches
 
 type CaptionState = { text: Caption | null; step: number; total: number }
-
-/** `/` is the landing page, `/demo` the hand-made demo building, `/<login>` someone's building. */
-type Route = { login: string | null; demo: boolean }
-
-function parseRoute(path: string): Route {
-  const seg = decodeURIComponent(path.replace(/^\/+|\/+$/g, '')).split('/')[0]
-  if (!seg) return { login: null, demo: false }
-  if (seg === 'demo') return { login: null, demo: true }
-  return { login: seg, demo: false }
-}
 
 const EXAMPLES = ['Yourdevdaniel', 'tiangolo', 'gaearon']
 
@@ -279,6 +269,7 @@ export default function App() {
               </a>
             )}
             <h2 className="mt-4 text-base font-extrabold">{copy.cast[lang]}</h2>
+            {!flat.cast.length && <p className="mt-2 text-[13px] text-ink-soft">{copy.people(0)[lang]}</p>}
             <ul className="mt-3 grid gap-2.5">
               {flat.cast.map((c) => (
                 <li key={c.id} className="flex gap-3">
@@ -323,7 +314,7 @@ export default function App() {
                       <span className="block truncate text-sm font-extrabold">{f.repo}</span>
                       <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-soft">
                         <span className="size-2 rounded-full" style={{ background: f.language.color }} />
-                        {f.language.name} · {copy.people(f.cast.length)[lang]}
+                        {f.language.name === '—' ? copy.noCode[lang] : f.language.name} · {copy.people(f.cast.length)[lang]}
                         {f.docker && <span className="rounded-full bg-accent px-1.5 text-[10px] font-extrabold text-white">Docker</span>}
                       </span>
                     </span>
@@ -347,7 +338,9 @@ export default function App() {
             <span aria-hidden="true">←</span> {copy.back[lang]}
           </button>
         )}
-        {landing || !ready ? null : flat ? (
+        {landing || !ready ? null : flat && !flat.cast.length ? (
+          <div className={`${glass} px-4 py-2.5 text-center text-sm font-bold text-ink-soft`}>{copy.vacant[lang]}</div>
+        ) : flat ? (
           <LoopStrip
             steps={flat.stories[flat.narrator]?.captions.map((c) => c.caption) ?? []}
             current={caption.step}
@@ -380,7 +373,7 @@ function SearchForm({ lang, onGo, compact = false, initial = '' }: { lang: Lang;
   useEffect(() => setValue(initial), [initial])
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    const login = value.trim().replace(/^@/, '').replace(/^https?:\/\/github\.com\//, '').split('/')[0]
+    const login = loginFrom(value)
     if (login) onGo(`/${login}`)
   }
   return (

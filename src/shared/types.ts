@@ -14,6 +14,7 @@ export type Role =
   | 'tests'
   | 'devops'
   | 'mobile'
+  | 'game'
   | 'coder'
 
 /** One technology living in the flat. `tech` is a display name such as "Django". */

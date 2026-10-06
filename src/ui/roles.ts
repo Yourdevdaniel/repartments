@@ -41,6 +41,10 @@ export const roles: Record<Role, { name: L; does: L }> = {
     name: { en: 'Mobile', pt: 'Mobile' },
     does: { en: 'Takes the app out on a phone', pt: 'Leva o app para o celular' },
   },
+  game: {
+    name: { en: 'Game', pt: 'Jogo' },
+    does: { en: 'Plays the game over and over to catch the bugs', pt: 'Joga sem parar para pegar os bugs' },
+  },
   coder: {
     name: { en: 'Code', pt: 'Código' },
     does: { en: 'Writes the code', pt: 'Escreve o código' },
@@ -110,7 +114,10 @@ export const copy = {
     pt: n === 1 ? '1 apartamento' : `${n} apartamentos`,
   }),
   people: (n: number): L => ({
-    en: n === 1 ? '1 resident' : `${n} residents`,
-    pt: n === 1 ? '1 morador' : `${n} moradores`,
+    en: n === 0 ? 'nobody yet' : n === 1 ? '1 resident' : `${n} residents`,
+    pt: n === 0 ? 'ninguém ainda' : n === 1 ? '1 morador' : `${n} moradores`,
   }),
+  /** A repo with no code in it yet (no commits, or just a README): an empty flat. */
+  vacant: { en: 'No code here yet, so nobody has moved in.', pt: 'Ainda não tem código aqui, então ninguém se mudou.' },
+  noCode: { en: 'no code', pt: 'sem código' },
 }

@@ -13,7 +13,6 @@ function repo(files: Record<string, string | true>, extra: Partial<RawRepo> = {}
     pushedAt: '2026-02-01T00:00:00Z',
     isArchived: false,
     primaryLanguage: { name: 'Python', color: '#3572A5' },
-    languages: { totalSize: 0, edges: [] },
     root: { entries: [] },
     workflows: null,
     openPrs: { totalCount: 0 },
@@ -85,6 +84,71 @@ describe('analyze', () => {
   })
 })
 
+describe('unusual repos', () => {
+  it('does not move a library in with the frameworks it only tests against', () => {
+    const plugin = { name: 'eslint-plugin-x', exports: './index.js', files: ['index.js'], devDependencies: { svelte: '^5', vue: '^3', vitest: '^3' } }
+    expect(roles(repo({ 'package.json': JSON.stringify(plugin) }, { primaryLanguage: { name: 'JavaScript', color: '#f1e05a' } }))).toEqual({
+      tests: 'Vitest',
+      coder: 'JavaScript',
+    })
+  })
+
+  it('still reads an app that keeps its framework in devDependencies', () => {
+    const kit = { name: 'site', private: true, devDependencies: { svelte: '^5', '@sveltejs/kit': '^2' } }
+    expect(roles(repo({ 'package.json': JSON.stringify(kit) }))).toEqual({ frontend: 'Svelte' })
+  })
+
+  it('reads a component library by the framework it plugs into', () => {
+    const lib = { name: 'ui', exports: './index.js', peerDependencies: { react: '>=18' } }
+    expect(roles(repo({ 'package.json': JSON.stringify(lib) }))).toEqual({ frontend: 'React' })
+  })
+
+  const tree = (...names: string[]) => ({ entries: names.map((name) => ({ name, type: name.includes('.') ? 'blob' : 'tree' })) })
+  const noLanguage = { primaryLanguage: null }
+
+  it('leaves a repo with no commits empty', () => {
+    expect(analyze(repo({}, { ...noLanguage, root: null })).residents).toEqual([])
+  })
+
+  it('leaves a README-only repo empty instead of inventing a coder', () => {
+    expect(analyze(repo({}, { ...noLanguage, root: tree('README.md', 'LICENSE') })).residents).toEqual([])
+  })
+
+  it('keeps the CI robot of a repo with no code, without a coder next to it', () => {
+    expect(roles(repo({}, { ...noLanguage, workflows: { entries: [{ name: 'pages.yml' }] } }))).toEqual({ devops: 'GitHub Actions' })
+  })
+
+  it('spots game engines from their project files', () => {
+    const csharp = { primaryLanguage: { name: 'C#', color: '#178600' } }
+    expect(roles(repo({}, { ...csharp, root: tree('Assets', 'Packages', 'ProjectSettings') }))).toEqual({ game: 'Unity' })
+    expect(roles(repo({}, { primaryLanguage: { name: 'GDScript', color: '#355570' }, root: tree('project.godot', 'scenes') }))).toEqual({ game: 'Godot' })
+    expect(roles(repo({}, { primaryLanguage: { name: 'C++', color: '#f34b7d' }, root: tree('Source', 'MyGame.uproject') }))).toEqual({ game: 'Unreal Engine' })
+    expect(roles(repo({}, { primaryLanguage: { name: 'Lua', color: '#000080' }, root: tree('main.lua', 'conf.lua') }))).toEqual({ game: 'LÖVE' })
+  })
+
+  it('spots game libraries from the dependencies', () => {
+    expect(roles(repo({ 'requirements.txt': 'pygame==2.6\n' }))).toEqual({ game: 'Pygame' })
+    expect(roles(repo({ 'Cargo.toml': '[dependencies]\nbevy = "0.15"\n' }, { primaryLanguage: { name: 'Rust', color: '#dea584' } }))).toEqual({ game: 'Bevy' })
+    expect(roles(repo({ 'package.json': JSON.stringify({ dependencies: { phaser: '^3.80' } }) }, { primaryLanguage: { name: 'JavaScript', color: '#f1e05a' } }))).toEqual({ game: 'Phaser' })
+  })
+
+  it('keeps the web front end of a browser game alongside the engine', () => {
+    const r = repo({ 'package.json': JSON.stringify({ dependencies: { phaser: '^3.80', react: '^19' } }) })
+    expect(roles(r)).toEqual({ frontend: 'React', game: 'Phaser' })
+  })
+
+  it('reads the engine of a game kept in a subfolder from the .gitignore at the root', () => {
+    expect(roles(repo({ '.gitignore': '# Unity folders\n[Ll]ibrary/\n[Tt]emp/\n' }, { primaryLanguage: { name: 'C#', color: '#178600' } }))).toEqual({ game: 'Unity' })
+    expect(roles(repo({ '.gitignore': '# Godot 4+ specific ignores\n.godot/\n' }, { primaryLanguage: null }))).toEqual({ game: 'Godot' })
+    expect(roles(repo({ '.gitignore': 'Binaries/\nDerivedDataCache/\nIntermediate/\n' }, { primaryLanguage: { name: 'C++', color: '#f34b7d' } }))).toEqual({ game: 'Unreal Engine' })
+  })
+
+  it('falls back to the engine for a game whose project file sits in a subfolder', () => {
+    expect(roles(repo({}, { primaryLanguage: { name: 'GDScript', color: '#355570' } }))).toEqual({ game: 'Godot' })
+    expect(roles(repo({}, { primaryLanguage: { name: 'Luau', color: '#00a2ff' } }))).toEqual({ game: 'Roblox' })
+  })
+})
+
 describe('statusOf', () => {
   it('maps checks and open PRs, flagging conflicts', () => {
     const r = repo(
@@ -137,6 +201,45 @@ describe('buildingFor', () => {
   it('reports GitHub being busy as rate limited', async () => {
     const busy = async () => new Response('slow down', { status: 403 })
     expect((await buildingFor('x', 't', busy)).body).toEqual({ error: 'rate-limited' })
+  })
+
+  it('asks for fewer repos when GitHub times out on a big account', async () => {
+    const asked: number[] = []
+    const slowForTwelve = async (_url: string, init: RequestInit) => {
+      const count = Number(/repositories\(first: (\d+)/.exec(JSON.parse(String(init.body)).query)![1])
+      asked.push(count)
+      if (count > 6) return new Response('<html>502 Bad Gateway</html>', { status: 502 })
+      return okFetch([repo({})])()
+    }
+    expect((await buildingFor('x', 't', slowForTwelve)).status).toBe(200)
+    expect(asked).toEqual([12, 6])
+  })
+
+  it('builds without pull requests and checks when even fewer repos time out', async () => {
+    const asked: string[] = []
+    const choking = async (_url: string, init: RequestInit) => {
+      const query = JSON.parse(String(init.body)).query as string
+      const heavy = query.includes('statusCheckRollup')
+      asked.push(`${/repositories\(first: (\d+)/.exec(query)![1]}${heavy ? '' : ' lite'}`)
+      return heavy ? new Response('<html>502 Bad Gateway</html>', { status: 502 }) : okFetch([repo({})])()
+    }
+    const answer = await buildingFor('x', 't', choking)
+    expect(answer.status).toBe(200)
+    expect(asked).toEqual(['12', '6', '6 lite'])
+    expect('apartments' in answer.body && answer.body.apartments[0].status).toEqual({})
+  })
+
+  it('leaves archived repos out while there are enough active ones', async () => {
+    const live = ['a', 'b', 'c'].map((name) => repo({}, { name }))
+    const answer = await buildingFor('x', 't', okFetch([...live, repo({}, { name: 'old', isArchived: true })]))
+    expect('apartments' in answer.body && answer.body.apartments.map((x) => x.name)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('keeps archived repos when they are most of what there is, instead of an empty lot', async () => {
+    const archived = ['a', 'b', 'c', 'd', 'e'].map((name) => repo({}, { name, isArchived: true }))
+    const answer = await buildingFor('x', 't', okFetch([repo({}, { name: 'live' }), ...archived]))
+    expect(answer.status).toBe(200)
+    expect('apartments' in answer.body && answer.body.apartments).toHaveLength(6)
   })
 
   it('answers 503 when the server has no token', async () => {

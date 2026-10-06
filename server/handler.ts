@@ -16,7 +16,10 @@ export async function buildingFor(login: string | null, token: string | undefine
   if (!token) return { status: 503, body: { error: 'unavailable' }, cache: false }
   try {
     const owner = await fetchOwner(login, token, fetcher)
-    const repos = owner.repositories.nodes.filter((r) => !r.isArchived || owner.repositories.nodes.length <= 3)
+    // Archived repos stay out while at least three active ones remain; otherwise they're kept, so an
+    // account of mostly finished projects still gets a building instead of an empty lot.
+    const active = owner.repositories.nodes.filter((r) => !r.isArchived)
+    const repos = active.length >= 3 ? active : owner.repositories.nodes
     if (!repos.length) return { status: 404, body: { error: 'no-repos' }, cache: true }
     const apartments = repos.map(analyze).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     return {

@@ -287,6 +287,8 @@ const MODEL: Record<Role, string> = {
   worker: 'character-female-f',
   devops: 'character-male-e',
   mobile: 'character-female-a',
+  // A game and a plain coder never share a flat, so they can share a face.
+  game: 'character-male-a',
   coder: 'character-male-a',
 }
 
@@ -300,6 +302,7 @@ const ROOM_FOR: Record<Role, string> = {
   cache: 'pantry',
   worker: 'mailroom',
   devops: 'workshop',
+  game: 'studio',
   coder: 'studio',
 }
 
@@ -307,7 +310,7 @@ const ROOM_FOR: Record<Role, string> = {
  * Left to right in the order a request travels: front end, guard, back end, the cache right next door,
  * tests on the way back, the database at the far end; jobs and the workshop after that.
  */
-const ORDER: Role[] = ['mobile', 'frontend', 'security', 'backend', 'cache', 'tests', 'database', 'worker', 'devops', 'coder']
+const ORDER: Role[] = ['mobile', 'frontend', 'security', 'backend', 'cache', 'tests', 'database', 'worker', 'devops', 'game', 'coder']
 
 /** Every model a flat can use, so they can all be fetched before anyone steps inside. */
 export const ALL_MODELS = {
@@ -444,8 +447,10 @@ export function buildFlat(spec: FlatSpec): FlatData {
 
   for (const v of visitors) v.story = stories.main ? 'main' : 'coder'
 
+  // An empty flat (no code in the repo yet) still gets a story, one where nothing happens.
+  if (!cast.length) stories.main = compile({}, [])
   // Narrate the request loop if there is one, else whoever has the most to show.
-  const lead = (['coder', 'frontend', 'worker', 'devops', 'mobile', 'tests', 'database'] as Role[]).find((r) => stories[r])
+  const lead = (['game', 'coder', 'frontend', 'worker', 'devops', 'mobile', 'tests', 'database'] as Role[]).find((r) => stories[r])
   const narrator = stories.main ? 'main' : (lead ?? cast[0]?.story ?? 'main')
   return {
     id: spec.id,
@@ -827,7 +832,8 @@ export function buildFlat(spec: FlatSpec): FlatData {
           { dur: 1.6, acts: { mobile: { anim: 'idle', face: [spot('balcony', 'home')[0], 2] } } },
         ])
       case 'coder':
-        return codingRoutine('coder', r.tech)
+      case 'game':
+        return codingRoutine(role, r.tech)
       case 'tests':
         return one(spot('lab', 'home'), [
           {
@@ -858,20 +864,26 @@ export function buildFlat(spec: FlatSpec): FlatData {
   }
 
   /** A one-person flat: code, check the docs, coffee, back to work. */
+  /** A day at the studio desk: writing code, or for a game, playtesting it and chasing a bug. */
   function codingRoutine(role: Role, name: string): Story {
     const desk = spot('studio', 'desk')
+    const game = role === 'game'
     const beats: Beat[] = [
       {
-        caption: { en: `${name} writes the code`, pt: `O ${name} escreve o código`, icon: '⌨️' },
-        say: { [role]: { icon: '⌨️', text: { en: 'coding', pt: 'codando' } } },
+        caption: game
+          ? { en: `${name} runs the game`, pt: `O ${name} roda o jogo`, icon: '🎮' }
+          : { en: `${name} writes the code`, pt: `O ${name} escreve o código`, icon: '⌨️' },
+        say: { [role]: game ? { icon: '🎮', text: { en: 'playtest', pt: 'testando' } } : { icon: '⌨️', text: { en: 'coding', pt: 'codando' } } },
         dur: 3.2,
         acts: { [role]: { anim: 'interact-right', face: spot('studio', 'laptop') } },
       },
       {
-        caption: { en: '…checks something in the docs', pt: '…confere algo na documentação', icon: '📚' },
+        caption: game
+          ? { en: '…the hero falls through the floor', pt: '…o herói atravessa o chão', icon: '🐛' }
+          : { en: '…checks something in the docs', pt: '…confere algo na documentação', icon: '📚' },
         acts: { [role]: { walk: spot('studio', 'shelf') } },
       },
-      { dur: 1.6, say: { [role]: { icon: '📚' } }, acts: { [role]: { anim: 'interact-left', face: spot('studio', 'shelfFace') } } },
+      { dur: 1.6, say: { [role]: { icon: game ? '🔧' : '📚' } }, acts: { [role]: { anim: 'interact-left', face: spot('studio', 'shelfFace') } } },
     ]
     if (room('kitchen')) {
       const exit = spot('studio', 'exit')

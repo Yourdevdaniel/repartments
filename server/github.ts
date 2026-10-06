@@ -1,5 +1,5 @@
 /**
- * One GraphQL call per owner: their recent public repos, each with its languages, top-level file
+ * One GraphQL call per owner: their recent public repos, each with its main language, top-level file
  * names, the handful of manifests the analyzer reads (package.json, requirements.txt, compose…),
  * open pull requests and the default branch's check status.
  *
@@ -14,22 +14,39 @@ export const MANIFESTS = {
   compose: ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml'],
   docker: ['Dockerfile', 'backend/Dockerfile'],
   other: ['pom.xml', 'build.gradle', 'go.mod', 'Cargo.toml', 'Gemfile', 'composer.json', 'pubspec.yaml'],
+  // Game projects often sit in a subfolder; the root .gitignore still names the engine.
+  ignore: ['.gitignore'],
 } as const
 
-const ALL = [...MANIFESTS.packageJson, ...MANIFESTS.python, ...MANIFESTS.compose, ...MANIFESTS.docker, ...MANIFESTS.other]
+const ALL = [...MANIFESTS.packageJson, ...MANIFESTS.python, ...MANIFESTS.compose, ...MANIFESTS.docker, ...MANIFESTS.other, ...MANIFESTS.ignore]
 
 /** GraphQL aliases can't contain dots or slashes. */
 export const alias = (path: string) => 'f_' + path.replace(/[^a-zA-Z0-9]/g, '_')
 
 const files = ALL.map((p) => `${alias(p)}: object(expression: "HEAD:${p}") { ... on Blob { text byteSize } }`).join('\n        ')
 
-export const QUERY = `query Building($login: String!) {
+/**
+ * What each try asks for. GitHub gives up after about ten seconds (a 502 page instead of JSON), and
+ * accounts with huge repos and thousands of pull requests hit that, so each retry asks for less: half
+ * the floors, then also no pull requests or checks (the building goes up without those details).
+ */
+const TRIES = [
+  { count: 12, details: true },
+  { count: 6, details: true },
+  { count: 6, details: false },
+]
+
+const DETAILS = `openPrs: pullRequests(states: OPEN) { totalCount }
+        prs: pullRequests(states: OPEN, first: 5, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { mergeable } }
+        defaultBranchRef { target { ... on Commit { statusCheckRollup { state } } } }`
+
+const query = ({ count, details }: (typeof TRIES)[number]) => `query Building($login: String!) {
   repositoryOwner(login: $login) {
     login
     avatarUrl
     ... on User { name }
     ... on Organization { name }
-    repositories(first: 12, privacy: PUBLIC, isFork: false, orderBy: { field: PUSHED_AT, direction: DESC }) {
+    repositories(first: ${count}, privacy: PUBLIC, isFork: false, orderBy: { field: PUSHED_AT, direction: DESC }) {
       nodes {
         name
         description
@@ -39,13 +56,10 @@ export const QUERY = `query Building($login: String!) {
         pushedAt
         isArchived
         primaryLanguage { name color }
-        languages(first: 8, orderBy: { field: SIZE, direction: DESC }) { totalSize edges { size node { name color } } }
         root: object(expression: "HEAD:") { ... on Tree { entries { name type } } }
         workflows: object(expression: "HEAD:.github/workflows") { ... on Tree { entries { name } } }
         ${files}
-        openPrs: pullRequests(states: OPEN) { totalCount }
-        prs: pullRequests(states: OPEN, first: 5, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { mergeable } }
-        defaultBranchRef { target { ... on Commit { statusCheckRollup { state } } } }
+        ${details ? DETAILS : ''}
       }
     }
   }
@@ -62,12 +76,12 @@ export type RawRepo = {
   pushedAt: string
   isArchived: boolean
   primaryLanguage: { name: string; color: string | null } | null
-  languages: { totalSize: number; edges: { size: number; node: { name: string; color: string | null } }[] }
   root: { entries: { name: string; type: string }[] } | null
   workflows: { entries: { name: string }[] } | null
-  openPrs: { totalCount: number }
-  prs: { nodes: { mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN' }[] }
-  defaultBranchRef: { target: { statusCheckRollup: { state: string } | null } | null } | null
+  /** Left out by the lightest retry. */
+  openPrs?: { totalCount: number }
+  prs?: { nodes: { mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN' }[] }
+  defaultBranchRef?: { target: { statusCheckRollup: { state: string } | null } | null } | null
   [file: string]: unknown
 }
 
@@ -88,7 +102,7 @@ export type Fetcher = (url: string, init: RequestInit) => Promise<Response>
 
 type GraphQLAnswer = { data?: { repositoryOwner: RawOwner | null }; errors?: { type?: string; message: string }[] }
 
-export async function fetchOwner(login: string, token: string, fetcher: Fetcher = fetch, tries = 2): Promise<RawOwner> {
+export async function fetchOwner(login: string, token: string, fetcher: Fetcher = fetch, attempt = 0): Promise<RawOwner> {
   let res: Response
   let json: GraphQLAnswer
   try {
@@ -99,18 +113,17 @@ export async function fetchOwner(login: string, token: string, fetcher: Fetcher 
         'Content-Type': 'application/json',
         'User-Agent': 'repartments',
       },
-      body: JSON.stringify({ query: QUERY, variables: { login } }),
+      body: JSON.stringify({ query: query(TRIES[attempt]), variables: { login } }),
     })
     if (res.status === 401) throw new GitHubError('unavailable', 'GitHub rejected the server token')
     if (res.status === 403 || res.status === 429) throw new GitHubError('rate-limited', 'GitHub rate limit')
     if (!res.ok) throw new GitHubError('unavailable', `GitHub answered ${res.status}`)
     json = (await res.json()) as GraphQLAnswer
   } catch (err) {
-    // GitHub sometimes times out on a cold query (a 502 page instead of JSON); one more try usually works.
     const retryable = !(err instanceof GitHubError) || (err.kind === 'unavailable' && !err.message.includes('token'))
-    if (retryable && tries > 1) {
+    if (retryable && attempt + 1 < TRIES.length) {
       await new Promise((r) => setTimeout(r, 700))
-      return fetchOwner(login, token, fetcher, tries - 1)
+      return fetchOwner(login, token, fetcher, attempt + 1)
     }
     throw err instanceof GitHubError ? err : new GitHubError('unavailable', String(err))
   }
