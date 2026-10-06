@@ -41,6 +41,7 @@ const specs: FlatSpec[] = [
       { tech: 'Celery', role: 'worker', color: c.celery },
       { tech: 'Docker', role: 'devops', color: c.docker },
     ],
+    status: { ci: 'passing', prs: { open: 1 } },
   },
   {
     id: 'cafe-verde',
@@ -55,8 +56,10 @@ const specs: FlatSpec[] = [
       { tech: 'Django', role: 'backend', color: c.django },
       { tech: 'PostgreSQL', role: 'database', color: c.postgres },
       { tech: 'Redis', role: 'cache', color: c.redis },
+      { tech: 'pytest', role: 'tests', color: c.pytest },
       { tech: 'Docker', role: 'devops', color: c.docker },
     ],
+    status: { ci: 'failing' },
   },
   {
     id: 'dublacon',
@@ -72,6 +75,7 @@ const specs: FlatSpec[] = [
       { tech: 'Django', role: 'backend', color: c.django },
       { tech: 'PostgreSQL', role: 'database', color: c.postgres },
     ],
+    status: { prs: { open: 1, conflict: true } },
   },
   {
     id: 'boardgame-library-db',
@@ -112,6 +116,7 @@ const specs: FlatSpec[] = [
       { tech: 'Python', role: 'coder', color: c.python },
       { tech: 'pytest', role: 'tests', color: c.pytest },
     ],
+    status: { prs: { open: 1 } },
   },
   {
     id: 'portfolio',

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { demoFlats, demoOwner } from './scene/demo'
 import { Stage, type View } from './scene/Stage'
 import type { Caption } from './scene/story'
+import type { FlatData } from './scene/types'
 import { WEATHERS, type Weather } from './scene/weather'
 import { Backdrop } from './ui/Backdrop'
 import { copy, roles, type Lang } from './ui/roles'
@@ -200,6 +201,7 @@ export default function App() {
             </button>
             <p className="text-xs font-bold tracking-wide text-ink-soft uppercase">{flat.repo}</p>
             <p className="mt-1 text-sm leading-snug text-ink-soft">{flat.intro[lang]}</p>
+            <StatusChips flat={flat} lang={lang} />
             <h2 className="mt-4 text-base font-extrabold">{copy.cast[lang]}</h2>
             <ul className="mt-3 grid gap-2.5">
               {flat.cast.map((c) => (
@@ -269,19 +271,40 @@ export default function App() {
   )
 }
 
+/** What's going on in the repo right now, as small chips: open PRs, conflicts, red or green checks. */
+function StatusChips({ flat, lang }: { flat: FlatData; lang: Lang }) {
+  const { prs, ci } = flat.status
+  const chips: { icon: string; text: string; tone: string }[] = []
+  if (prs && prs.open > 0) chips.push({ icon: '📬', text: copy.prOpen(prs.open)[lang], tone: 'bg-[#fff1df] text-[#9a5a12]' })
+  if (prs?.conflict) chips.push({ icon: '💥', text: copy.conflict[lang], tone: 'bg-[#ffe4e4] text-[#a12d2d]' })
+  if (ci === 'failing') chips.push({ icon: '❌', text: copy.ciFailing[lang], tone: 'bg-[#ffe4e4] text-[#a12d2d]' })
+  if (ci === 'passing') chips.push({ icon: '✅', text: copy.ciPassing[lang], tone: 'bg-[#e3f6e4] text-[#24733a]' })
+  if (!chips.length) return null
+  return (
+    <ul className="mt-3 flex flex-wrap gap-1.5">
+      {chips.map((c) => (
+        <li key={c.text} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-extrabold ${c.tone}`}>
+          <span aria-hidden="true">{c.icon}</span>
+          {c.text}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 /**
  * The loop at a glance: one little icon per step, the current one lifted and coloured, and an arrow
  * back to the start, because the story repeats.
  */
 function LoopStrip({ steps, current, text, loopLabel }: { steps: Caption[]; current: number; text: string; loopLabel: string }) {
   return (
-    <div className={`${glass} pointer-events-auto flex max-w-[min(44rem,100%)] flex-col items-center gap-2.5 px-4 pt-3 pb-3.5`}>
+    <div className={`${glass} pointer-events-auto flex max-w-[min(56rem,100%)] flex-col items-center gap-2.5 px-4 pt-3 pb-3.5`}>
       <ol className="flex flex-wrap items-center justify-center gap-1" aria-label={loopLabel}>
         {steps.map((step, i) => {
           const on = i === current
           return (
             <li key={i} className="flex items-center gap-1">
-              {i > 0 && <span aria-hidden="true" className={`h-0.5 w-3 rounded-full ${i <= current ? 'bg-accent/60' : 'bg-ink/10'}`} />}
+              {i > 0 && <span aria-hidden="true" className={`h-0.5 w-2 rounded-full ${i <= current ? 'bg-accent/60' : 'bg-ink/10'}`} />}
               <span
                 aria-current={on ? 'step' : undefined}
                 className={`grid place-items-center rounded-full transition-all duration-300 ${

@@ -46,7 +46,8 @@ export type Beat = {
   say?: Record<string, Bubble>
 }
 
-export type Segment = { t0: number; t1: number; from: Vec2; to: Vec2; anim: AnimName; yaw: number }
+/** `rest` marks a break (a hobby), so the camera knows nothing important is happening there. */
+export type Segment = { t0: number; t1: number; from: Vec2; to: Vec2; anim: AnimName; yaw: number; rest?: boolean }
 
 export type Story = {
   duration: number
@@ -144,7 +145,7 @@ export function compile(start: Start, beats: Beat[], speed = WALK_SPEED): Story 
   return { duration: clock, tracks, props, flags, captions, bubbles }
 }
 
-export type Pose = { x: number; z: number; yaw: number; anim: AnimName; carrying: boolean }
+export type Pose = { x: number; z: number; yaw: number; anim: AnimName; carrying: boolean; rest: boolean }
 
 function last<T extends { t: number }>(list: T[] | undefined, t: number): T | undefined {
   if (!list) return undefined
@@ -176,6 +177,55 @@ export function captionAt(story: Story, time: number): Caption | null {
   return current ?? story.captions[story.captions.length - 1]?.caption ?? null
 }
 
+export type Hobby = { anim: AnimName; bubble: Bubble }
+
+/**
+ * Anyone left standing around for a while gets a break instead: they turn to face us and sit down to
+ * read, game or nap (whatever their hobby is), getting up again a moment before they're needed.
+ */
+export function relax(story: Story, hobbies: Record<string, Hobby>, minIdle = 4.2, margin = 0.7): Story {
+  const tracks = { ...story.tracks }
+  const bubbles = { ...story.bubbles }
+  for (const [id, hobby] of Object.entries(hobbies)) {
+    const track = tracks[id]
+    if (!track) continue
+    const out: Segment[] = []
+    const said = [...(bubbles[id] ?? [])]
+    // Standing still across several beats shows up as one idle segment per beat; join them first.
+    const merged: Segment[] = []
+    for (const seg of track) {
+      const prev = merged[merged.length - 1]
+      const same =
+        prev &&
+        prev.anim === 'idle' &&
+        seg.anim === 'idle' &&
+        prev.yaw === seg.yaw &&
+        prev.to[0] === seg.from[0] &&
+        prev.to[1] === seg.from[1] &&
+        seg.from[0] === seg.to[0] &&
+        seg.from[1] === seg.to[1]
+      if (same) merged[merged.length - 1] = { ...prev, t1: seg.t1 }
+      else merged.push(seg)
+    }
+    for (const seg of merged) {
+      const still = seg.from[0] === seg.to[0] && seg.from[1] === seg.to[1]
+      if (seg.anim !== 'idle' || !still || seg.t1 - seg.t0 < minIdle) {
+        out.push(seg)
+        continue
+      }
+      const a = seg.t0 + margin
+      const b = seg.t1 - margin
+      out.push({ ...seg, t1: a })
+      out.push({ ...seg, t0: a, t1: b, anim: hobby.anim, yaw: 0, rest: true })
+      out.push({ ...seg, t0: b })
+      said.push({ t0: a + 0.3, t1: b, bubble: hobby.bubble })
+    }
+    tracks[id] = out
+    bubbles[id] = said.sort((x, y) => x.t0 - y.t0)
+  }
+  return { ...story, tracks, bubbles }
+}
+
 export function bubbleAt(story: Story, id: string, time: number): Bubble | null {
   const t = wrap(story, time)
   return story.bubbles[id]?.find((b) => t >= b.t0 && t < b.t1)?.bubble ?? null
@@ -199,5 +249,6 @@ export function sample(story: Story, id: string, time: number): Pose {
     yaw: seg.yaw,
     anim: seg.anim,
     carrying,
+    rest: seg.rest ?? false,
   }
 }

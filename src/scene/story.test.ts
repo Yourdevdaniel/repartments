@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bubbleAt, captionAt, compile, flagAt, propAt, sample, WALK_SPEED, yawTowards } from './story'
+import { bubbleAt, captionAt, compile, flagAt, propAt, relax, sample, WALK_SPEED, yawTowards } from './story'
 
 const start = { a: { at: [0, 0] as [number, number], yaw: 0 }, b: { at: [2, 0] as [number, number], yaw: 0 } }
 
@@ -79,6 +79,35 @@ describe('bubbles', () => {
     expect(bubbleAt(story, 'a', 0.5)?.icon).toBe('📨')
     expect(bubbleAt(story, 'a', 1.5)).toBeNull()
     expect(bubbleAt(story, 'b', 0.5)).toBeNull()
+  })
+})
+
+describe('relax', () => {
+  const busy = compile(start, [{ acts: { a: { walk: [8, 0] } } }, { dur: 1, acts: { a: { anim: 'emote-yes' } } }])
+
+  it('sits a long-idle resident down with their hobby, facing us', () => {
+    const story = relax(busy, { b: { anim: 'sit', bubble: { icon: '📖' } } })
+    const mid = sample(story, 'b', 4)
+    expect(mid.anim).toBe('sit')
+    expect(mid.yaw).toBe(0)
+    expect(bubbleAt(story, 'b', 4)?.icon).toBe('📖')
+  })
+
+  it('gets them up again before the next thing happens', () => {
+    const story = relax(busy, { b: { anim: 'sit', bubble: { icon: '📖' } } })
+    const idleEnd = story.tracks.b.find((s) => s.anim === 'sit')!.t1
+    expect(sample(story, 'b', idleEnd + 0.1).anim).toBe('idle')
+  })
+
+  it('sees through idles split across several beats', () => {
+    const beats = [1, 2, 3, 4, 5, 6].map(() => ({ dur: 1, acts: { a: { anim: 'emote-yes' as const } } }))
+    const story = relax(compile(start, beats), { b: { anim: 'sit', bubble: { icon: '🎧' } } })
+    expect(sample(story, 'b', 3).anim).toBe('sit')
+  })
+
+  it('leaves short pauses alone', () => {
+    const story = relax(busy, { a: { anim: 'sit', bubble: { icon: '📖' } } })
+    expect(story.tracks.a.some((s) => s.anim === 'sit')).toBe(false)
   })
 })
 

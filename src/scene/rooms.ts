@@ -6,8 +6,8 @@
  * Big rooms on purpose: this is what you see when you step inside, full screen.
  */
 import type { Role } from '../shared/types'
-import { compile, type Beat, type Caption, type Story, type Vec2, type Vec3 } from './story'
-import type { CastMember, Decor, FlatData, FlatLayout, Placement, Room } from './types'
+import { compile, relax, type Beat, type Caption, type Hobby, type Story, type Vec2, type Vec3 } from './story'
+import type { CastMember, Decor, FlatData, FlatLayout, FlatStatus, Placement, Room } from './types'
 
 export const DEPTH = 2.6
 export const HEIGHT = 1.55
@@ -78,7 +78,7 @@ const T: Record<string, Template> = {
       { model: 'coatRack', at: [0.05, 0.95, BACK + 0.13] },
     ],
     decor: [{ kind: 'picture', x: 1.4, y: 1.0, w: 0.36, h: 0.26, color: '#3f9c8f' }],
-    spots: { post: [1.15, -0.55], check: [0.75, LANE] },
+    spots: { post: [1.15, -0.55], check: [0.75, LANE], door: [0.75, -0.8] },
   },
   office: {
     kind: 'office',
@@ -224,7 +224,14 @@ const T: Record<string, Template> = {
       { kind: 'window', x: 0.9, y: 0.95, w: 0.62, h: 0.62 },
       { kind: 'picture', x: 2.0, y: 1.1, w: 0.42, h: 0.3, color: '#3572a5' },
     ],
-    spots: { desk: [1.35, -0.58], laptop: [1.75, -0.58], shelf: [2.75, -0.62], shelfFace: [2.75, BACK], exit: [3.0, LANE] },
+    spots: {
+      desk: [1.35, -0.58],
+      laptop: [1.75, -0.58],
+      shelf: [2.75, -0.62],
+      shelfFace: [2.75, BACK],
+      exit: [3.0, LANE],
+      guest: [0.78, -0.42],
+    },
   },
   kitchen: {
     kind: 'kitchen',
@@ -316,7 +323,21 @@ export type FlatSpec = {
   language: { name: string; color: string }
   intro: Caption
   residents: ResidentSpec[]
+  status?: FlatStatus
 }
+
+/** What each role does when there's nothing for them to do. */
+const HOBBY: Partial<Record<Role, Hobby>> = {
+  frontend: { anim: 'sit', bubble: { icon: '🎮' } },
+  security: { anim: 'idle', bubble: { icon: '☕' } },
+  backend: { anim: 'sit', bubble: { icon: '💤' } },
+  database: { anim: 'sit', bubble: { icon: '📖' } },
+  cache: { anim: 'emote-yes', bubble: { icon: '🎧' } },
+  tests: { anim: 'sit', bubble: { icon: '🧩' } },
+}
+
+/** Whoever brings a pull request: a character no resident uses. */
+const VISITOR_MODEL = 'character-female-d'
 
 type Placed = { template: Template; x0: number }
 
@@ -393,9 +414,20 @@ export function buildFlat(spec: FlatSpec): FlatData {
   const has = (r: Role) => byRole.has(r)
   const tech = (r: Role) => byRole.get(r)!.tech
 
+  const status = spec.status ?? {}
+  const prs = status.prs && status.prs.open > 0 ? status.prs : null
+  const visitors: CastMember[] = prs
+    ? [{ id: 'visitor', tech: 'PR', role: 'coder', model: VISITOR_MODEL, color: '#f2a65a', story: '' }]
+    : []
+  /** Where someone from outside comes in: the hall's front door, or the left end of the flat. */
+  const entrance = (): Vec2 => (room('hall') ? spot('hall', 'door') : [0.3, LANE])
+
   const mainRoles: Role[] = []
   const main = mainStory()
-  if (main) stories.main = main.story
+  if (main) {
+    const hobbies = Object.fromEntries(mainRoles.filter((r) => HOBBY[r]).map((r) => [r, HOBBY[r]!]))
+    stories.main = relax(main.story, hobbies)
+  }
 
   for (const [role, r] of byRole) {
     const inMain = mainRoles.includes(role)
@@ -405,6 +437,8 @@ export function buildFlat(spec: FlatSpec): FlatData {
     }
     cast.push({ id: id(role), tech: r.tech, role, model: MODEL[role], color: r.color, story: inMain ? 'main' : role })
   }
+
+  for (const v of visitors) v.story = stories.main ? 'main' : 'coder'
 
   // Narrate the request loop if there is one, else whoever has the most to show.
   const lead = (['coder', 'frontend', 'worker', 'devops', 'mobile', 'tests', 'database'] as Role[]).find((r) => stories[r])
@@ -419,6 +453,68 @@ export function buildFlat(spec: FlatSpec): FlatData {
     stories,
     narrator,
     intro: spec.intro,
+    visitors: visitors.filter((v) => stories[v.story]?.tracks[v.id]),
+    status,
+  }
+
+  /**
+   * A pull request: a visitor comes in with it, the lead looks it over, and either it's merged with
+   * a smile or there's a conflict and they disagree for a moment before the visitor goes to fix it.
+   */
+  function prScene(lead: Role, leadName: string, meet: Vec2, leadSpot: Vec2): Beat[] {
+    if (!prs) return []
+    const door = entrance()
+    const beats: Beat[] = [
+      {
+        caption: { en: `A pull request arrives for ${leadName}`, pt: `Chega um pull request para o ${leadName}`, icon: '📬' },
+        flags: { 'visitor:hidden': false },
+        say: { visitor: { icon: '📬', text: { en: 'my PR!', pt: 'meu PR!' } } },
+        acts: { visitor: { walk: meet } },
+      },
+      {
+        caption: { en: `${leadName} reviews the changes`, pt: `O ${leadName} revisa as mudanças`, icon: '🔍' },
+        dur: 1.8,
+        say: { [lead]: { icon: '🔍', text: { en: 'reviewing…', pt: 'revisando…' } } },
+        acts: { [lead]: { anim: 'interact-right', face: meet }, visitor: { anim: 'idle', face: leadSpot } },
+      },
+    ]
+    if (prs.conflict) {
+      beats.push(
+        {
+          caption: { en: 'Merge conflict! They disagree', pt: 'Conflito no merge! Eles discordam', icon: '💥' },
+          dur: 1.2,
+          say: { [lead]: { icon: '💢', text: { en: 'conflict!', pt: 'conflito!' } } },
+          acts: { [lead]: { anim: 'emote-no', face: meet } },
+        },
+        {
+          dur: 1.2,
+          say: { visitor: { icon: '😤', text: { en: 'it was fine!', pt: 'mas tava certo!' } } },
+          acts: { visitor: { anim: 'emote-no', face: leadSpot } },
+        },
+        {
+          dur: 1.1,
+          say: { [lead]: { icon: '💢', text: { en: 'rebase it', pt: 'faz o rebase' } } },
+          acts: { [lead]: { anim: 'emote-no', face: meet } },
+        },
+        {
+          caption: { en: 'Back to fix it', pt: 'Volta para arrumar', icon: '🔧' },
+          say: { visitor: { icon: '🔧', text: { en: 'fixing it', pt: 'vou arrumar' } } },
+          acts: { visitor: { walk: door } },
+        },
+      )
+    } else {
+      beats.push(
+        {
+          caption: { en: 'Approved and merged', pt: 'Aprovado e mesclado', icon: '✅' },
+          dur: 1.1,
+          say: { [lead]: { icon: '✅', text: { en: 'approved!', pt: 'aprovado!' } }, visitor: { icon: '🎉' } },
+          acts: { [lead]: { anim: 'emote-yes', face: meet }, visitor: { anim: 'emote-yes', face: leadSpot } },
+        },
+        { acts: { visitor: { walk: door } } },
+      )
+    }
+    beats.push({ dur: 0.4, flags: { 'visitor:hidden': true } })
+    return beats
   }
 
   /** The request loop: front end asks, the guard checks, the back end fetches, tests check, it comes back. */
@@ -448,13 +544,14 @@ export function buildFlat(spec: FlatSpec): FlatData {
     const B = tech('backend')
     const beats: Beat[] = []
     const tray = point('office', 'tray')
+    if (prs) start.visitor = { at: entrance(), yaw: 0 }
 
     if (F) {
       beats.push({
         caption: { en: `${tech('frontend')} asks the API for some data`, pt: `O ${tech('frontend')} pede dados para a API`, icon: '📨' },
         say: { frontend: { icon: '📨', text: { en: 'request!', pt: 'pedido!' } } },
         props: { letter: 'frontend', box: null },
-        flags: { tv: false },
+        flags: { tv: false, 'visitor:hidden': true },
         acts: { frontend: { walk: S ? spot('hall', 'check') : spot('office', 'deliver') } },
       })
       if (S) {
@@ -492,6 +589,7 @@ export function buildFlat(spec: FlatSpec): FlatData {
         say: { backend: { icon: '📨', text: { en: 'new request', pt: 'pedido novo' } } },
         dur: 1.6,
         props: { letter: tray, box: null },
+        flags: { 'visitor:hidden': true },
         acts: { backend: { anim: 'interact-right', face: spot('office', 'tray') } },
       })
     }
@@ -561,12 +659,40 @@ export function buildFlat(spec: FlatSpec): FlatData {
           say: { tests: { icon: '🔍', text: { en: 'checking…', pt: 'conferindo…' } } },
           acts: { tests: { anim: 'interact-right', face: wait }, backend: { anim: 'idle', face: check } },
         },
-        {
-          dur: 0.8,
-          say: { tests: { icon: '✅', text: { en: 'all good', pt: 'tudo certo' } } },
-          acts: { tests: { anim: 'emote-yes', face: wait } },
-        },
       )
+      if (status.ci === 'failing') {
+        // Red checks on the main branch: the tester says no, they argue, the back end fixes it.
+        beats.push(
+          {
+            caption: { en: 'The tests fail', pt: 'Os testes falham', icon: '❌' },
+            dur: 1.0,
+            say: { tests: { icon: '❌', text: { en: 'it failed!', pt: 'falhou!' } } },
+            acts: { tests: { anim: 'emote-no', face: wait } },
+          },
+          {
+            caption: { en: 'They argue for a bit…', pt: 'Eles discutem um pouco…', icon: '💢' },
+            dur: 1.3,
+            say: { backend: { icon: '💢', text: { en: 'works on my machine!', pt: 'na minha máquina funciona!' } } },
+            acts: { backend: { anim: 'emote-no', face: check } },
+          },
+          {
+            dur: 1.1,
+            say: { tests: { icon: '😤', text: { en: 'look at the error', pt: 'olha o erro' } } },
+            acts: { tests: { anim: 'emote-no', face: wait } },
+          },
+          {
+            caption: { en: `${B} fixes it`, pt: `O ${B} conserta`, icon: '🔧' },
+            dur: 1.5,
+            say: { backend: { icon: '🔧', text: { en: 'fixing…', pt: 'arrumando…' } } },
+            acts: { backend: { anim: 'interact-right', face: check } },
+          },
+        )
+      }
+      beats.push({
+        dur: 0.8,
+        say: { tests: { icon: '✅', text: { en: 'all good', pt: 'tudo certo' } } },
+        acts: { tests: { anim: 'emote-yes', face: wait } },
+      })
     }
 
     if (F) {
@@ -618,6 +744,9 @@ export function buildFlat(spec: FlatSpec): FlatData {
       )
     }
 
+    // The visitor stands beside the desk, not in front of it, so both of them stay in view.
+    const work = spot('office', 'work')
+    beats.push(...prScene('backend', B, [work[0] - 0.58, work[1] + 0.18], work))
     return { story: compile(start, beats) }
   }
 
@@ -694,7 +823,9 @@ export function buildFlat(spec: FlatSpec): FlatData {
             dur: 2.4,
             acts: { tests: { anim: 'interact-right', face: [spot('lab', 'home')[0], BACK] } },
           },
-          { dur: 0.8, say: { tests: { icon: '✅' } }, acts: { tests: { anim: 'emote-yes' } } },
+          status.ci === 'failing'
+            ? { dur: 1.2, say: { tests: { icon: '❌', text: { en: 'broken!', pt: 'quebrou!' } } }, acts: { tests: { anim: 'emote-no' } } }
+            : { dur: 0.8, say: { tests: { icon: '✅' } }, acts: { tests: { anim: 'emote-yes' } } },
         ])
       case 'database':
         return one(spot('archive', 'home'), [
@@ -741,6 +872,12 @@ export function buildFlat(spec: FlatSpec): FlatData {
     } else {
       beats.push({ caption: { en: 'Back to work', pt: 'De volta ao trabalho', icon: '💪' }, acts: { [role]: { walk: desk } } })
     }
-    return compile({ [role]: { at: desk, yaw: Math.PI / 2 } }, beats)
+    if (prs) {
+      beats[0] = { ...beats[0], flags: { 'visitor:hidden': true } }
+      beats.push(...prScene(role, name, spot('studio', 'guest'), desk))
+    }
+    const start: Record<string, { at: Vec2; yaw: number }> = { [role]: { at: desk, yaw: Math.PI / 2 } }
+    if (prs) start.visitor = { at: entrance(), yaw: 0 }
+    return compile(start, beats)
   }
 }

@@ -50,4 +50,15 @@ export type FlatData = {
   /** The story whose captions narrate this flat. */
   narrator: string
   intro: Caption
+  /** People who drop by but don't live here (someone bringing a pull request). */
+  visitors: CastMember[]
+  status: FlatStatus
+}
+
+/** Public facts about the repo that change what happens in the flat. */
+export type FlatStatus = {
+  /** Latest checks on the default branch. */
+  ci?: 'passing' | 'failing'
+  /** Open pull requests, and whether any can't be merged cleanly. */
+  prs?: { open: number; conflict?: boolean }
 }

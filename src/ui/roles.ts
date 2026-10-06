@@ -55,6 +55,10 @@ export const copy = {
   hint: { en: 'Click a flat to step inside', pt: 'Clique num apartamento para entrar' },
   loop: { en: 'Steps of the loop, it repeats', pt: 'Passos do ciclo, que se repete' },
   weather: { en: 'Weather', pt: 'Clima' },
+  prOpen: (n: number): L => ({ en: n === 1 ? '1 open PR' : `${n} open PRs`, pt: n === 1 ? '1 PR aberto' : `${n} PRs abertos` }),
+  conflict: { en: 'merge conflict', pt: 'conflito no merge' },
+  ciFailing: { en: 'tests failing', pt: 'testes falhando' },
+  ciPassing: { en: 'tests passing', pt: 'testes passando' },
   auto: { en: 'auto', pt: 'auto' },
   weatherName: {
     sun: { en: 'Sunny', pt: 'Sol' },
