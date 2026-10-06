@@ -4,6 +4,7 @@ import { CanvasTexture, SRGBColorSpace, type Group, type MeshStandardMaterial } 
 import { Box } from './Flat'
 import type { Vec3 } from './story'
 import type { FlatData } from './types'
+import { LOOK, useWeather } from './weather'
 
 /**
  * The building from the street: a tall block, one floor per repo. You can't see the rooms clearly from
@@ -168,11 +169,13 @@ function Floor({
   const winY = SLAB + SILL + winH / 2
   const xs = [0, 1, 2].map((k) => EDGE + WINDOW_W / 2 + k * (WINDOW_W + PIER))
   const glass = useRef<MeshStandardMaterial[]>([])
+  const weather = useWeather()
 
   useFrame((_, delta) => {
     for (const m of glass.current) {
       if (!m) continue
-      const target = hovered ? 0.55 : 0.12
+      // Windows light up at night and in the rain, and brighten under the pointer.
+      const target = (hovered ? 0.55 : 0.12) + LOOK[weather].glow * 0.5
       m.emissiveIntensity += (target - m.emissiveIntensity) * Math.min(1, delta * 8)
     }
   })
@@ -222,7 +225,7 @@ function Floor({
               thickness={0.25}
               ior={1.25}
               color="#f2f7ff"
-              emissive="#fff1cf"
+              emissive="#ffdca0"
               emissiveIntensity={0.12}
               ref={(m) => {
                 if (m) glass.current[k] = m

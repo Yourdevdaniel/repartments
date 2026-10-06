@@ -1,5 +1,8 @@
-import { useMemo } from 'react'
+import { useFrame } from '@react-three/fiber'
+import { useMemo, useRef } from 'react'
+import type { MeshStandardMaterial, PointLight } from 'three'
 import { Box } from './Flat'
+import { LOOK, useWeather } from './weather'
 
 
 /** A chunky low-poly tree: trunk plus a few flat-shaded blobs of leaves. */
@@ -43,6 +46,15 @@ function Bush({ x, z, w = 0.5 }: { x: number; z: number; w?: number }) {
 }
 
 function Lamp({ x, z }: { x: number; z: number }) {
+  const weather = useWeather()
+  const bulb = useRef<MeshStandardMaterial>(null)
+  const light = useRef<PointLight>(null)
+  useFrame((_, delta) => {
+    const glow = LOOK[weather].glow
+    const k = Math.min(1, delta * 2)
+    if (bulb.current) bulb.current.emissiveIntensity += (0.3 + glow * 2.2 - bulb.current.emissiveIntensity) * k
+    if (light.current) light.current.intensity += (glow * 2.4 - light.current.intensity) * k
+  })
   return (
     <group position={[x, 0, z]}>
       <mesh position={[0, 0.55, 0]} castShadow>
@@ -51,8 +63,9 @@ function Lamp({ x, z }: { x: number; z: number }) {
       </mesh>
       <mesh position={[0, 1.13, 0]}>
         <sphereGeometry args={[0.07, 12, 10]} />
-        <meshStandardMaterial color="#fff6d8" emissive="#ffe9a8" emissiveIntensity={0.8} />
+        <meshStandardMaterial ref={bulb} color="#fff6d8" emissive="#ffe9a8" emissiveIntensity={0.3} />
       </mesh>
+      <pointLight ref={light} position={[0, 1.05, 0]} color="#ffd98a" intensity={0} distance={3} decay={1.6} />
     </group>
   )
 }
