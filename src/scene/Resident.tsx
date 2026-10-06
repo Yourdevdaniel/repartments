@@ -14,8 +14,9 @@ import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { badgeTexture } from './badge'
 import { bubbleTexture } from './bubble'
 import { useSceneLang } from './lang'
-import { bubbleAt, sample, type AnimName, type Story } from './story'
+import { bubbleAt, flagAt, sample, type AnimName, type Story } from './story'
 import { useStoryTime } from './time'
+import { useWeather } from './weather'
 
 const FADE = 0.22
 const BADGE_HEIGHT = 0.15
@@ -35,13 +36,20 @@ type Props = {
   id: string
   model: string
   story: Story
-  label: string
-  color: string
+  /** Name tag over the head; passers-by in the street have none. */
+  label?: string
+  color?: string
   /** Height of the floor this resident stands on. */
   y?: number
+  /** Seconds added to the shared clock, so several people on one story don't move in step. */
+  offset?: number
+  /** A story flag that hides this person (someone who went inside the building). */
+  hideFlag?: string
+  /** Opens an umbrella when it rains. */
+  umbrella?: boolean
 }
 
-export function Resident({ id, model, story, label, color, y = 0 }: Props) {
+export function Resident({ id, model, story, label, color = '#999', y = 0, offset = 0, hideFlag, umbrella = false }: Props) {
   const gltf = useGLTF(`/models/characters/${model}.glb`)
   const root = useRef<Group>(null)
   const time = useStoryTime()
@@ -69,7 +77,9 @@ export function Resident({ id, model, story, label, color, y = 0 }: Props) {
 
   useEffect(() => () => void mixer.stopAllAction(), [mixer])
 
-  const badge = useMemo(() => badgeTexture(label, color), [label, color])
+  const badge = useMemo(() => (label ? badgeTexture(label, color) : null), [label, color])
+  const weather = useWeather()
+  const brolly = useRef<Group>(null)
   const lang = useSceneLang()
   const bubble = useRef<Sprite>(null)
   const bubbleMaterial = useRef<SpriteMaterial>(null)
@@ -78,10 +88,17 @@ export function Resident({ id, model, story, label, color, y = 0 }: Props) {
   const yaw = useRef<number | null>(null)
 
   useFrame((_, delta) => {
-    const t = time.current
+    const t = time.current + offset
     const pose = sample(story, id, t)
     const group = root.current
     if (!group) return
+    group.visible = !(hideFlag && flagAt(story, hideFlag, t))
+    if (brolly.current) {
+      const target = umbrella && weather === 'rain' ? 1 : 0
+      const s = brolly.current.scale.x + (target - brolly.current.scale.x) * Math.min(1, delta * 4)
+      brolly.current.scale.setScalar(s)
+      brolly.current.visible = s > 0.02
+    }
 
     group.position.set(pose.x, y, pose.z)
     // Turn smoothly instead of snapping when a walk changes direction.
@@ -148,9 +165,23 @@ export function Resident({ id, model, story, label, color, y = 0 }: Props) {
   return (
     <group ref={root}>
       <primitive object={scene} scale={CHARACTER_SCALE} />
-      <sprite position={[0, 0.74, 0]} scale={[BADGE_HEIGHT * badge.aspect, BADGE_HEIGHT, 1]} center={[0.5, 0]}>
-        <spriteMaterial map={badge.texture} transparent depthWrite={false} />
-      </sprite>
+      {badge && (
+        <sprite position={[0, 0.74, 0]} scale={[BADGE_HEIGHT * badge.aspect, BADGE_HEIGHT, 1]} center={[0.5, 0]}>
+          <spriteMaterial map={badge.texture} transparent depthWrite={false} />
+        </sprite>
+      )}
+      {umbrella && (
+        <group ref={brolly} position={[0.1, 0, 0.05]} scale={0} visible={false}>
+          <mesh position={[0, 0.5, 0]}>
+            <cylinderGeometry args={[0.008, 0.008, 0.5, 6]} />
+            <meshStandardMaterial color="#4a4f66" />
+          </mesh>
+          <mesh position={[0, 0.78, 0]} castShadow>
+            <coneGeometry args={[0.32, 0.14, 10, 1, true]} />
+            <meshStandardMaterial color={color} roughness={0.7} side={2} />
+          </mesh>
+        </group>
+      )}
       <sprite ref={bubble} position={[0, 0.92, 0]} center={[0.5, 0]} visible={false} renderOrder={2}>
         <spriteMaterial ref={bubbleMaterial} transparent depthWrite={false} depthTest={false} />
       </sprite>

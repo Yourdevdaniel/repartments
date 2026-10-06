@@ -54,6 +54,14 @@ export const copy = {
   back: { en: 'Back to the building', pt: 'Voltar para o prédio' },
   hint: { en: 'Click a flat to step inside', pt: 'Clique num apartamento para entrar' },
   loop: { en: 'Steps of the loop, it repeats', pt: 'Passos do ciclo, que se repete' },
+  weather: { en: 'Weather', pt: 'Clima' },
+  auto: { en: 'auto', pt: 'auto' },
+  weatherName: {
+    sun: { en: 'Sunny', pt: 'Sol' },
+    clouds: { en: 'Cloudy', pt: 'Nublado' },
+    rain: { en: 'Rain', pt: 'Chuva' },
+    night: { en: 'Night', pt: 'Noite' },
+  } as Record<string, L>,
   note: {
     en: 'An illustration of how the pieces talk. It never shows code, routes or data.',
     pt: 'Uma ilustração de como as partes conversam. Nunca mostra código, rotas ou dados.',

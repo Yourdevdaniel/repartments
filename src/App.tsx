@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { demoFlats, demoOwner } from './scene/demo'
 import { Stage, type View } from './scene/Stage'
 import type { Caption } from './scene/story'
+import { WEATHERS, type Weather } from './scene/weather'
 import { Backdrop } from './ui/Backdrop'
 import { copy, roles, type Lang } from './ui/roles'
 
@@ -15,6 +16,17 @@ function initialLang(): Lang {
   return navigator.language?.toLowerCase().startsWith('pt') ? 'pt' : 'en'
 }
 
+/** Sky behind everything, per weather. */
+const SKY: Record<Weather, string> = {
+  sun: 'linear-gradient(180deg,#cfe0ff 0%,#e6ecff 45%,#f1f0ff 100%)',
+  clouds: 'linear-gradient(180deg,#d5dbe8 0%,#e4e8f1 50%,#eceef4 100%)',
+  rain: 'linear-gradient(180deg,#a9b3c9 0%,#c4cad9 50%,#d3d8e3 100%)',
+  night: 'linear-gradient(180deg,#141a3d 0%,#27306a 55%,#3a3f78 100%)',
+}
+const WEATHER_ICON: Record<Weather, string> = { sun: '☀️', clouds: '☁️', rain: '🌧️', night: '🌙' }
+/** Seconds each weather lasts when it changes on its own. */
+const WEATHER_SECONDS = 22
+
 const glass =
   'rounded-[22px] border border-white/70 bg-white/70 shadow-[0_18px_50px_-22px_rgba(40,52,110,0.45)] backdrop-blur-xl'
 
@@ -23,6 +35,8 @@ type CaptionState = { text: Caption | null; step: number; total: number }
 export default function App() {
   const [lang, setLangState] = useState<Lang>(initialLang)
   const [view, setView] = useState<View>({ mode: 'building', entering: null })
+  const [weather, setWeather] = useState<Weather>('sun')
+  const [autoWeather, setAutoWeather] = useState(true)
   const [veil, setVeil] = useState(false)
   const [hovered, setHovered] = useState<string | null>(null)
   const [caption, setCaption] = useState<CaptionState>({ text: null, step: -1, total: 0 })
@@ -68,6 +82,16 @@ export default function App() {
   }, [])
   const onCaption = useCallback((text: Caption | null, step: number, total: number) => setCaption({ text, step, total }), [])
 
+  // The weather moves on by itself unless someone picks one.
+  useEffect(() => {
+    if (!autoWeather) return
+    const id = window.setInterval(
+      () => setWeather((w) => WEATHERS[(WEATHERS.indexOf(w) + 1) % WEATHERS.length]),
+      WEATHER_SECONDS * 1000,
+    )
+    return () => window.clearInterval(id)
+  }, [autoWeather])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && back()
     window.addEventListener('keydown', onKey)
@@ -75,11 +99,20 @@ export default function App() {
   }, [back])
 
   return (
-    <div className="relative h-dvh w-full overflow-hidden bg-[linear-gradient(180deg,#cfe0ff_0%,#e6ecff_45%,#f1f0ff_100%)] text-ink">
-      <Backdrop near={flat !== null} />
+    <div className="relative h-dvh w-full overflow-hidden text-ink">
+      {WEATHERS.map((w) => (
+        <div
+          key={w}
+          aria-hidden="true"
+          className="absolute inset-0 transition-opacity duration-[2000ms]"
+          style={{ background: SKY[w], opacity: weather === w ? 1 : 0 }}
+        />
+      ))}
+      <Backdrop near={flat !== null} weather={weather} />
       <div className="absolute inset-0">
         <Stage
           lang={lang}
+          weather={weather}
           flats={flats}
           owner={demoOwner.login}
           view={view}
@@ -107,6 +140,36 @@ export default function App() {
           <span className={`${glass} hidden px-3 py-2 text-xs font-bold tracking-wide text-accent uppercase sm:block`}>
             {copy.probe[lang]}
           </span>
+          <div className={`${glass} flex p-1`} role="group" aria-label={copy.weather[lang]}>
+            {WEATHERS.map((w) => (
+              <button
+                key={w}
+                type="button"
+                aria-pressed={weather === w}
+                aria-label={copy.weatherName[w][lang]}
+                title={copy.weatherName[w][lang]}
+                onClick={() => {
+                  setWeather(w)
+                  setAutoWeather(false)
+                }}
+                className={`grid size-8 place-items-center rounded-full text-sm transition-colors ${
+                  weather === w ? 'bg-ink/10' : 'opacity-60 hover:opacity-100'
+                }`}
+              >
+                {WEATHER_ICON[w]}
+              </button>
+            ))}
+            <button
+              type="button"
+              aria-pressed={autoWeather}
+              onClick={() => setAutoWeather((a) => !a)}
+              className={`h-8 rounded-full px-2.5 text-[11px] font-extrabold transition-colors ${
+                autoWeather ? 'bg-ink text-white' : 'text-ink-soft hover:text-ink'
+              }`}
+            >
+              {copy.auto[lang]}
+            </button>
+          </div>
           <div className={`${glass} flex p-1`} role="group" aria-label="Language">
             {(['en', 'pt'] as const).map((l) => (
               <button

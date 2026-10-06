@@ -3,12 +3,15 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Suspense, useEffect, useMemo, useRef } from 'react'
 import { OrthographicCamera as OrthoCam, Vector3 } from 'three'
 import { Interior } from './Interior'
+import { Pedestrians, Traffic } from './Life'
+import { Clouds, Rain, WeatherLights } from './Sky'
 import { ALL_MODELS } from './rooms'
 import { captionAt, sample, type Caption } from './story'
 import { Street } from './Street'
 import { SceneLangContext, type SceneLang } from './lang'
 import { StoryTimeContext, useStoryTime, type StoryTime } from './time'
 import { floorBase, Tower, TOWER, towerHeight } from './Tower'
+import { WeatherContext, type Weather } from './weather'
 import type { FlatData } from './types'
 
 // Fetch every flat's models up front, so stepping inside never waits on the network.
@@ -152,6 +155,7 @@ function Clock({
 
 type Props = {
   lang: SceneLang
+  weather: Weather
   flats: FlatData[]
   owner: string
   view: View
@@ -162,7 +166,7 @@ type Props = {
   onCaption: (c: Caption | null, step: number, total: number) => void
 }
 
-export function Stage({ lang, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption }: Props) {
+export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption }: Props) {
   const reduce = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, [])
   const time = useMemo<StoryTime>(() => ({ current: reduce ? 9 : 0, paused: reduce }), [reduce])
   const inside = view.mode === 'inside' ? (flats.find((f) => f.id === view.id) ?? null) : null
@@ -177,21 +181,9 @@ export function Stage({ lang, flats, owner, view, hovered, onHover, onSelect, on
       camera={{ position: [10, 8, 30], near: 0.1, far: 200, zoom: 60 }}
       onPointerMissed={() => inside && onBack()}
     >
+      <WeatherContext.Provider value={weather}>
       {/* No tone mapping (flat), so the pastels come out as picked instead of washed out. */}
-      <hemisphereLight args={['#ffffff', '#c3cdf5', 1.05]} />
-      <directionalLight
-        position={[5, 11, 9]}
-        intensity={1.5}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-8}
-        shadow-camera-right={8}
-        shadow-camera-top={inside ? 4 : 12}
-        shadow-camera-bottom={-3}
-        shadow-bias={-0.0004}
-        shadow-normalBias={0.02}
-      />
-      <directionalLight position={[-6, 4, 5]} intensity={0.45} color="#ffe9d6" />
+      <WeatherLights shadowTop={inside ? 4 : 12} />
       <SceneLangContext.Provider value={lang}>
       <StoryTimeContext.Provider value={time}>
         <Clock time={time} narrator={inside} onCaption={onCaption} />
@@ -203,11 +195,16 @@ export function Stage({ lang, flats, owner, view, hovered, onHover, onSelect, on
             <>
               <Tower flats={flats} owner={owner} hovered={hovered} onHover={onHover} onSelect={onSelect} />
               <Street width={TOWER.width} depth={TOWER.depth} />
+              <Pedestrians />
+              <Traffic />
+              <Clouds top={towerHeight(flats.length)} />
+              <Rain top={towerHeight(flats.length)} />
             </>
           )}
         </Suspense>
       </StoryTimeContext.Provider>
       </SceneLangContext.Provider>
+      </WeatherContext.Provider>
       <ContactShadows position={[0, inside ? -0.33 : -0.019, 0]} opacity={0.22} scale={inside ? 14 : 22} blur={2.4} far={3} />
     </Canvas>
   )
