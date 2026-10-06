@@ -19,12 +19,13 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 
 /**
  * Keeps the shot on the tower. `baseAz` is the angle the camera already sits at; `fitW`/`fitH` is
- * the area the unzoomed shot frames. Sliding is only allowed as far as zooming in pushed the edges
- * out, so at zoom 1 or below the tower stays centred.
+ * the area the unzoomed shot frames. Sliding is allowed about as far as zooming in pushed the edges
+ * out, so at zoom 1 or below the tower stays centred. A quarter more than that lets the lobby and
+ * the street come up from under the buttons at the bottom of the screen.
  */
 export function clampOrbit(o: Orbit, baseAz: number, fitW: number, fitH: number): Orbit {
   const zoom = clamp(o.zoom, MIN_ZOOM, MAX_ZOOM)
-  const room = Math.max(0, 1 - 1 / zoom)
+  const room = Math.max(0, 1 - 1 / zoom) * 1.25
   return {
     az: clamp(o.az, -MAX_TURN - baseAz, MAX_TURN - baseAz),
     zoom,

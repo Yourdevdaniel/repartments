@@ -24,8 +24,8 @@ describe('clampOrbit', () => {
 
   it('lets a zoomed-in view slide, but not off the tower', () => {
     const o = clampOrbit({ az: 0, zoom: 2, s: 100, y: -100 }, 0.36, 12, 16)
-    expect(o.s).toBe(3)
-    expect(o.y).toBe(-4)
+    expect(o.s).toBe(3.75)
+    expect(o.y).toBe(-5)
   })
 
   it('never turns round to the back of the tower', () => {
