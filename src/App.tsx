@@ -190,8 +190,9 @@ export default function App() {
         className={`pointer-events-none absolute inset-0 bg-white/80 transition-opacity duration-200 ${veil ? 'opacity-100' : 'opacity-0'}`}
       />
 
-      {/* On a phone the weather and language toggles drop to a second row instead of running off screen. */}
-      <header className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-2 p-4 md:gap-3 md:p-6">
+      {/* On a phone the weather and language toggles drop to a second row instead of running off screen.
+          Above the full-screen cards (landing, loading, errors), or they'd swallow its clicks. */}
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-start justify-between gap-2 p-4 md:gap-3 md:p-6">
         <div className="pointer-events-auto flex items-center gap-2">
           <a
             href="/"
