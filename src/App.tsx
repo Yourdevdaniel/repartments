@@ -79,6 +79,7 @@ export default function App() {
       <Backdrop near={flat !== null} />
       <div className="absolute inset-0">
         <Stage
+          lang={lang}
           flats={flats}
           owner={demoOwner.login}
           view={view}
@@ -190,22 +191,52 @@ export default function App() {
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-4 md:p-6">
         {flat ? (
-          <div
-            className={`${glass} flex min-h-14 max-w-[min(36rem,100%)] items-center gap-3 px-4 py-3 transition-opacity duration-300 ${
-              caption.text ? 'opacity-100' : 'opacity-0'
-            }`}
-            aria-live="polite"
-          >
-            <span className="grid h-8 min-w-8 shrink-0 place-items-center rounded-full bg-ink px-2 text-xs font-extrabold text-white">
-              {Math.max(1, caption.step + 1)}/{caption.total}
-            </span>
-            <p className="text-[15px] leading-snug font-bold md:text-base">{caption.text?.[lang] ?? ''}</p>
-          </div>
+          <LoopStrip
+            steps={flat.stories[flat.narrator]?.captions.map((c) => c.caption) ?? []}
+            current={caption.step}
+            text={caption.text?.[lang] ?? ''}
+            loopLabel={copy.loop[lang]}
+          />
         ) : (
           <div className={`${glass} px-4 py-2.5 text-sm font-bold text-ink-soft`}>{copy.hint[lang]}</div>
         )}
         <p className="text-[11px] font-semibold text-ink-soft/80">{copy.credits[lang]}</p>
       </div>
+    </div>
+  )
+}
+
+/**
+ * The loop at a glance: one little icon per step, the current one lifted and coloured, and an arrow
+ * back to the start, because the story repeats.
+ */
+function LoopStrip({ steps, current, text, loopLabel }: { steps: Caption[]; current: number; text: string; loopLabel: string }) {
+  return (
+    <div className={`${glass} pointer-events-auto flex max-w-[min(44rem,100%)] flex-col items-center gap-2.5 px-4 pt-3 pb-3.5`}>
+      <ol className="flex flex-wrap items-center justify-center gap-1" aria-label={loopLabel}>
+        {steps.map((step, i) => {
+          const on = i === current
+          return (
+            <li key={i} className="flex items-center gap-1">
+              {i > 0 && <span aria-hidden="true" className={`h-0.5 w-3 rounded-full ${i <= current ? 'bg-accent/60' : 'bg-ink/10'}`} />}
+              <span
+                aria-current={on ? 'step' : undefined}
+                className={`grid place-items-center rounded-full transition-all duration-300 ${
+                  on ? 'size-10 -translate-y-0.5 bg-accent text-xl shadow-[0_8px_18px_-8px_rgba(47,143,230,0.8)]' : 'size-8 bg-white text-base'
+                } ${!on && i < current ? 'opacity-100' : !on ? 'opacity-60' : ''}`}
+              >
+                {step.icon ?? '•'}
+              </span>
+            </li>
+          )
+        })}
+        <li aria-hidden="true" className="ml-1 text-base font-extrabold text-ink-soft" title={loopLabel}>
+          ↺
+        </li>
+      </ol>
+      <p className="min-h-6 text-center text-[15px] leading-snug font-bold md:text-base" aria-live="polite">
+        {text}
+      </p>
     </div>
   )
 }
