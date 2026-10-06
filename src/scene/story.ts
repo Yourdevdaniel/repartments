@@ -28,7 +28,11 @@ export type Act = { walk: Vec2 } | { path: Vec2[] } | { anim: AnimName; face?: V
 /** Who or where a prop is: a resident id, a point in the flat, or null when hidden. */
 export type Holder = string | Vec3 | null
 
-export type Caption = { en: string; pt: string }
+/** A step's subtitle. `icon` is the little picture the step shows in the loop strip. */
+export type Caption = { en: string; pt: string; icon?: string }
+
+/** A speech bubble over a resident's head: an emoji and, at most, a word or two. */
+export type Bubble = { icon: string; text?: { en: string; pt: string } }
 
 export type Beat = {
   caption?: Caption
@@ -38,6 +42,8 @@ export type Beat = {
   /** Applied when the beat starts. */
   props?: Record<string, Holder>
   flags?: Record<string, boolean>
+  /** Bubbles shown for the whole beat. */
+  say?: Record<string, Bubble>
 }
 
 export type Segment = { t0: number; t1: number; from: Vec2; to: Vec2; anim: AnimName; yaw: number }
@@ -48,6 +54,7 @@ export type Story = {
   props: Record<string, { t: number; holder: Holder }[]>
   flags: Record<string, { t: number; on: boolean }[]>
   captions: { t0: number; t1: number; caption: Caption }[]
+  bubbles: Record<string, { t0: number; t1: number; bubble: Bubble }[]>
 }
 
 export type Start = Record<string, { at: Vec2; yaw: number }>
@@ -86,6 +93,7 @@ export function compile(start: Start, beats: Beat[], speed = WALK_SPEED): Story 
   const props: Story['props'] = {}
   const flags: Story['flags'] = {}
   const captions: Story['captions'] = []
+  const bubbles: Story['bubbles'] = {}
   let clock = 0
 
   for (const beat of beats) {
@@ -129,10 +137,11 @@ export function compile(start: Start, beats: Beat[], speed = WALK_SPEED): Story 
     }
 
     if (beat.caption && t1 > t0) captions.push({ t0, t1, caption: beat.caption })
+    for (const [id, bubble] of Object.entries(beat.say ?? {})) (bubbles[id] ??= []).push({ t0, t1, bubble })
     clock = t1
   }
 
-  return { duration: clock, tracks, props, flags, captions }
+  return { duration: clock, tracks, props, flags, captions, bubbles }
 }
 
 export type Pose = { x: number; z: number; yaw: number; anim: AnimName; carrying: boolean }
@@ -165,6 +174,11 @@ export function captionAt(story: Story, time: number): Caption | null {
     else break
   }
   return current ?? story.captions[story.captions.length - 1]?.caption ?? null
+}
+
+export function bubbleAt(story: Story, id: string, time: number): Bubble | null {
+  const t = wrap(story, time)
+  return story.bubbles[id]?.find((b) => t >= b.t0 && t < b.t1)?.bubble ?? null
 }
 
 export function wrap(story: Story, time: number) {

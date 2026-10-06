@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { captionAt, compile, flagAt, propAt, sample, WALK_SPEED, yawTowards } from './story'
+import { bubbleAt, captionAt, compile, flagAt, propAt, sample, WALK_SPEED, yawTowards } from './story'
 
 const start = { a: { at: [0, 0] as [number, number], yaw: 0 }, b: { at: [2, 0] as [number, number], yaw: 0 } }
 
@@ -70,6 +70,15 @@ describe('props, flags and captions', () => {
     expect(flagAt(story, 'tv', 1.5)).toBe(true)
     expect(captionAt(story, 0.5)?.en).toBe('carry')
     expect(captionAt(story, 1.5)?.en).toBe('carry')
+  })
+})
+
+describe('bubbles', () => {
+  it('shows a bubble over its resident only during its beat', () => {
+    const story = compile(start, [{ dur: 1, say: { a: { icon: '📨' } } }, { dur: 1 }])
+    expect(bubbleAt(story, 'a', 0.5)?.icon).toBe('📨')
+    expect(bubbleAt(story, 'a', 1.5)).toBeNull()
+    expect(bubbleAt(story, 'b', 0.5)).toBeNull()
   })
 })
 
