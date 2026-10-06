@@ -542,7 +542,8 @@ export function buildFlat(spec: FlatSpec): FlatData {
 
     if (Te) {
       const check = spot('lab', 'check')
-      const wait: Vec2 = [check[0] - 0.45, check[1] - 0.1]
+      // Far enough apart that their name tags don't sit on top of each other.
+      const wait: Vec2 = [check[0] - 0.66, check[1] - 0.12]
       beats.push(
         {
           caption: { en: `${tech('tests')} checks the answer before it leaves`, pt: `O ${tech('tests')} confere a resposta antes de sair`, icon: '🔍' },
