@@ -36,7 +36,7 @@ export function toFlats(building: Building): FlatData[] {
 
 export async function fetchBuilding(login: string, signal?: AbortSignal): Promise<Building | BuildingError> {
   try {
-    const res = await fetch(`/api/building?user=${encodeURIComponent(login)}`, { signal })
+    const res = await fetch(`/api/building?user=${encodeURIComponent(login.toLowerCase())}`, { signal })
     return (await res.json()) as Building | BuildingError
   } catch (err) {
     if ((err as Error).name === 'AbortError') throw err
