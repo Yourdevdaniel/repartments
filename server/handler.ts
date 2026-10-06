@@ -3,8 +3,8 @@
  * middleware in development): validate the name, ask GitHub, analyze, answer with tags only.
  */
 import type { Building, BuildingError } from '../src/shared/types'
-import { analyze } from './analyze'
-import { fetchOwner, GitHubError, type Fetcher } from './github'
+import { analyze } from './analyze.js'
+import { fetchOwner, GitHubError, type Fetcher } from './github.js'
 
 /** GitHub's own rules: letters, digits and single hyphens, up to 39 characters. */
 export const USERNAME = /^[a-zA-Z\d](?:[a-zA-Z\d]|-(?=[a-zA-Z\d])){0,38}$/
