@@ -223,10 +223,11 @@ export function signals(repo: RawRepo): Signals {
   return s
 }
 
-const MOBILE_LANGUAGES = new Set(['Kotlin', 'Swift', 'Dart', 'Objective-C'])
+// Kotlin is left out: it's as often a library or a server as an Android app.
+const MOBILE_LANGUAGES = new Set(['Swift', 'Dart', 'Objective-C'])
 const WEB_LANGUAGES = new Set(['HTML', 'CSS', 'SCSS'])
 
-export function residentsFrom(s: Signals, primary: string | null): Resident[] {
+export function residentsFrom(s: Signals, primary: string | null, primaryColor: string | null = null): Resident[] {
   const found = new Map<Role, string>()
   const imageMatch = (names: string[]) => names.some((n) => [...s.images].some((img) => img === n || img.endsWith('/' + n) || img === n.split('/').pop()))
   for (const rule of RULES) {
@@ -251,7 +252,12 @@ export function residentsFrom(s: Signals, primary: string | null): Resident[] {
     else found.set('coder', primary ?? 'Code')
   }
 
-  return [...found].map(([role, tech]) => ({ role, tech, color: COLOR[tech] ?? colorFor(tech) }))
+  // A plain language takes GitHub's colour for it, the same dot the repo page shows.
+  return [...found].map(([role, tech]) => ({
+    role,
+    tech,
+    color: COLOR[tech] ?? (tech === primary && primaryColor ? primaryColor : colorFor(tech)),
+  }))
 }
 
 /** A stable pastel for technologies without a brand colour (plain languages, mostly). */
@@ -281,7 +287,7 @@ export function analyze(repo: RawRepo): Apartment {
     createdAt: repo.createdAt,
     pushedAt: repo.pushedAt,
     language: { name: primary ?? '—', color: repo.primaryLanguage?.color ?? '#9aa3b5' },
-    residents: residentsFrom(signals(repo), primary),
+    residents: residentsFrom(signals(repo), primary, repo.primaryLanguage?.color ?? null),
     status: statusOf(repo),
   }
 }

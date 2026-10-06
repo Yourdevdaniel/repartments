@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useBuilding, type BuildingState } from './data/building'
 import { demoFlats, demoOwner } from './scene/demo'
 import { Stage, type View } from './scene/Stage'
 import type { Caption } from './scene/story'
 import type { FlatData } from './scene/types'
 import { WEATHERS, type Weather } from './scene/weather'
 import { Backdrop } from './ui/Backdrop'
-import { copy, roles, type Lang } from './ui/roles'
+import { copy, doesFor, roles, type Lang } from './ui/roles'
 
 function initialLang(): Lang {
   try {
@@ -33,6 +34,24 @@ const glass =
 
 type CaptionState = { text: Caption | null; step: number; total: number }
 
+/** `/` is the landing page, `/demo` the hand-made demo building, `/<login>` someone's building. */
+type Route = { login: string | null; demo: boolean }
+
+function parseRoute(path: string): Route {
+  const seg = decodeURIComponent(path.replace(/^\/+|\/+$/g, '')).split('/')[0]
+  if (!seg) return { login: null, demo: false }
+  if (seg === 'demo') return { login: null, demo: true }
+  return { login: seg, demo: false }
+}
+
+const EXAMPLES = ['Yourdevdaniel', 'tiangolo', 'gaearon']
+
+const DEMO: BuildingState = {
+  kind: 'ready',
+  owner: { login: demoOwner.login, name: demoOwner.name, avatarUrl: '' },
+  flats: demoFlats,
+}
+
 export default function App() {
   const [lang, setLangState] = useState<Lang>(initialLang)
   const [view, setView] = useState<View>({ mode: 'building', entering: null })
@@ -42,8 +61,32 @@ export default function App() {
   const [hovered, setHovered] = useState<string | null>(null)
   const [caption, setCaption] = useState<CaptionState>({ text: null, step: -1, total: 0 })
   const timers = useRef<number[]>([])
-  const flats = demoFlats
+  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname))
+  const remote = useBuilding(route.login)
+  const landing = !route.login && !route.demo
+  const data: BuildingState | null = route.login ? remote : DEMO
+  const ready = data?.kind === 'ready' ? data : null
+  const flats = ready?.flats ?? []
   const flat = view.mode === 'inside' ? (flats.find((f) => f.id === view.id) ?? null) : null
+
+  const go = useCallback((path: string) => {
+    window.history.pushState(null, '', path)
+    setRoute(parseRoute(path))
+    setView({ mode: 'building', entering: null })
+  }, [])
+
+  useEffect(() => {
+    const onPop = () => {
+      setRoute(parseRoute(window.location.pathname))
+      setView({ mode: 'building', entering: null })
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  useEffect(() => {
+    document.title = route.login ? `@${route.login} · Repartments` : 'Repartments'
+  }, [route.login])
 
   const setLang = (next: Lang) => {
     setLangState(next)
@@ -94,10 +137,10 @@ export default function App() {
   }, [autoWeather])
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && back()
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && view.mode === 'inside' && back()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [back])
+  }, [back, view.mode])
 
   return (
     <div className="relative h-dvh w-full overflow-hidden text-ink">
@@ -110,37 +153,46 @@ export default function App() {
         />
       ))}
       <Backdrop near={flat !== null} weather={weather} />
-      <div className="absolute inset-0">
-        <Stage
-          lang={lang}
-          weather={weather}
-          flats={flats}
-          owner={demoOwner.login}
-          view={view}
-          hovered={hovered}
-          onHover={setHovered}
-          onSelect={select}
-          onBack={back}
-          onCaption={onCaption}
-        />
-      </div>
+      {ready && (
+        <div className={`absolute inset-0 transition-[filter,opacity] duration-700 ${landing ? 'opacity-70 blur-[3px]' : ''}`}>
+          <Stage
+            lang={lang}
+            weather={weather}
+            flats={flats}
+            owner={ready.owner.login}
+            view={view}
+            hovered={hovered}
+            onHover={setHovered}
+            onSelect={select}
+            onBack={back}
+            onCaption={onCaption}
+          />
+        </div>
+      )}
       <div
         aria-hidden="true"
         className={`pointer-events-none absolute inset-0 bg-white/70 backdrop-blur-md transition-opacity duration-200 ${veil ? 'opacity-100' : 'opacity-0'}`}
       />
 
       <header className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4 md:p-6">
-        <div className={`${glass} pointer-events-auto flex items-center gap-3 px-4 py-3`}>
-          <Logo />
-          <div>
-            <h1 className="text-lg leading-tight font-extrabold tracking-[-0.01em]">Repartments</h1>
-            <p className="text-sm leading-tight text-ink-soft">{copy.tagline[lang]}</p>
-          </div>
+        <div className="pointer-events-auto flex items-center gap-2">
+          <a
+            href="/"
+            onClick={(e) => {
+              e.preventDefault()
+              go('/')
+            }}
+            className={`${glass} flex items-center gap-3 px-4 py-3`}
+          >
+            <Logo />
+            <span>
+              <span className="block text-lg leading-tight font-extrabold tracking-[-0.01em]">Repartments</span>
+              <span className="block text-sm leading-tight text-ink-soft">{copy.tagline[lang]}</span>
+            </span>
+          </a>
+          {!landing && <SearchForm lang={lang} onGo={go} compact initial={route.login ?? ''} />}
         </div>
         <div className="pointer-events-auto flex items-center gap-2">
-          <span className={`${glass} hidden px-3 py-2 text-xs font-bold tracking-wide text-accent uppercase sm:block`}>
-            {copy.probe[lang]}
-          </span>
           <div className={`${glass} flex p-1`} role="group" aria-label={copy.weather[lang]}>
             {WEATHERS.map((w) => (
               <button
@@ -189,6 +241,10 @@ export default function App() {
         </div>
       </header>
 
+      {landing && <Landing lang={lang} onGo={go} />}
+      {data && data.kind !== 'ready' && <Status state={data} login={route.login ?? ''} lang={lang} onGo={go} />}
+
+      {ready && !landing && (
       <aside className={`${glass} absolute top-24 right-4 hidden max-h-[calc(100dvh-8rem)] w-[20rem] overflow-y-auto p-4 md:right-6 lg:block`}>
         {flat ? (
           <>
@@ -202,6 +258,17 @@ export default function App() {
             <p className="text-xs font-bold tracking-wide text-ink-soft uppercase">{flat.repo}</p>
             <p className="mt-1 text-sm leading-snug text-ink-soft">{flat.intro[lang]}</p>
             <StatusChips flat={flat} lang={lang} />
+            {flat.url && (
+              <a
+                href={flat.url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-full bg-ink px-3 text-xs font-extrabold text-white transition-transform active:scale-[0.97]"
+              >
+                {copy.onGitHub[lang]} <span aria-hidden="true">↗</span>
+                {flat.stars ? <span className="ml-1 opacity-80">★ {flat.stars}</span> : null}
+              </a>
+            )}
             <h2 className="mt-4 text-base font-extrabold">{copy.cast[lang]}</h2>
             <ul className="mt-3 grid gap-2.5">
               {flat.cast.map((c) => (
@@ -211,7 +278,7 @@ export default function App() {
                     <p className="text-sm leading-tight font-bold">
                       {c.tech} <span className="font-semibold text-ink-soft">· {roles[c.role].name[lang]}</span>
                     </p>
-                    <p className="text-[13px] leading-snug text-ink-soft">{roles[c.role].does[lang]}</p>
+                    <p className="text-[13px] leading-snug text-ink-soft">{doesFor(c.role, c.tech)[lang]}</p>
                   </div>
                 </li>
               ))}
@@ -220,8 +287,14 @@ export default function App() {
           </>
         ) : (
           <>
-            <p className="text-xs font-bold tracking-wide text-ink-soft uppercase">@{demoOwner.login}</p>
-            <h2 className="mt-1 text-base font-extrabold">{copy.residents(flats.length)[lang]}</h2>
+            <div className="flex items-center gap-2.5">
+              {ready.owner.avatarUrl && <img src={ready.owner.avatarUrl} alt="" className="size-9 rounded-full ring-2 ring-white" />}
+              <div className="min-w-0">
+                <p className="truncate text-xs font-bold tracking-wide text-ink-soft uppercase">@{ready.owner.login}</p>
+                <h2 className="text-base font-extrabold">{copy.residents(flats.length)[lang]}</h2>
+              </div>
+            </div>
+            {route.demo && <p className="mt-2 text-xs font-semibold text-accent">{copy.demoNote[lang]}</p>}
             <ul className="mt-3 grid gap-2">
               {flats.map((f, i) => ({ f, i })).reverse().map(({ f, i }) => (
                 <li key={f.id}>
@@ -253,9 +326,10 @@ export default function App() {
           </>
         )}
       </aside>
+      )}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-4 md:p-6">
-        {flat ? (
+        {landing || !ready ? null : flat ? (
           <LoopStrip
             steps={flat.stories[flat.narrator]?.captions.map((c) => c.caption) ?? []}
             current={caption.step}
@@ -266,6 +340,112 @@ export default function App() {
           <div className={`${glass} px-4 py-2.5 text-sm font-bold text-ink-soft`}>{copy.hint[lang]}</div>
         )}
         <p className="text-[11px] font-semibold text-ink-soft/80">{copy.credits[lang]}</p>
+      </div>
+    </div>
+  )
+}
+
+/** A GitHub username field: big on the landing page, compact in the header. */
+function SearchForm({ lang, onGo, compact = false, initial = '' }: { lang: Lang; onGo: (path: string) => void; compact?: boolean; initial?: string }) {
+  const [value, setValue] = useState(initial)
+  useEffect(() => setValue(initial), [initial])
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    const login = value.trim().replace(/^@/, '').replace(/^https?:\/\/github\.com\//, '').split('/')[0]
+    if (login) onGo(`/${login}`)
+  }
+  return (
+    <form onSubmit={submit} className={compact ? `${glass} hidden items-center gap-1 p-1 pl-3 md:flex` : 'flex w-full items-center gap-2'} role="search">
+      <span className={`font-extrabold text-ink-soft ${compact ? 'text-sm' : 'text-lg'}`} aria-hidden="true">
+        @
+      </span>
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder={copy.placeholder[lang]}
+        aria-label={copy.placeholder[lang]}
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        className={`min-w-0 flex-1 bg-transparent font-bold outline-none placeholder:text-ink-soft/60 ${compact ? 'w-36 text-sm' : 'text-lg'}`}
+      />
+      <button
+        type="submit"
+        className={`shrink-0 rounded-full bg-ink font-extrabold text-white transition-transform active:scale-[0.97] ${compact ? 'h-8 px-3 text-xs' : 'h-11 px-5 text-sm'}`}
+      >
+        {compact ? '→' : copy.build[lang]}
+      </button>
+    </form>
+  )
+}
+
+/** The front door: what this is, a field for a username, and a few buildings to peek at. */
+function Landing({ lang, onGo }: { lang: Lang; onGo: (path: string) => void }) {
+  return (
+    <div className="absolute inset-0 grid place-items-center p-4">
+      <div className={`${glass} w-[min(30rem,100%)] p-6 text-center md:p-8`}>
+        <p className="text-4xl" aria-hidden="true">
+          🏢
+        </p>
+        <h1 className="mt-3 text-2xl leading-tight font-extrabold tracking-[-0.02em] md:text-3xl">{copy.landingTitle[lang]}</h1>
+        <p className="mt-2 text-[15px] leading-snug text-ink-soft">{copy.landingLead[lang]}</p>
+        <div className="mt-5 rounded-full bg-white px-4 py-2 shadow-[0_8px_24px_-14px_rgba(40,52,110,0.5)]">
+          <SearchForm lang={lang} onGo={onGo} />
+        </div>
+        <p className="mt-4 text-xs font-bold text-ink-soft">{copy.examples[lang]}</p>
+        <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+          {EXAMPLES.map((login) => (
+            <button
+              key={login}
+              type="button"
+              onClick={() => onGo(`/${login}`)}
+              className="rounded-full bg-white/80 px-3 py-1.5 text-xs font-extrabold transition-colors hover:bg-white"
+            >
+              @{login}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => onGo('/demo')}
+            className="rounded-full bg-accent/10 px-3 py-1.5 text-xs font-extrabold text-accent transition-colors hover:bg-accent/20"
+          >
+            {copy.demo[lang]}
+          </button>
+        </div>
+        <p className="mt-5 text-[11px] leading-snug text-ink-soft">{copy.note[lang]}</p>
+      </div>
+    </div>
+  )
+}
+
+/** While the building goes up, or when it can't. */
+function Status({ state, login, lang, onGo }: { state: BuildingState; login: string; lang: Lang; onGo: (path: string) => void }) {
+  return (
+    <div className="absolute inset-0 grid place-items-center p-4">
+      <div className={`${glass} w-[min(26rem,100%)] p-6 text-center`}>
+        {state.kind === 'loading' ? (
+          <>
+            <p className="animate-bounce text-4xl" aria-hidden="true">
+              🏗️
+            </p>
+            <p className="mt-3 text-lg font-extrabold" aria-live="polite">
+              {copy.loading(login)[lang]}
+            </p>
+            <p className="mt-1 text-sm text-ink-soft">{copy.loadingLead[lang]}</p>
+          </>
+        ) : state.kind === 'error' ? (
+          <>
+            <p className="text-4xl" aria-hidden="true">
+              {state.error === 'not-found' ? '🔎' : state.error === 'no-repos' ? '🏚️' : '😵'}
+            </p>
+            <p className="mt-3 text-lg font-extrabold" role="alert">
+              {copy.errors[state.error](login)[lang]}
+            </p>
+            <div className="mt-4 rounded-full bg-white px-4 py-2">
+              <SearchForm lang={lang} onGo={onGo} />
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   )

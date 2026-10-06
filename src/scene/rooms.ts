@@ -324,6 +324,8 @@ export type FlatSpec = {
   intro: Caption
   residents: ResidentSpec[]
   status?: FlatStatus
+  url?: string
+  stars?: number
 }
 
 /** What each role does when there's nothing for them to do. */
@@ -387,9 +389,11 @@ export function buildFlat(spec: FlatSpec): FlatData {
     return add3(p.template.points![name], p.x0)
   }
 
+  // The workshop is whatever builds and ships the app: Docker, or a CI robot when there's no Docker.
+  const devopsTech = byRole.get('devops')?.tech
   const rooms: Room[] = placed.map(({ template: t, x0 }) => ({
     id: t.kind,
-    label: t.label,
+    label: t.kind === 'workshop' && devopsTech ? { en: devopsTech, pt: devopsTech } : t.label,
     x0,
     x1: x0 + t.width,
     wall: t.wall,
@@ -447,7 +451,7 @@ export function buildFlat(spec: FlatSpec): FlatData {
     id: spec.id,
     repo: spec.repo,
     language: spec.language,
-    docker: has('devops'),
+    docker: byRole.get('devops')?.tech === 'Docker',
     layout,
     cast,
     stories,
@@ -455,6 +459,8 @@ export function buildFlat(spec: FlatSpec): FlatData {
     intro: spec.intro,
     visitors: visitors.filter((v) => stories[v.story]?.tracks[v.id]),
     status,
+    url: spec.url,
+    stars: spec.stars,
   }
 
   /**
@@ -791,8 +797,15 @@ export function buildFlat(spec: FlatSpec): FlatData {
         const home = spot('workshop', 'home')
         return one(home, [
           {
-            caption: { en: `${r.tech} packs the app into containers`, pt: `O ${r.tech} empacota o app em contêineres`, icon: '🐳' },
-            say: { devops: { icon: '🐳', text: { en: 'packing', pt: 'empacotando' } } },
+            ...(r.tech === 'Docker'
+              ? {
+                  caption: { en: `${r.tech} packs the app into containers`, pt: `O ${r.tech} empacota o app em contêineres`, icon: '🐳' },
+                  say: { devops: { icon: '🐳', text: { en: 'packing', pt: 'empacotando' } } },
+                }
+              : {
+                  caption: { en: `${r.tech} runs the checks on every push`, pt: `O ${r.tech} roda as verificações a cada push`, icon: '🤖' },
+                  say: { devops: { icon: '🤖', text: { en: 'running CI', pt: 'rodando o CI' } } },
+                }),
             dur: 2.4,
             acts: { devops: { anim: 'interact-right', face: spot('workshop', 'pack') } },
           },

@@ -47,9 +47,34 @@ export const roles: Record<Role, { name: L; does: L }> = {
   },
 }
 
+/** What a resident does, when it depends on the technology and not just the role. */
+export function doesFor(role: Role, tech: string): L {
+  if (role === 'devops' && tech !== 'Docker') return { en: 'Runs the checks on every push', pt: 'Roda as verificações a cada push' }
+  return roles[role].does
+}
+
 export const copy = {
   tagline: { en: 'Your repos, as a tiny apartment building', pt: 'Seus repositórios num predinho' },
-  probe: { en: 'Look probe', pt: 'Teste de visual' },
+  landingTitle: { en: 'Your GitHub, as a tiny building', pt: 'Seu GitHub vira um predinho' },
+  landingLead: {
+    en: 'Every repo is a flat, every technology a resident. Step inside to watch how the pieces work together.',
+    pt: 'Cada repositório é um apartamento, cada tecnologia um morador. Entre para ver como as partes trabalham juntas.',
+  },
+  placeholder: { en: 'GitHub username', pt: 'usuário do GitHub' },
+  build: { en: 'Build it', pt: 'Construir' },
+  examples: { en: 'Or peek at:', pt: 'Ou dê uma olhada em:' },
+  demo: { en: 'demo building', pt: 'prédio de exemplo' },
+  demoNote: { en: 'Demo: stacks and statuses typed in by hand.', pt: 'Exemplo: stacks e estados digitados à mão.' },
+  onGitHub: { en: 'See on GitHub', pt: 'Ver no GitHub' },
+  loading: (login: string): L => ({ en: `Building @${login}'s place…`, pt: `Construindo o prédio de @${login}…` }),
+  loadingLead: { en: 'Reading the public repos, one floor at a time.', pt: 'Lendo os repositórios públicos, um andar por vez.' },
+  errors: {
+    'invalid-user': (): L => ({ en: "That doesn't look like a GitHub username.", pt: 'Isso não parece um usuário do GitHub.' }),
+    'not-found': (login: string): L => ({ en: `No one called @${login} on GitHub.`, pt: `Ninguém chamado @${login} no GitHub.` }),
+    'no-repos': (login: string): L => ({ en: `@${login} has no public repos yet: an empty lot.`, pt: `@${login} ainda não tem repositórios públicos: terreno vazio.` }),
+    'rate-limited': (): L => ({ en: 'GitHub asked us to slow down. Try again in a minute.', pt: 'O GitHub pediu para irmos devagar. Tente de novo em um minuto.' }),
+    unavailable: (): L => ({ en: "Couldn't reach GitHub right now.", pt: 'Não deu para falar com o GitHub agora.' }),
+  } as Record<string, (login: string) => L>,
   cast: { en: 'Who lives here', pt: 'Quem mora aqui' },
   back: { en: 'Back to the building', pt: 'Voltar para o prédio' },
   hint: { en: 'Click a flat to step inside', pt: 'Clique num apartamento para entrar' },

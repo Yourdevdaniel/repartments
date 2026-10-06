@@ -53,6 +53,8 @@ export type FlatData = {
   /** People who drop by but don't live here (someone bringing a pull request). */
   visitors: CastMember[]
   status: FlatStatus
+  url?: string
+  stars?: number
 }
 
 /** Public facts about the repo that change what happens in the flat. */
