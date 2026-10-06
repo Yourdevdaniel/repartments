@@ -329,6 +329,8 @@ export type FlatSpec = {
   status?: FlatStatus
   url?: string
   stars?: number
+  /** The repos' owner, who drops in as the síndico now and then. */
+  owner?: string
 }
 
 /** What each role does when there's nothing for them to do. */
@@ -343,6 +345,15 @@ const HOBBY: Partial<Record<Role, Hobby>> = {
 
 /** Whoever brings a pull request: a character no resident uses. */
 const VISITOR_MODEL = 'character-female-d'
+
+/** Characters the síndico can be; the owner's name picks one, so it's always the same person. */
+const MANAGER_MODELS = ['character-female-e', 'character-male-e', 'character-female-b', 'character-male-c']
+
+export function managerModel(owner: string) {
+  let h = 0
+  for (const ch of owner.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return MANAGER_MODELS[h % MANAGER_MODELS.length]
+}
 
 type Placed = { template: Template; x0: number }
 
@@ -447,6 +458,19 @@ export function buildFlat(spec: FlatSpec): FlatData {
 
   for (const v of visitors) v.story = stories.main ? 'main' : 'coder'
 
+  if (spec.owner) {
+    stories.manager = managerVisit()
+    visitors.push({
+      id: 'manager',
+      tech: `@${spec.owner}`,
+      title: { en: 'Manager', pt: 'Síndico' },
+      role: 'coder',
+      model: managerModel(spec.owner),
+      color: '#2f8fe6',
+      story: 'manager',
+    })
+  }
+
   // An empty flat (no code in the repo yet) still gets a story, one where nothing happens.
   if (!cast.length) stories.main = compile({}, [])
   // Narrate the request loop if there is one, else whoever has the most to show.
@@ -466,6 +490,38 @@ export function buildFlat(spec: FlatSpec): FlatData {
     status,
     url: spec.url,
     stars: spec.stars,
+  }
+
+  /**
+   * The síndico (the repos' owner) drops in now and then: comes through the front door, looks the
+   * flat over from one end to the other, gives a thumbs up and leaves the way they came. An empty
+   * flat gets a for-rent sign instead of a nod to the residents.
+   */
+  function managerVisit(): Story {
+    const door = entrance()
+    const inside: Vec2 = [Math.max(door[0], 0.6), LANE]
+    const middle: Vec2 = [layout.width / 2, LANE]
+    const far: Vec2 = [layout.width - 0.6, LANE]
+    const hidden = (on: boolean) => ({ 'manager:hidden': on })
+    const verdict = cast.length
+      ? { icon: '📋', text: { en: 'all in order', pt: 'tudo em ordem' } }
+      : { icon: '🔑', text: { en: 'for rent', pt: 'para alugar' } }
+    return compile({ manager: { at: door, yaw: 0 } }, [
+      { dur: 6, flags: hidden(true), acts: { manager: { anim: 'idle' } } },
+      {
+        dur: 1.2,
+        flags: hidden(false),
+        say: { manager: { icon: '✨', text: { en: 'surprise visit', pt: 'visita surpresa' } } },
+        acts: { manager: { anim: 'emote-yes', face: inside } },
+      },
+      { acts: { manager: { path: [inside, middle] } } },
+      { dur: 2.4, say: { manager: { icon: '🧐', text: { en: 'inspecting', pt: 'vistoriando' } } }, acts: { manager: { anim: 'idle', face: [middle[0], -1] } } },
+      { acts: { manager: { walk: far } } },
+      { dur: 2.2, say: { manager: verdict }, acts: { manager: { anim: 'interact-right', face: [far[0], -1] } } },
+      { dur: 1, say: { manager: { icon: '👍' } }, acts: { manager: { anim: 'emote-yes', face: [far[0], 2] } } },
+      { acts: { manager: { path: [middle, inside, door] } } },
+      { dur: 14, flags: hidden(true), acts: { manager: { anim: 'idle' } } },
+    ])
   }
 
   /**

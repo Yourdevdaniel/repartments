@@ -20,6 +20,8 @@ export type Room = {
 export type CastMember = {
   id: string
   tech: string
+  /** Said before the name on the tag, for someone who isn't a technology ("Síndico @octocat"). */
+  title?: { en: string; pt: string }
   role: Role
   /** Kenney Mini Characters file name, without extension. */
   model: string

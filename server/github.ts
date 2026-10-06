@@ -29,24 +29,29 @@ const files = ALL.map((p) => `${alias(p)}: object(expression: "HEAD:${p}") { ...
  * What each try asks for. GitHub gives up after about ten seconds (a 502 page instead of JSON), and
  * accounts with huge repos and thousands of pull requests hit that, so each retry asks for less: half
  * the floors, then also no pull requests or checks (the building goes up without those details).
+ * The first building has up to 12 floors; the next ones, further down the street, have 6.
  */
-const TRIES = [
+const FIRST: Try[] = [
   { count: 12, details: true },
   { count: 6, details: true },
   { count: 6, details: false },
 ]
+const NEXT: Try[] = FIRST.slice(1)
+type Try = { count: number; details: boolean }
 
 const DETAILS = `openPrs: pullRequests(states: OPEN) { totalCount }
         prs: pullRequests(states: OPEN, first: 5, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { mergeable } }
         defaultBranchRef { target { ... on Commit { statusCheckRollup { state } } } }`
 
-const query = ({ count, details }: (typeof TRIES)[number]) => `query Building($login: String!) {
+const query = ({ count, details }: Try) => `query Building($login: String!, $after: String) {
   repositoryOwner(login: $login) {
     login
     avatarUrl
     ... on User { name }
     ... on Organization { name }
-    repositories(first: ${count}, privacy: PUBLIC, isFork: false, orderBy: { field: PUSHED_AT, direction: DESC }) {
+    repositories(first: ${count}, after: $after, privacy: PUBLIC, isFork: false, orderBy: { field: PUSHED_AT, direction: DESC }) {
+      totalCount
+      pageInfo { hasNextPage endCursor }
       nodes {
         name
         description
@@ -89,7 +94,7 @@ export type RawOwner = {
   login: string
   avatarUrl: string
   name?: string | null
-  repositories: { nodes: RawRepo[] }
+  repositories: { totalCount: number; pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: RawRepo[] }
 }
 
 export class GitHubError extends Error {
@@ -102,7 +107,9 @@ export type Fetcher = (url: string, init: RequestInit) => Promise<Response>
 
 type GraphQLAnswer = { data?: { repositoryOwner: RawOwner | null }; errors?: { type?: string; message: string }[] }
 
-export async function fetchOwner(login: string, token: string, fetcher: Fetcher = fetch, attempt = 0): Promise<RawOwner> {
+/** One owner's repos, from the start or from `after` (the cursor where the previous building ended). */
+export async function fetchOwner(login: string, token: string, fetcher: Fetcher = fetch, after: string | null = null, attempt = 0): Promise<RawOwner> {
+  const tries = after ? NEXT : FIRST
   let res: Response
   let json: GraphQLAnswer
   try {
@@ -113,7 +120,7 @@ export async function fetchOwner(login: string, token: string, fetcher: Fetcher 
         'Content-Type': 'application/json',
         'User-Agent': 'repartments',
       },
-      body: JSON.stringify({ query: query(TRIES[attempt]), variables: { login } }),
+      body: JSON.stringify({ query: query(tries[attempt]), variables: { login, after } }),
     })
     if (res.status === 401) throw new GitHubError('unavailable', 'GitHub rejected the server token')
     if (res.status === 403 || res.status === 429) throw new GitHubError('rate-limited', 'GitHub rate limit')
@@ -121,9 +128,9 @@ export async function fetchOwner(login: string, token: string, fetcher: Fetcher 
     json = (await res.json()) as GraphQLAnswer
   } catch (err) {
     const retryable = !(err instanceof GitHubError) || (err.kind === 'unavailable' && !err.message.includes('token'))
-    if (retryable && attempt + 1 < TRIES.length) {
+    if (retryable && attempt + 1 < tries.length) {
       await new Promise((r) => setTimeout(r, 700))
-      return fetchOwner(login, token, fetcher, attempt + 1)
+      return fetchOwner(login, token, fetcher, after, attempt + 1)
     }
     throw err instanceof GitHubError ? err : new GitHubError('unavailable', String(err))
   }

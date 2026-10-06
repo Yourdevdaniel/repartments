@@ -130,4 +130,4 @@ const specs: FlatSpec[] = [
   },
 ]
 
-export const demoFlats: FlatData[] = specs.map(buildFlat)
+export const demoFlats: FlatData[] = specs.map((spec) => buildFlat({ ...spec, owner: demoOwner.login }))

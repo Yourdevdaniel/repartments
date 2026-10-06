@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildFlat, planRooms, type FlatSpec } from './rooms'
-import { sample } from './story'
+import { flagAt, sample } from './story'
 
 const spec = (residents: FlatSpec['residents']): FlatSpec => ({
   id: 'x',
@@ -65,6 +65,29 @@ describe('buildFlat', () => {
   it('serves an API with no front end by sending the answer out', () => {
     const flat = buildFlat(spec([{ tech: 'FastAPI', role: 'backend', color: '#009688' }]))
     expect(flat.stories.main.captions.map((c) => c.caption.en)).toContain('FastAPI sends the answer out')
+  })
+
+  it('lets the síndico drop in, look the flat over and leave', () => {
+    const flat = buildFlat({ ...spec([{ tech: 'Python', role: 'coder', color: '#3572a5' }]), owner: 'octocat' })
+    const manager = flat.visitors.find((v) => v.id === 'manager')!
+    expect(manager.tech).toBe('@octocat')
+    const story = flat.stories[manager.story]
+    const lines = (story.bubbles.manager ?? []).map((b) => b.bubble.icon)
+    expect(lines).toEqual(expect.arrayContaining(['🧐', '📋']))
+    // Out of sight at the start and the end of every visit, inside the flat while there.
+    expect(flagAt(story, 'manager:hidden', 0)).toBe(true)
+    expect(flagAt(story, 'manager:hidden', story.duration - 0.01)).toBe(true)
+    for (let t = 0; t < story.duration; t += 0.25) {
+      const p = sample(story, 'manager', t)
+      expect(p.x).toBeGreaterThan(0)
+      expect(p.x).toBeLessThan(flat.layout.width)
+    }
+  })
+
+  it('sends the síndico round an empty flat too, with a for-rent sign', () => {
+    const flat = buildFlat({ ...spec([]), owner: 'octocat' })
+    const story = flat.stories.manager
+    expect(story.bubbles.manager.map((b) => b.bubble.icon)).toContain('🔑')
   })
 
   it('furnishes an empty flat that nobody lives in', () => {

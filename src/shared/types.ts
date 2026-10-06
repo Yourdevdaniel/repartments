@@ -43,6 +43,11 @@ export type Building = {
   owner: { login: string; name: string | null; avatarUrl: string }
   /** Ground floor first: the oldest repo at the bottom, each new one a new block on top. */
   apartments: Apartment[]
+  /** Where the next building down the street starts, when the owner has more repos than this one holds. */
+  next: string | null
+  /** Public repos (forks aside) the owner has, and how many this building looked at. */
+  total: number
+  fetched: number
 }
 
 export type BuildingError = { error: 'invalid-user' | 'not-found' | 'no-repos' | 'rate-limited' | 'unavailable' }

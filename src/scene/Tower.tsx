@@ -3,6 +3,7 @@ import { useLayoutEffect, useMemo, useRef } from 'react'
 import { CanvasTexture, Color, type InstancedMesh, type MeshStandardMaterial, Object3D, PlaneGeometry, SRGBColorSpace } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useSceneLang } from './lang'
+import type { Neighborhood } from './lot'
 import { Boxes, type BoxSpec } from './merge'
 import type { Vec3 } from './story'
 import type { FlatData } from './types'
@@ -119,7 +120,8 @@ function Sign({ flat, at, lit }: { flat: FlatData; at: Vec3; lit: boolean }) {
  * plain data. They're merged into one mesh per colour, so the whole building costs a handful of draw
  * calls instead of the ~1,800 it took when each box was its own mesh.
  */
-function towerBoxes(flats: FlatData[]): { lit: BoxSpec[]; unlit: BoxSpec[] } {
+function towerBoxes(flats: FlatData[], palette: number): { lit: BoxSpec[]; unlit: BoxSpec[] } {
+  const roof = FACADES[palette % FACADES.length]
   const W = TOWER.width
   const D = TOWER.depth
   const height = towerHeight(flats.length)
@@ -129,7 +131,7 @@ function towerBoxes(flats: FlatData[]): { lit: BoxSpec[]; unlit: BoxSpec[] } {
 
   flats.forEach((flat, i) => {
     const y = floorBase(i)
-    const facade = FACADES[i % FACADES.length]
+    const facade = FACADES[(i + palette) % FACADES.length]
     add([W + 0.1, SLAB, D + 0.1], [W / 2, y + SLAB / 2, 0], TRIM)
     // The room behind the glass: a floor, a warm unlit back wall and a light strip.
     add([W, 0.02, FRONT + 0.4], [W / 2, y + SLAB + 0.01, (FRONT - 0.4) / 2], '#e6d6bf')
@@ -192,10 +194,10 @@ function towerBoxes(flats: FlatData[]): { lit: BoxSpec[]; unlit: BoxSpec[] } {
   const ry = height
   const parapet = 0.22
   add([W + 0.14, SLAB, D + 0.14], [W / 2, ry + SLAB / 2, 0], TRIM)
-  add([W + 0.14, parapet, 0.08], [W / 2, ry + SLAB + parapet / 2, D / 2 + 0.03], FACADES[0])
-  add([W + 0.14, parapet, 0.08], [W / 2, ry + SLAB + parapet / 2, -D / 2 - 0.03], FACADES[0])
-  add([0.08, parapet, D + 0.14], [-0.03, ry + SLAB + parapet / 2, 0], FACADES[0])
-  add([0.08, parapet, D + 0.14], [W + 0.03, ry + SLAB + parapet / 2, 0], FACADES[0])
+  add([W + 0.14, parapet, 0.08], [W / 2, ry + SLAB + parapet / 2, D / 2 + 0.03], roof)
+  add([W + 0.14, parapet, 0.08], [W / 2, ry + SLAB + parapet / 2, -D / 2 - 0.03], roof)
+  add([0.08, parapet, D + 0.14], [-0.03, ry + SLAB + parapet / 2, 0], roof)
+  add([0.08, parapet, D + 0.14], [W + 0.03, ry + SLAB + parapet / 2, 0], roof)
   for (const [x, z] of [
     [-0.18, -0.18],
     [0.18, -0.18],
@@ -375,9 +377,11 @@ function Floor({
 }
 
 /** The lobby's pieces that aren't plain boxes: glass door, awning, the owner's sign, window panes. */
-function LobbyDetails({ owner }: { owner: string }) {
+function LobbyDetails({ owner, block, awning }: { owner: string; block: string | null; awning: string }) {
   const W = TOWER.width
   const H = TOWER.lobby
+  const sceneLang = useSceneLang()
+  const name = block ? `${owner} · ${{ en: 'Block', pt: 'Bloco' }[sceneLang]} ${block}` : owner
   const sign = useMemo(
     () =>
       texture(
@@ -390,12 +394,12 @@ function LobbyDetails({ owner }: { owner: string }) {
           g.font = `800 64px ${FONT}`
           g.textAlign = 'center'
           g.textBaseline = 'middle'
-          g.fillText(owner, 360, 64)
+          g.fillText(name, 360, 64, 680)
         },
         720,
         120,
       ),
-    [owner],
+    [name],
   )
   const door = { w: 0.8, h: 0.85 }
   return (
@@ -406,7 +410,7 @@ function LobbyDetails({ owner }: { owner: string }) {
       </mesh>
       <mesh position={[W / 2, door.h + 0.08, FRONT + 0.2]} rotation={[0.35, 0, 0]} castShadow>
         <boxGeometry args={[door.w + 0.36, 0.035, 0.42]} />
-        <meshStandardMaterial color="#3f9c8f" roughness={0.7} />
+        <meshStandardMaterial color={awning} roughness={0.7} />
       </mesh>
       <mesh position={[W / 2, H - 0.14, FRONT + 0.07]}>
         <planeGeometry args={[1.5, 0.25]} />
@@ -446,20 +450,21 @@ function RoofDetails({ y }: { y: number }) {
 type Props = {
   flats: FlatData[]
   owner: string
+  hood: Neighborhood
   hovered: string | null
   onHover: (id: string | null) => void
   onSelect: (id: string) => void
 }
 
-export function Tower({ flats, owner, hovered, onHover, onSelect }: Props) {
+export function Tower({ flats, owner, hood, hovered, onHover, onSelect }: Props) {
   const height = towerHeight(flats.length)
-  const boxes = useMemo(() => towerBoxes(flats), [flats])
+  const boxes = useMemo(() => towerBoxes(flats, hood.palette), [flats, hood.palette])
   return (
     <group position={[-TOWER.width / 2, 0, 0]}>
       <Boxes boxes={boxes.lit} cast />
       <Boxes boxes={boxes.unlit} unlit />
       <TowerPeople flats={flats} />
-      <LobbyDetails owner={owner} />
+      <LobbyDetails owner={owner} block={hood.block} awning={hood.awning} />
       {flats.map((flat, i) => (
         <Floor key={flat.id} flat={flat} index={i} hovered={hovered === flat.id} onHover={onHover} onSelect={onSelect} />
       ))}
