@@ -33,6 +33,9 @@ const WEATHER_SECONDS = 22
 // the page. A more opaque white reads just as well.
 const glass = 'rounded-[22px] border border-white/80 bg-white/[0.86] shadow-[0_18px_50px_-22px_rgba(40,52,110,0.45)]'
 
+/** Phones and tablets get "tap" and "pinch" in the hint instead of "click" and "scroll". */
+const TOUCH = window.matchMedia('(pointer: coarse)').matches
+
 type CaptionState = { text: Caption | null; step: number; total: number }
 
 /** `/` is the landing page, `/demo` the hand-made demo building, `/<login>` someone's building. */
@@ -61,6 +64,8 @@ export default function App() {
   const [veil, setVeil] = useState(false)
   const [hovered, setHovered] = useState<string | null>(null)
   const [caption, setCaption] = useState<CaptionState>({ text: null, step: -1, total: 0 })
+  const [moved, setMoved] = useState(false)
+  const [recenter, setRecenter] = useState(0)
   const timers = useRef<number[]>([])
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname))
   const remote = useBuilding(route.login)
@@ -167,6 +172,8 @@ export default function App() {
             onSelect={select}
             onBack={back}
             onCaption={onCaption}
+            recenter={recenter}
+            onMoved={setMoved}
           />
         </div>
       )}
@@ -175,7 +182,8 @@ export default function App() {
         className={`pointer-events-none absolute inset-0 bg-white/80 transition-opacity duration-200 ${veil ? 'opacity-100' : 'opacity-0'}`}
       />
 
-      <header className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4 md:p-6">
+      {/* On a phone the weather and language toggles drop to a second row instead of running off screen. */}
+      <header className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-2 p-4 md:gap-3 md:p-6">
         <div className="pointer-events-auto flex items-center gap-2">
           <a
             href="/"
@@ -193,7 +201,7 @@ export default function App() {
           </a>
           {!landing && <SearchForm lang={lang} onGo={go} compact initial={route.login ?? ''} />}
         </div>
-        <div className="pointer-events-auto flex items-center gap-2">
+        <div className="pointer-events-auto ml-auto flex items-center gap-2">
           <div className={`${glass} flex p-1`} role="group" aria-label={copy.weather[lang]}>
             {WEATHERS.map((w) => (
               <button
@@ -330,6 +338,15 @@ export default function App() {
       )}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-4 md:p-6">
+        {flat && (
+          <button
+            type="button"
+            onClick={back}
+            className={`${glass} pointer-events-auto inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-extrabold text-ink lg:hidden`}
+          >
+            <span aria-hidden="true">←</span> {copy.back[lang]}
+          </button>
+        )}
         {landing || !ready ? null : flat ? (
           <LoopStrip
             steps={flat.stories[flat.narrator]?.captions.map((c) => c.caption) ?? []}
@@ -338,7 +355,18 @@ export default function App() {
             loopLabel={copy.loop[lang]}
           />
         ) : (
-          <div className={`${glass} px-4 py-2.5 text-sm font-bold text-ink-soft`}>{copy.hint[lang]}</div>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <div className={`${glass} px-4 py-2.5 text-center text-sm font-bold text-ink-soft`}>{(TOUCH ? copy.hintTouch : copy.hint)[lang]}</div>
+            {moved && (
+              <button
+                type="button"
+                onClick={() => setRecenter((n) => n + 1)}
+                className={`${glass} pointer-events-auto px-4 py-2.5 text-sm font-extrabold text-ink transition-colors hover:bg-white`}
+              >
+                {copy.recenter[lang]}
+              </button>
+            )}
+          </div>
         )}
         <Credits lang={lang} />
       </div>

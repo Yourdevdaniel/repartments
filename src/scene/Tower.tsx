@@ -153,9 +153,14 @@ function towerBoxes(flats: FlatData[]): { lit: BoxSpec[]; unlit: BoxSpec[] } {
       add([WINDOW_W + 0.3, 0.035, 0.035], [bx, by + 0.26, bz + 0.18], '#ffffff')
       for (let r = 0; r < 9; r++) add([0.02, 0.26, 0.02], [bx - WINDOW_W / 2 - 0.12 + r * ((WINDOW_W + 0.24) / 8), by + 0.13, bz + 0.18], '#ffffff')
     }
-    // Small window on the side wall the camera sees.
-    add([0.006, 0.42, 0.5], [W + 0.124, y + 0.62, -0.2], TRIM)
-    add([0.006, 0.34, 0.42], [W + 0.128, y + 0.62, -0.2], '#cfe6f7')
+    // A small window on each side wall, for when the visitor turns the tower round.
+    for (const [frame, pane] of [
+      [W + 0.124, W + 0.128],
+      [-0.124, -0.128],
+    ]) {
+      add([0.006, 0.42, 0.5], [frame, y + 0.62, -0.2], TRIM)
+      add([0.006, 0.34, 0.42], [pane, y + 0.62, -0.2], '#cfe6f7')
+    }
   })
 
   // Side and back walls.
