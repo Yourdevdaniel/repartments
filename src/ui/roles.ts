@@ -50,12 +50,20 @@ export const roles: Record<Role, { name: L; does: L }> = {
 export const copy = {
   tagline: { en: 'Your repos, as a tiny apartment building', pt: 'Seus repositórios num predinho' },
   probe: { en: 'Look probe', pt: 'Teste de visual' },
-  flat: { en: 'django-react-app', pt: 'django-react-app' },
   cast: { en: 'Who lives here', pt: 'Quem mora aqui' },
+  back: { en: 'Back to the building', pt: 'Voltar para o prédio' },
+  hint: { en: 'Click a flat to step inside', pt: 'Clique num apartamento para entrar' },
   note: {
     en: 'An illustration of how the pieces talk. It never shows code, routes or data.',
     pt: 'Uma ilustração de como as partes conversam. Nunca mostra código, rotas ou dados.',
   },
-  docker: { en: 'Runs in Docker', pt: 'Roda no Docker' },
   credits: { en: 'Characters and furniture: Kenney (CC0)', pt: 'Personagens e móveis: Kenney (CC0)' },
-} satisfies Record<string, L>
+  residents: (n: number): L => ({
+    en: n === 1 ? '1 apartment' : `${n} apartments`,
+    pt: n === 1 ? '1 apartamento' : `${n} apartamentos`,
+  }),
+  people: (n: number): L => ({
+    en: n === 1 ? '1 resident' : `${n} residents`,
+    pt: n === 1 ? '1 morador' : `${n} moradores`,
+  }),
+}

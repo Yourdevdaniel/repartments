@@ -1,34 +1,39 @@
 import { useGLTF } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
-import { CanvasTexture, SRGBColorSpace, type Group, type Mesh, type MeshBasicMaterial } from 'three'
-import { Container } from './Container'
-import type { CastMember, FlatLayout, Placement } from './probe'
+import { CanvasTexture, Color, SRGBColorSpace, type Group, type Mesh, type MeshBasicMaterial, type MeshStandardMaterial } from 'three'
 import { Resident } from './Resident'
 import { flagAt, propAt, sample, type Story, type Vec3 } from './story'
 import { useStoryTime } from './time'
+import type { CastMember, FlatData, FlatLayout, Placement } from './types'
 
 const WALL = 0.06
 const STUB = 0.28
 
-function Furniture({ model, at, rotY = 0, scale = 1 }: Placement) {
+function Furniture({ model, at, rotY = 0, scale = 1, tint }: Placement) {
   const gltf = useGLTF(`/models/furniture/${model}.glb`)
   const scene = useMemo(() => {
     const copy = gltf.scene.clone(true)
     copy.traverse((o) => {
-      if ((o as Mesh).isMesh) {
-        o.castShadow = true
-        o.receiveShadow = true
+      const mesh = o as Mesh
+      if (!mesh.isMesh) return
+      mesh.castShadow = true
+      mesh.receiveShadow = true
+      if (tint) {
+        // Materials are shared between clones, so tint a copy.
+        const m = (mesh.material as MeshStandardMaterial).clone()
+        m.color = new Color(tint)
+        mesh.material = m
       }
     })
     return copy
-  }, [gltf.scene])
+  }, [gltf.scene, tint])
   return <primitive object={scene} position={at} rotation={[0, rotY, 0]} scale={scale} />
 }
 
-function Box({ size, at, color }: { size: Vec3; at: Vec3; color: string }) {
+export function Box({ size, at, color, cast = true }: { size: Vec3; at: Vec3; color: string; cast?: boolean }) {
   return (
-    <mesh position={at} castShadow receiveShadow>
+    <mesh position={at} castShadow={cast} receiveShadow>
       <boxGeometry args={size} />
       <meshStandardMaterial color={color} roughness={0.92} />
     </mesh>
@@ -36,25 +41,24 @@ function Box({ size, at, color }: { size: Vec3; at: Vec3; color: string }) {
 }
 
 /** Rooms, walls and furniture. The front is left open, dollhouse style. */
-function Shell({ layout }: { layout: FlatLayout }) {
+function Rooms({ layout }: { layout: FlatLayout }) {
   const { depth: D, height: H, door } = layout
   const back = -D / 2
   const front = D / 2
-  const walls: React.ReactNode[] = []
+  const parts: React.ReactNode[] = []
 
   layout.rooms.forEach((room, i) => {
     const w = room.x1 - room.x0
     const cx = (room.x0 + room.x1) / 2
-    walls.push(<Box key={`f${i}`} size={[w, 0.06, D]} at={[cx, -0.03, 0]} color={room.floor} />)
-    walls.push(<Box key={`e${i}`} size={[w, 0.07, 0.03]} at={[cx, -0.035, front + 0.015]} color="#f6efe4" />)
-    walls.push(<Box key={`b${i}`} size={[w, H, WALL]} at={[cx, H / 2, back - WALL / 2]} color={room.wall} />)
+    parts.push(<Box key={`f${i}`} size={[w, 0.04, D]} at={[cx, -0.02, 0]} color={room.floor} cast={false} />)
+    parts.push(<Box key={`b${i}`} size={[w, H, WALL]} at={[cx, H / 2, back - WALL / 2]} color={room.wall} />)
     // Skirting along the back wall: a tiny detail that makes the rooms read as rooms.
-    walls.push(<Box key={`s${i}`} size={[w, 0.05, 0.015]} at={[cx, 0.025, back + 0.008]} color="#ffffff" />)
+    parts.push(<Box key={`s${i}`} size={[w, 0.05, 0.015]} at={[cx, 0.025, back + 0.008]} color="#ffffff" />)
 
     if (i > 0) {
       const x = room.x0
       const color = '#f5f1ea'
-      walls.push(
+      parts.push(
         <Box key={`ib${i}`} size={[WALL, H, door[0] - back]} at={[x, H / 2, (back + door[0]) / 2]} color={color} />,
         // Low stub at the front: keeps the rooms apart without hiding whoever walks through the door.
         <Box key={`if${i}`} size={[WALL, STUB, front - door[1]]} at={[x, STUB / 2, (door[1] + front) / 2]} color={color} />,
@@ -62,14 +66,9 @@ function Shell({ layout }: { layout: FlatLayout }) {
     }
   })
 
-  walls.push(
-    <Box key="left" size={[WALL, H, D + WALL]} at={[-WALL / 2, H / 2, -WALL / 2]} color="#efe9df" />,
-    <Box key="right" size={[WALL, H, D + WALL]} at={[layout.width + WALL / 2, H / 2, -WALL / 2]} color="#efe9df" />,
-  )
-
   return (
     <group>
-      {walls}
+      {parts}
       {layout.rooms.flatMap((room) => room.furniture.map((f, j) => <Furniture key={`${room.id}-${j}`} {...f} />))}
     </group>
   )
@@ -88,8 +87,7 @@ function screenTexture() {
   g.beginPath()
   g.arc(16, 13, 6, 0, Math.PI * 2)
   g.fill()
-  const cards = ['#e9f7fd', '#fdf0e7', '#eef0ff']
-  cards.forEach((color, i) => {
+  ;['#e9f7fd', '#fdf0e7', '#eef0ff'].forEach((color, i) => {
     const x = 14 + i * 92
     g.fillStyle = color
     g.fillRect(x, 40, 80, 70)
@@ -107,7 +105,7 @@ function screenTexture() {
 }
 
 /** The living-room TV: dark until the front end "renders the page". */
-function Screen({ layout, story }: { layout: FlatLayout; story: Story }) {
+function Screen({ tv, story }: { tv: NonNullable<FlatLayout['tv']>; story: Story }) {
   const time = useStoryTime()
   const page = useMemo(screenTexture, [])
   const material = useRef<MeshBasicMaterial>(null)
@@ -117,9 +115,9 @@ function Screen({ layout, story }: { layout: FlatLayout; story: Story }) {
     const target = flagAt(story, 'tv', time.current) ? 1 : 0
     m.opacity += (target - m.opacity) * Math.min(1, delta * (time.paused ? 1000 : 6))
   })
-  const [w, h] = layout.tv.size
+  const [w, h] = tv.size
   return (
-    <group position={layout.tv.at}>
+    <group position={tv.at}>
       <mesh>
         <planeGeometry args={[w, h]} />
         <meshBasicMaterial color="#1d2033" />
@@ -134,7 +132,7 @@ function Screen({ layout, story }: { layout: FlatLayout; story: Story }) {
 
 const CARRY: Vec3 = [0, 0.22, 0.15]
 
-/** A letter or parcel that is handed from resident to resident. */
+/** A letter or parcel handed from resident to resident. */
 function Prop({ id, story, cast }: { id: 'letter' | 'box'; story: Story; cast: CastMember[] }) {
   const time = useStoryTime()
   const ref = useRef<Group>(null)
@@ -159,9 +157,7 @@ function Prop({ id, story, cast }: { id: 'letter' | 'box'; story: Story; cast: C
     g.visible = true
     if (typeof holder === 'string' && residents.has(holder)) {
       const pose = sample(story, holder, time.current)
-      const s = Math.sin(pose.yaw)
-      const c = Math.cos(pose.yaw)
-      g.position.set(pose.x + CARRY[2] * s, CARRY[1], pose.z + CARRY[2] * c)
+      g.position.set(pose.x + CARRY[2] * Math.sin(pose.yaw), CARRY[1], pose.z + CARRY[2] * Math.cos(pose.yaw))
       g.rotation.y = pose.yaw
     } else if (Array.isArray(holder)) {
       g.position.set(holder[0], holder[1], holder[2])
@@ -189,35 +185,75 @@ function Prop({ id, story, cast }: { id: 'letter' | 'box'; story: Story; cast: C
   )
 }
 
-export function Flat({
-  layout,
-  cast,
-  stories,
-  roofY,
-}: {
-  layout: FlatLayout
-  cast: CastMember[]
-  stories: Record<CastMember['story'], Story>
-  roofY: number
-}) {
+/** A soft white frame around the opening of the flat under the pointer. */
+function Highlight({ layout, on }: { layout: FlatLayout; on: boolean }) {
+  const { width: W, height: H, depth: D } = layout
+  const z = D / 2 + 0.03
+  const t = 0.035
+  const color = '#ffffff'
   return (
-    <group position={[-layout.width / 2, 0, 0]}>
-      <Shell layout={layout} />
-      <Screen layout={layout} story={stories.main} />
-      {layout.docker && <Container width={layout.width} depth={layout.depth} height={layout.height} />}
-      {cast.map((c) => (
-        <Resident
-          key={c.id}
-          id={c.id}
-          model={c.model}
-          story={stories[c.story]}
-          label={c.tech}
-          color={c.color}
-          y={c.story === 'roof' ? roofY : 0}
-        />
+    <group visible={on}>
+      {[
+        { size: [W + 0.1, t, t] as Vec3, at: [W / 2, H + 0.02, z] as Vec3 },
+        { size: [W + 0.1, t, t] as Vec3, at: [W / 2, -0.02, z] as Vec3 },
+        { size: [t, H + 0.06, t] as Vec3, at: [-0.03, H / 2, z] as Vec3 },
+        { size: [t, H + 0.06, t] as Vec3, at: [W + 0.03, H / 2, z] as Vec3 },
+      ].map((b, i) => (
+        <mesh key={i} position={b.at}>
+          <boxGeometry args={b.size} />
+          <meshBasicMaterial color={color} toneMapped={false} />
+        </mesh>
       ))}
-      <Prop id="letter" story={stories.main} cast={cast} />
-      <Prop id="box" story={stories.main} cast={cast} />
+    </group>
+  )
+}
+
+type FlatProps = {
+  flat: FlatData
+  hovered: boolean
+  interactive: boolean
+  onHover: (id: string | null) => void
+  onSelect: (id: string) => void
+}
+
+export function Flat({ flat, hovered, interactive, onHover, onSelect }: FlatProps) {
+  const { layout, cast, stories } = flat
+  const narrator = stories[flat.narrator]
+
+  const events = interactive
+    ? {
+        onPointerOver: (e: ThreeEvent<PointerEvent>) => {
+          e.stopPropagation()
+          onHover(flat.id)
+          document.body.style.cursor = 'pointer'
+        },
+        onPointerOut: () => {
+          onHover(null)
+          document.body.style.cursor = ''
+        },
+        onClick: (e: ThreeEvent<MouseEvent>) => {
+          e.stopPropagation()
+          document.body.style.cursor = ''
+          onSelect(flat.id)
+        },
+      }
+    : {}
+
+  return (
+    <group>
+      <Rooms layout={layout} />
+      {layout.tv && <Screen tv={layout.tv} story={narrator} />}
+      {cast.map((c) => (
+        <Resident key={c.id} id={c.id} model={c.model} story={stories[c.story]} label={c.tech} color={c.color} />
+      ))}
+      {Object.keys(narrator.props).includes('letter') && <Prop id="letter" story={narrator} cast={cast} />}
+      {Object.keys(narrator.props).includes('box') && <Prop id="box" story={narrator} cast={cast} />}
+      <Highlight layout={layout} on={hovered && interactive} />
+      {/* Invisible hit area over the opening, so the whole flat is one click target. */}
+      <mesh position={[layout.width / 2, layout.height / 2, 0]} {...events}>
+        <boxGeometry args={[layout.width, layout.height, layout.depth]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} colorWrite={false} />
+      </mesh>
     </group>
   )
 }
