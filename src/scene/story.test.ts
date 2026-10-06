@@ -65,11 +65,11 @@ describe('props, flags and captions', () => {
     expect(sample(story, 'a', 1.5).carrying).toBe(false)
   })
 
-  it('switches flags and shows captions only during their beat', () => {
+  it('switches flags and keeps a caption up until the next one', () => {
     expect(flagAt(story, 'tv', 0.5)).toBe(false)
     expect(flagAt(story, 'tv', 1.5)).toBe(true)
     expect(captionAt(story, 0.5)?.en).toBe('carry')
-    expect(captionAt(story, 1.5)).toBeNull()
+    expect(captionAt(story, 1.5)?.en).toBe('carry')
   })
 })
 

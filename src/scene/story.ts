@@ -156,9 +156,15 @@ export function flagAt(story: Story, id: string, time: number): boolean {
   return last(story.flags[id], wrap(story, time))?.on ?? false
 }
 
+/** The caption stays up until the next one replaces it, so silent beats keep their context. */
 export function captionAt(story: Story, time: number): Caption | null {
   const t = wrap(story, time)
-  return story.captions.find((c) => t >= c.t0 && t < c.t1)?.caption ?? null
+  let current: Caption | null = null
+  for (const c of story.captions) {
+    if (c.t0 <= t) current = c.caption
+    else break
+  }
+  return current ?? story.captions[story.captions.length - 1]?.caption ?? null
 }
 
 export function wrap(story: Story, time: number) {
