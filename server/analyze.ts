@@ -72,9 +72,42 @@ const COLOR: Record<string, string> = {
   RSpec: '#cc342d',
   Docker: '#2f8fe6',
   'GitHub Actions': '#2088ff',
+  Unity: '#222c37',
+  Godot: '#478cbf',
+  'Unreal Engine': '#313131',
+  GameMaker: '#8bc34a',
+  Defold: '#1e6ec8',
+  'LÖVE': '#e74a99',
+  Roblox: '#e2231a',
+  Bevy: '#232326',
+  Macroquad: '#dea584',
+  Ebitengine: '#db5945',
+  libGDX: '#e4372c',
+  'Minecraft mod': '#62b47a',
+  Flame: '#ff7b00',
+  Phaser: '#8a3ffc',
+  'Babylon.js': '#bb464b',
+  PlayCanvas: '#ff6600',
+  Kaplay: '#d46eb3',
+  Excalibur: '#176bb5',
+  Pygame: '#ffd43b',
+  Arcade: '#7c3aed',
+  Ursina: '#4a4a4a',
+  Pyglet: '#3b7a57',
 }
 
-type Rule = { role: Role; tech: string; npm?: string[]; py?: string[]; images?: string[]; text?: RegExp[] }
+type Rule = {
+  role: Role
+  tech: string
+  npm?: string[]
+  py?: string[]
+  images?: string[]
+  text?: RegExp[]
+  /** Names of the files and folders at the repo's root, for engines known by their project files. */
+  root?: (names: string[]) => boolean
+  /** Patterns in the root .gitignore. */
+  ignore?: RegExp[]
+}
 
 /** First match per role wins, so order rules from most to least specific. */
 const RULES: Rule[] = [
@@ -144,15 +177,47 @@ const RULES: Rule[] = [
   { role: 'tests', tech: 'Mocha', npm: ['mocha'] },
   { role: 'tests', tech: 'JUnit', text: [/junit/i] },
   { role: 'tests', tech: 'RSpec', text: [/^\s*gem ['"]rspec/m] },
+
+  // Games: engines by their project files first, then game libraries by dependency. Three.js is left
+  // out on purpose, it draws far more websites (this one included) than games.
+  { role: 'game', tech: 'Unity', root: (n) => n.includes('Assets') && n.includes('ProjectSettings') },
+  { role: 'game', tech: 'Godot', root: (n) => n.includes('project.godot') },
+  { role: 'game', tech: 'Unreal Engine', root: (n) => n.some((f) => f.endsWith('.uproject')) },
+  { role: 'game', tech: 'GameMaker', root: (n) => n.some((f) => f.endsWith('.yyp')) },
+  { role: 'game', tech: 'Defold', root: (n) => n.includes('game.project') },
+  { role: 'game', tech: 'Roblox', root: (n) => n.includes('default.project.json') },
+  { role: 'game', tech: 'LÖVE', root: (n) => n.includes('main.lua') && n.includes('conf.lua') },
+  { role: 'game', tech: 'Unity', ignore: [/\[Ll\]ibrary\//, /\*\.unityproj/] },
+  { role: 'game', tech: 'Godot', ignore: [/^\/?\.godot\//m, /^\/?\.import\//m] },
+  { role: 'game', tech: 'Unreal Engine', ignore: [/^\/?DerivedDataCache\b/m] },
+  { role: 'game', tech: 'Bevy', text: [/^\s*bevy\s*=/m] },
+  { role: 'game', tech: 'Macroquad', text: [/^\s*macroquad\s*=/m] },
+  { role: 'game', tech: 'Ebitengine', text: [/github\.com\/hajimehoshi\/ebiten/] },
+  { role: 'game', tech: 'libGDX', text: [/com\.badlogicgames\.gdx/] },
+  { role: 'game', tech: 'Minecraft mod', text: [/fabric-loom|net\.minecraftforge|net\.neoforged/] },
+  { role: 'game', tech: 'Flame', text: [/^\s*flame:/m] },
+  { role: 'game', tech: 'Phaser', npm: ['phaser'] },
+  { role: 'game', tech: 'Babylon.js', npm: ['@babylonjs/core', 'babylonjs'] },
+  { role: 'game', tech: 'PlayCanvas', npm: ['playcanvas'] },
+  { role: 'game', tech: 'Kaplay', npm: ['kaplay', 'kaboom'] },
+  { role: 'game', tech: 'Excalibur', npm: ['excalibur'] },
+  { role: 'game', tech: 'Pygame', py: ['pygame', 'pygame-ce'] },
+  { role: 'game', tech: 'Arcade', py: ['arcade'] },
+  { role: 'game', tech: 'Ursina', py: ['ursina'] },
+  { role: 'game', tech: 'Pyglet', py: ['pyglet'] },
 ]
 
 /** What the manifests of one repo boil down to. */
 export type Signals = {
   npm: Set<string>
+  /** A library's devDependencies: they only tell which test runner it uses. */
+  npmDev: Set<string>
   py: Set<string>
   images: Set<string>
   /** Other manifests (pom.xml, go.mod, Gemfile…), searched with patterns. */
   text: string
+  /** The root .gitignore. */
+  ignore: string
   docker: boolean
   workflows: boolean
   rootNames: Set<string>
@@ -160,12 +225,17 @@ export type Signals = {
 
 const blob = (repo: RawRepo, path: string) => (repo[alias(path)] as RawBlob)?.text ?? null
 
-function npmDeps(text: string, into: Set<string>) {
+/** A package published for others to install, not an app: not private, and says what it exports. */
+const isLibrary = (pkg: Record<string, unknown>) => !pkg.private && ['exports', 'main', 'module', 'bin', 'files'].some((k) => k in pkg)
+
+function npmDeps(text: string, s: Signals) {
   try {
-    const pkg = JSON.parse(text) as Record<string, Record<string, string> | undefined>
-    for (const key of ['dependencies', 'devDependencies', 'peerDependencies']) {
-      for (const name of Object.keys(pkg[key] ?? {})) into.add(name.toLowerCase())
-    }
+    const pkg = JSON.parse(text) as Record<string, unknown>
+    const names = (key: string) => Object.keys((pkg[key] as Record<string, string> | undefined) ?? {}).map((n) => n.toLowerCase())
+    for (const name of [...names('dependencies'), ...names('peerDependencies')]) s.npm.add(name)
+    // An app's devDependencies are part of it (SvelteKit keeps Svelte there). A library's are only what
+    // it's tested against: an ESLint plugin with Svelte in devDependencies isn't a Svelte front end.
+    for (const name of names('devDependencies')) (isLibrary(pkg) ? s.npmDev : s.npm).add(name)
   } catch {
     // Not valid JSON: ignore this manifest.
   }
@@ -196,16 +266,18 @@ function composeImages(text: string, into: Set<string>) {
 export function signals(repo: RawRepo): Signals {
   const s: Signals = {
     npm: new Set(),
+    npmDev: new Set(),
     py: new Set(),
     images: new Set(),
     text: '',
+    ignore: blob(repo, '.gitignore') ?? '',
     docker: false,
     workflows: (repo.workflows?.entries.length ?? 0) > 0,
     rootNames: new Set((repo.root?.entries ?? []).map((e) => e.name)),
   }
   for (const p of MANIFESTS.packageJson) {
     const t = blob(repo, p)
-    if (t) npmDeps(t, s.npm)
+    if (t) npmDeps(t, s)
   }
   for (const p of MANIFESTS.python) {
     const t = blob(repo, p)
@@ -230,13 +302,16 @@ const WEB_LANGUAGES = new Set(['HTML', 'CSS', 'SCSS'])
 export function residentsFrom(s: Signals, primary: string | null, primaryColor: string | null = null): Resident[] {
   const found = new Map<Role, string>()
   const imageMatch = (names: string[]) => names.some((n) => [...s.images].some((img) => img === n || img.endsWith('/' + n) || img === n.split('/').pop()))
+  const rootNames = [...s.rootNames]
   for (const rule of RULES) {
     if (found.has(rule.role)) continue
     const hit =
-      rule.npm?.some((n) => s.npm.has(n)) ||
+      rule.npm?.some((n) => s.npm.has(n) || (rule.role === 'tests' && s.npmDev.has(n))) ||
       rule.py?.some((n) => s.py.has(n)) ||
       (rule.images && imageMatch(rule.images)) ||
-      rule.text?.some((r) => r.test(s.text))
+      rule.text?.some((r) => r.test(s.text)) ||
+      rule.root?.(rootNames) ||
+      rule.ignore?.some((r) => r.test(s.ignore))
     if (hit) found.set(rule.role, rule.tech)
   }
   // react-native also pulls in react; on a phone app it isn't a web front end.
@@ -246,10 +321,15 @@ export function residentsFrom(s: Signals, primary: string | null, primaryColor: 
   if (s.docker) found.set('devops', 'Docker')
   else if (s.workflows) found.set('devops', 'GitHub Actions')
 
-  if (!found.has('frontend') && !found.has('backend') && !found.has('mobile')) {
-    if (primary && MOBILE_LANGUAGES.has(primary)) found.set('mobile', primary)
+  // Nobody in charge yet: the main language moves in. With no language at all (no commits, or only a
+  // README and docs) the flat stays empty rather than inventing a coder.
+  if (!found.has('frontend') && !found.has('backend') && !found.has('mobile') && !found.has('game')) {
+    // Engine languages, for when the project file sits in a subfolder.
+    if (primary === 'GDScript') found.set('game', 'Godot')
+    else if (primary === 'Luau') found.set('game', 'Roblox')
+    else if (primary && MOBILE_LANGUAGES.has(primary)) found.set('mobile', primary)
     else if (primary && WEB_LANGUAGES.has(primary)) found.set('frontend', 'HTML & CSS')
-    else found.set('coder', primary ?? 'Code')
+    else if (primary) found.set('coder', primary)
   }
 
   // A plain language takes GitHub's colour for it, the same dot the repo page shows.
@@ -272,8 +352,8 @@ export function statusOf(repo: RawRepo): RepoStatus {
   const state = repo.defaultBranchRef?.target?.statusCheckRollup?.state
   if (state === 'SUCCESS') status.ci = 'passing'
   else if (state === 'FAILURE' || state === 'ERROR') status.ci = 'failing'
-  const open = repo.openPrs.totalCount
-  if (open > 0) status.prs = { open, conflict: repo.prs.nodes.some((p) => p.mergeable === 'CONFLICTING') }
+  const open = repo.openPrs?.totalCount ?? 0
+  if (open > 0) status.prs = { open, conflict: (repo.prs?.nodes ?? []).some((p) => p.mergeable === 'CONFLICTING') }
   return status
 }
 

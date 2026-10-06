@@ -2,6 +2,7 @@ import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import { CanvasTexture, Color, type InstancedMesh, type MeshStandardMaterial, Object3D, PlaneGeometry, SRGBColorSpace } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { useSceneLang } from './lang'
 import { Boxes, type BoxSpec } from './merge'
 import type { Vec3 } from './story'
 import type { FlatData } from './types'
@@ -49,16 +50,23 @@ function texture(draw: (g: CanvasRenderingContext2D) => void, w: number, h: numb
   return t
 }
 
+/** Repo names run up to 100 characters; past this the sign would hang off the building. */
+const SIGN_CHARS = 28
+
 /** The sign on each floor: repo name, language dot, Docker pill. */
 function Sign({ flat, at, lit }: { flat: FlatData; at: Vec3; lit: boolean }) {
+  const sceneLang = useSceneLang()
   const { map, aspect } = useMemo(() => {
     const s = 3
     const h = 46 * s
+    const repo = flat.repo.length > SIGN_CHARS ? `${flat.repo.slice(0, SIGN_CHARS - 1)}…` : flat.repo
+    // No language means no code yet (an empty repo, or just a README).
+    const language = flat.language.name === '—' ? { en: 'no code', pt: 'sem código' }[sceneLang] : flat.language.name
     const probe = document.createElement('canvas').getContext('2d')!
     probe.font = `800 ${24 * s}px ${FONT}`
-    const name = probe.measureText(flat.repo).width
+    const name = probe.measureText(repo).width
     probe.font = `700 ${17 * s}px ${FONT}`
-    const lang = probe.measureText(flat.language.name).width
+    const lang = probe.measureText(language).width
     const pill = flat.docker ? probe.measureText('Docker').width + 36 * s : 0
     const w = Math.ceil(20 * s + name + 22 * s + 16 * s + lang + pill + 20 * s)
     const map = texture(
@@ -71,7 +79,7 @@ function Sign({ flat, at, lit }: { flat: FlatData; at: Vec3; lit: boolean }) {
         g.fillStyle = '#23263a'
         g.font = `800 ${24 * s}px ${FONT}`
         let x = 20 * s
-        g.fillText(flat.repo, x, h / 2 + s)
+        g.fillText(repo, x, h / 2 + s)
         x += name + 22 * s
         g.fillStyle = flat.language.color
         g.beginPath()
@@ -80,7 +88,7 @@ function Sign({ flat, at, lit }: { flat: FlatData; at: Vec3; lit: boolean }) {
         x += 16 * s + 2 * s
         g.fillStyle = '#5b6078'
         g.font = `700 ${17 * s}px ${FONT}`
-        g.fillText(flat.language.name, x, h / 2 + s)
+        g.fillText(language, x, h / 2 + s)
         if (flat.docker) {
           x += lang + 14 * s
           const pw = probe.measureText('Docker').width + 22 * s
@@ -96,7 +104,7 @@ function Sign({ flat, at, lit }: { flat: FlatData; at: Vec3; lit: boolean }) {
       h,
     )
     return { map, aspect: w / h }
-  }, [flat])
+  }, [flat, sceneLang])
   const height = 0.2
   return (
     <mesh position={at} scale={lit ? 1.06 : 1}>

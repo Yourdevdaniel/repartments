@@ -67,6 +67,26 @@ describe('buildFlat', () => {
     expect(flat.stories.main.captions.map((c) => c.caption.en)).toContain('FastAPI sends the answer out')
   })
 
+  it('furnishes an empty flat that nobody lives in', () => {
+    const flat = buildFlat(spec([]))
+    expect(flat.cast).toEqual([])
+    expect(flat.layout.rooms.map((r) => r.id)).toEqual(['studio', 'kitchen', 'bedroom'])
+    // The scene always reads the narrator's story, even when nothing happens in it.
+    expect(flat.stories[flat.narrator]).toBeDefined()
+  })
+
+  it('gives a game its own routine in the studio, on top of a web front end', () => {
+    const flat = buildFlat(
+      spec([
+        { tech: 'React', role: 'frontend', color: '#61dafb' },
+        { tech: 'Phaser', role: 'game', color: '#8a3ffc' },
+      ]),
+    )
+    expect(flat.layout.rooms.map((r) => r.id)).toContain('studio')
+    expect(flat.stories.game.captions[0].caption.en).toBe('Phaser runs the game')
+    for (const c of flat.cast) expect(flat.stories[c.story]?.tracks[c.id]).toBeDefined()
+  })
+
   it('lets a lone coder live a routine of their own', () => {
     const flat = buildFlat(spec([{ tech: 'Python', role: 'coder', color: '#3572a5' }]))
     expect(flat.narrator).toBe('coder')
