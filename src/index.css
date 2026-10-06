@@ -1,0 +1,22 @@
+@import "tailwindcss";
+@import "@fontsource-variable/nunito";
+
+@theme {
+  --font-sans: "Nunito Variable", ui-rounded, system-ui, sans-serif;
+  --color-ink: #23263a;
+  --color-ink-soft: #5b6078;
+  --color-accent: #2f8fe6;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: #e4e9ff;
+  -webkit-font-smoothing: antialiased;
+}
