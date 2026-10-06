@@ -375,7 +375,9 @@ export function buildFlat(spec: FlatSpec): FlatData {
     cast.push({ id: id(role), tech: r.tech, role, model: MODEL[role], color: r.color, story: inMain ? 'main' : role })
   }
 
-  const narrator = stories.main ? 'main' : cast[0] ? cast[0].story : 'main'
+  // Narrate the request loop if there is one, else whoever has the most to show.
+  const lead = (['coder', 'frontend', 'worker', 'devops', 'mobile', 'tests', 'database'] as Role[]).find((r) => stories[r])
+  const narrator = stories.main ? 'main' : (lead ?? cast[0]?.story ?? 'main')
   return {
     id: spec.id,
     repo: spec.repo,

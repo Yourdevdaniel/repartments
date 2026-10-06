@@ -5,7 +5,7 @@ import { CanvasTexture, Color, SRGBColorSpace, type Group, type Mesh, type MeshB
 import { Resident } from './Resident'
 import { flagAt, propAt, sample, type Story, type Vec3 } from './story'
 import { useStoryTime } from './time'
-import type { CastMember, FlatData, FlatLayout, Placement } from './types'
+import type { CastMember, Decor, FlatData, FlatLayout, Placement } from './types'
 
 const WALL = 0.06
 const STUB = 0.28
@@ -40,6 +40,108 @@ export function Box({ size, at, color, cast = true }: { size: Vec3; at: Vec3; co
   )
 }
 
+function decorTexture(d: Decor) {
+  const c = document.createElement('canvas')
+  const scale = 256
+  c.width = Math.round(d.w * scale)
+  c.height = Math.round(d.h * scale)
+  const g = c.getContext('2d')!
+  const W = c.width
+  const H = c.height
+  if (d.kind === 'window') {
+    const sky = g.createLinearGradient(0, 0, 0, H)
+    sky.addColorStop(0, '#9fc9ff')
+    sky.addColorStop(1, '#dcebff')
+    g.fillStyle = sky
+    g.fillRect(0, 0, W, H)
+    g.fillStyle = 'rgba(255,255,255,0.9)'
+    ;[
+      [0.25, 0.3, 0.12],
+      [0.38, 0.27, 0.15],
+      [0.72, 0.5, 0.1],
+    ].forEach(([x, y, r]) => {
+      g.beginPath()
+      g.arc(x * W, y * H, r * W, 0, Math.PI * 2)
+      g.fill()
+    })
+    g.fillStyle = '#b9dcb0'
+    g.fillRect(0, H * 0.82, W, H * 0.18)
+    g.fillStyle = '#c9d3f5'
+    g.fillRect(W * 0.08, H * 0.6, W * 0.18, H * 0.3)
+    g.fillRect(W * 0.62, H * 0.52, W * 0.22, H * 0.4)
+  } else if (d.kind === 'picture') {
+    g.fillStyle = '#fffaf2'
+    g.fillRect(0, 0, W, H)
+    g.fillStyle = d.color ?? '#f2a65a'
+    g.beginPath()
+    g.moveTo(W * 0.1, H * 0.85)
+    g.lineTo(W * 0.42, H * 0.35)
+    g.lineTo(W * 0.62, H * 0.62)
+    g.lineTo(W * 0.75, H * 0.48)
+    g.lineTo(W * 0.92, H * 0.85)
+    g.closePath()
+    g.fill()
+    g.beginPath()
+    g.arc(W * 0.75, H * 0.25, Math.min(W, H) * 0.1, 0, Math.PI * 2)
+    g.fill()
+  } else {
+    g.fillStyle = '#ffffff'
+    g.fillRect(0, 0, W, H)
+    const notes = ['#ffe08a', '#a7e3ff', '#ffc2d4', '#c7f0b5', '#ffe08a', '#d9ccff']
+    notes.forEach((color, i) => {
+      g.fillStyle = color
+      const col = i % 3
+      const row = Math.floor(i / 3)
+      g.fillRect(W * (0.08 + col * 0.3), H * (0.12 + row * 0.44), W * 0.22, H * 0.32)
+    })
+  }
+  const t = new CanvasTexture(c)
+  t.colorSpace = SRGBColorSpace
+  t.anisotropy = 4
+  return t
+}
+
+/** A window, a framed picture or a sticky-note board hung on a back wall. */
+function WallDecor({ decor, z }: { decor: Decor; z: number }) {
+  const map = useMemo(() => decorTexture(decor), [decor])
+  const frame = decor.kind === 'window' ? '#ffffff' : decor.kind === 'board' ? '#c9c2b8' : '#7b5a43'
+  const border = decor.kind === 'window' ? 0.05 : 0.03
+  return (
+    <group position={[decor.x, decor.y, z]}>
+      <mesh castShadow>
+        <boxGeometry args={[decor.w + border * 2, decor.h + border * 2, 0.03]} />
+        <meshStandardMaterial color={frame} roughness={0.8} />
+      </mesh>
+      <mesh position={[0, 0, 0.017]}>
+        <planeGeometry args={[decor.w, decor.h]} />
+        {decor.kind === 'window' ? (
+          <meshBasicMaterial map={map} toneMapped={false} />
+        ) : (
+          <meshStandardMaterial map={map} roughness={0.9} />
+        )}
+      </mesh>
+      {decor.kind === 'window' && (
+        <>
+          <mesh position={[0, 0, 0.02]}>
+            <boxGeometry args={[0.025, decor.h, 0.01]} />
+            <meshStandardMaterial color="#ffffff" />
+          </mesh>
+          <mesh position={[0, -decor.h / 2 - 0.06, 0.04]} castShadow>
+            <boxGeometry args={[decor.w + 0.16, 0.035, 0.1]} />
+            <meshStandardMaterial color="#ffffff" />
+          </mesh>
+          {[-1, 1].map((side) => (
+            <mesh key={side} position={[side * (decor.w / 2 + 0.06), 0.02, 0.05]} castShadow>
+              <boxGeometry args={[0.12, decor.h + 0.16, 0.025]} />
+              <meshStandardMaterial color="#f6b6a8" roughness={0.95} />
+            </mesh>
+          ))}
+        </>
+      )}
+    </group>
+  )
+}
+
 /** Rooms, walls and furniture. The front is left open, dollhouse style. */
 function Rooms({ layout }: { layout: FlatLayout }) {
   const { depth: D, height: H, door } = layout
@@ -70,6 +172,9 @@ function Rooms({ layout }: { layout: FlatLayout }) {
     <group>
       {parts}
       {layout.rooms.flatMap((room) => room.furniture.map((f, j) => <Furniture key={`${room.id}-${j}`} {...f} />))}
+      {layout.rooms.flatMap((room) =>
+        (room.decor ?? []).map((d, j) => <WallDecor key={`${room.id}-d${j}`} decor={d} z={back + 0.016} />),
+      )}
     </group>
   )
 }

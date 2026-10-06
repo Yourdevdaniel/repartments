@@ -2,19 +2,21 @@ import { ContactShadows } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Suspense, useEffect, useMemo, useRef } from 'react'
 import { OrthographicCamera as OrthoCam, Vector3 } from 'three'
-import { Building, buildingSize, floorY } from './Building'
+import { Interior } from './Interior'
 import { captionAt, sample, type Caption } from './story'
 import { Street } from './Street'
 import { StoryTimeContext, useStoryTime, type StoryTime } from './time'
+import { floorBase, Tower, TOWER, towerHeight } from './Tower'
 import type { FlatData } from './types'
 
 /** Room the side panel takes on wide screens; the scene centres in what's left. */
 const PANEL = 360
+/** Inside a flat, about two big rooms fill the screen. */
+const INSIDE_WIDTH = 5.4
 
-type View = { target: Vector3; az: number; el: number; fitW: number; fitH: number }
+export type View = { mode: 'building'; entering: string | null } | { mode: 'inside'; id: string }
 
-/** How much of a flat fills the screen when you step in: about two rooms, so nobody is tiny. */
-const FOCUS_WIDTH = 4.3
+type Frame = { target: Vector3; az: number; el: number; fitW: number; fitH: number }
 
 /** Where the action is in a flat right now: the middle of whoever isn't standing still. */
 function actionX(flat: FlatData, t: number): number | null {
@@ -32,26 +34,36 @@ function actionX(flat: FlatData, t: number): number | null {
 }
 
 /**
- * Flies the camera between the whole building and one flat. The overview looks down a little to show
- * the street. Inside a flat the camera comes in close, almost straight on (so the floor above doesn't
- * hide the back wall), and drifts along with whoever is doing something, like a documentary camera.
+ * Outside, the camera frames the whole tower from across the street, and dives at a floor when you
+ * click it. Inside, it comes in close and drifts along with whoever is doing something.
  */
-function CameraRig({ flats, focused, instant }: { flats: FlatData[]; focused: string | null; instant: boolean }) {
+function CameraRig({ flats, view, instant }: { flats: FlatData[]; view: View; instant: boolean }) {
   const { camera, size, pointer } = useThree()
   const time = useStoryTime()
   const cam = camera as OrthoCam
-  const { width, height } = buildingSize(flats)
-  const index = flats.findIndex((f) => f.id === focused)
+  const height = towerHeight(flats.length)
+  const inside = view.mode === 'inside' ? (flats.find((f) => f.id === view.id) ?? null) : null
   const follow = useRef<number | null>(null)
+  const now = useRef<Frame | null>(null)
+  const mode = useRef<string>('')
 
-  const want = useMemo<View>(() => {
-    if (index < 0) {
-      return { target: new Vector3(0, height * 0.46, 0.4), az: 0.3, el: 0.3, fitW: width + 6.5, fitH: height + 2.4 }
+  const want = useMemo<Frame>(() => {
+    if (inside) {
+      const fitW = Math.min(inside.layout.width + 0.8, INSIDE_WIDTH)
+      return { target: new Vector3(0, 0.62, 0), az: 0.16, el: 0.2, fitW, fitH: 2.5 }
     }
-    return { target: new Vector3(0, floorY(index) + 0.5, 0), az: 0.12, el: 0.15, fitW: FOCUS_WIDTH, fitH: 2.6 }
-  }, [index, width, height])
-
-  const now = useRef<View | null>(null)
+    const entering = view.mode === 'building' ? flats.findIndex((f) => f.id === view.entering) : -1
+    if (entering >= 0) {
+      return {
+        target: new Vector3(0, floorBase(entering) + TOWER.floor / 2, TOWER.depth / 2),
+        az: 0.12,
+        el: 0.08,
+        fitW: TOWER.width * 0.7,
+        fitH: TOWER.floor * 0.8,
+      }
+    }
+    return { target: new Vector3(0, height * 0.47, 0.6), az: 0.36, el: 0.17, fitW: TOWER.width + 7.5, fitH: height + 2.2 }
+  }, [inside, view, flats, height])
 
   useEffect(() => {
     const panel = size.width >= 1024 ? PANEL : 0
@@ -61,24 +73,29 @@ function CameraRig({ flats, focused, instant }: { flats: FlatData[]; focused: st
   }, [cam, size.width, size.height])
 
   useFrame((_, delta) => {
-    const k = instant || !now.current ? 1 : 1 - Math.exp(-delta * 3.4)
-    const v = (now.current ??= { ...want, target: want.target.clone() })
-    const panel = size.width >= 1024 ? PANEL : 0
-
-    if (index >= 0) {
-      const flat = flats[index]
-      const x = actionX(flat, time.current)
-      if (x !== null || follow.current === null) {
-        const goal = (x ?? flat.layout.width / 2) - width / 2
-        follow.current = follow.current === null ? goal : follow.current + (goal - follow.current) * (1 - Math.exp(-delta * 1.4))
-      }
-      // Keep the flat's ends inside the frame.
-      const avail = size.width - panel
-      const half = avail / Math.min(avail / want.fitW, size.height / want.fitH) / 2
-      const limit = Math.max(0, flat.layout.width / 2 - half + 0.15)
-      want.target.x = Math.min(limit, Math.max(-limit, follow.current))
-    } else {
+    const key = inside ? `in:${inside.id}` : 'out'
+    if (key !== mode.current) {
+      // Changing worlds: start from a wider shot of the new one and settle in, instead of sliding across.
+      mode.current = key
       follow.current = null
+      now.current = { ...want, target: want.target.clone(), fitW: want.fitW * 1.35, fitH: want.fitH * 1.35 }
+    }
+    const v = now.current!
+    const speed = view.mode === 'building' && view.entering ? 6 : 3.2
+    const k = instant ? 1 : 1 - Math.exp(-delta * speed)
+    const panel = size.width >= 1024 ? PANEL : 0
+    const avail = size.width - panel
+
+    if (inside) {
+      const x = actionX(inside, time.current)
+      if (x !== null || follow.current === null) {
+        const goal = (x ?? inside.layout.width / 2) - inside.layout.width / 2
+        follow.current =
+          follow.current === null ? goal : follow.current + (goal - follow.current) * (1 - Math.exp(-delta * 1.4))
+      }
+      const half = avail / Math.min(avail / want.fitW, size.height / want.fitH) / 2
+      const limit = Math.max(0, inside.layout.width / 2 - half + 0.25)
+      want.target.x = Math.min(limit, Math.max(-limit, follow.current))
     }
 
     v.target.lerp(want.target, k)
@@ -97,7 +114,7 @@ function CameraRig({ flats, focused, instant }: { flats: FlatData[]; focused: st
       v.target.z + Math.cos(az) * Math.cos(el) * dist,
     )
     cam.lookAt(v.target)
-    cam.zoom = Math.min((size.width - panel) / v.fitW, size.height / v.fitH)
+    cam.zoom = Math.min(avail / v.fitW, size.height / v.fitH)
     cam.updateProjectionMatrix()
   })
 
@@ -130,51 +147,59 @@ function Clock({
 type Props = {
   flats: FlatData[]
   owner: string
-  focused: string | null
+  view: View
   hovered: string | null
   onHover: (id: string | null) => void
-  onSelect: (id: string | null) => void
+  onSelect: (id: string) => void
+  onBack: () => void
   onCaption: (c: Caption | null, step: number, total: number) => void
 }
 
-export function Stage({ flats, owner, focused, hovered, onHover, onSelect, onCaption }: Props) {
+export function Stage({ flats, owner, view, hovered, onHover, onSelect, onBack, onCaption }: Props) {
   const reduce = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, [])
   const time = useMemo<StoryTime>(() => ({ current: reduce ? 9 : 0, paused: reduce }), [reduce])
-  const narrator = flats.find((f) => f.id === focused) ?? null
-  const { width } = buildingSize(flats)
+  const inside = view.mode === 'inside' ? (flats.find((f) => f.id === view.id) ?? null) : null
 
   return (
     <Canvas
       shadows
+      flat
       orthographic
       dpr={[1, 2]}
       gl={{ antialias: true, alpha: true }}
       camera={{ position: [10, 8, 30], near: 0.1, far: 200, zoom: 60 }}
-      onPointerMissed={() => focused && onSelect(null)}
+      onPointerMissed={() => inside && onBack()}
     >
-      <hemisphereLight args={['#ffffff', '#b9c6ff', 1.2]} />
+      {/* No tone mapping (flat), so the pastels come out as picked instead of washed out. */}
+      <hemisphereLight args={['#ffffff', '#c3cdf5', 1.05]} />
       <directionalLight
         position={[5, 11, 9]}
-        intensity={1.9}
+        intensity={1.5}
         castShadow
         shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-9}
-        shadow-camera-right={9}
-        shadow-camera-top={7}
+        shadow-camera-left={-8}
+        shadow-camera-right={8}
+        shadow-camera-top={inside ? 4 : 12}
         shadow-camera-bottom={-3}
         shadow-bias={-0.0004}
         shadow-normalBias={0.02}
       />
       <directionalLight position={[-6, 4, 5]} intensity={0.45} color="#ffe9d6" />
       <StoryTimeContext.Provider value={time}>
-        <Clock time={time} narrator={narrator} onCaption={onCaption} />
-        <CameraRig flats={flats} focused={focused} instant={reduce} />
+        <Clock time={time} narrator={inside} onCaption={onCaption} />
+        <CameraRig flats={flats} view={view} instant={reduce} />
         <Suspense fallback={null}>
-          <Building flats={flats} owner={owner} hovered={hovered} focused={focused} onHover={onHover} onSelect={onSelect} />
-          <Street width={width} />
+          {inside ? (
+            <Interior flat={inside} />
+          ) : (
+            <>
+              <Tower flats={flats} owner={owner} hovered={hovered} onHover={onHover} onSelect={onSelect} />
+              <Street width={TOWER.width} depth={TOWER.depth} />
+            </>
+          )}
         </Suspense>
       </StoryTimeContext.Provider>
-      <ContactShadows position={[0, -0.019, 0]} opacity={0.22} scale={22} blur={2.4} far={3} />
+      <ContactShadows position={[0, inside ? -0.33 : -0.019, 0]} opacity={0.22} scale={inside ? 14 : 22} blur={2.4} far={3} />
     </Canvas>
   )
 }
