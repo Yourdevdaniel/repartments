@@ -2,6 +2,7 @@ import { useGLTF } from '@react-three/drei'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 import { CanvasTexture, Color, SRGBColorSpace, type Group, type Mesh, type MeshBasicMaterial, type MeshStandardMaterial } from 'three'
+import { useSceneLang } from './lang'
 import { Resident } from './Resident'
 import { flagAt, propAt, sample, type Story, type Vec3 } from './story'
 import { useStoryTime } from './time'
@@ -142,9 +143,60 @@ function WallDecor({ decor, z }: { decor: Decor; z: number }) {
   )
 }
 
+const SIGN_FONT = 'ui-rounded, "Nunito Variable", "Nunito", "Segoe UI", system-ui, sans-serif'
+
+/** The little wooden sign over each room saying what it is for. */
+function RoomSign({ text, at }: { text: string; at: Vec3 }) {
+  const { map, aspect } = useMemo(() => {
+    const s = 4
+    const h = 34 * s
+    const probe = document.createElement('canvas').getContext('2d')!
+    probe.font = `800 ${18 * s}px ${SIGN_FONT}`
+    const w = Math.ceil(probe.measureText(text).width + 30 * s)
+    const c = document.createElement('canvas')
+    c.width = w
+    c.height = h
+    const g = c.getContext('2d')!
+    g.fillStyle = '#a77b5a'
+    g.beginPath()
+    g.roundRect(0, 0, w, h, 10 * s)
+    g.fill()
+    g.fillStyle = '#c8986f'
+    g.beginPath()
+    g.roundRect(3 * s, 3 * s, w - 6 * s, h - 6 * s, 8 * s)
+    g.fill()
+    g.fillStyle = '#fff8ec'
+    g.font = `800 ${18 * s}px ${SIGN_FONT}`
+    g.textAlign = 'center'
+    g.textBaseline = 'middle'
+    g.fillText(text, w / 2, h / 2 + s)
+    const t = new CanvasTexture(c)
+    t.colorSpace = SRGBColorSpace
+    t.anisotropy = 4
+    return { map: t, aspect: w / h }
+  }, [text])
+  const h = 0.13
+  return (
+    <group position={at}>
+      {/* Two strings it hangs from */}
+      {[-1, 1].map((side) => (
+        <mesh key={side} position={[side * h * aspect * 0.3, h / 2 + 0.05, -0.002]} rotation={[0, 0, side * -0.5]}>
+          <boxGeometry args={[0.006, 0.12, 0.004]} />
+          <meshBasicMaterial color="#7b5a43" />
+        </mesh>
+      ))}
+      <mesh>
+        <planeGeometry args={[h * aspect, h]} />
+        <meshBasicMaterial map={map} toneMapped={false} />
+      </mesh>
+    </group>
+  )
+}
+
 /** Rooms, walls and furniture. The front is left open, dollhouse style. */
 function Rooms({ layout }: { layout: FlatLayout }) {
   const { depth: D, height: H, door } = layout
+  const lang = useSceneLang()
   const back = -D / 2
   const front = D / 2
   const parts: React.ReactNode[] = []
@@ -174,6 +226,12 @@ function Rooms({ layout }: { layout: FlatLayout }) {
       {layout.rooms.flatMap((room) => room.furniture.map((f, j) => <Furniture key={`${room.id}-${j}`} {...f} />))}
       {layout.rooms.flatMap((room) =>
         (room.decor ?? []).map((d, j) => <WallDecor key={`${room.id}-d${j}`} decor={d} z={back + 0.016} />),
+      )}
+      {layout.rooms.map(
+        (room) =>
+          room.label && (
+            <RoomSign key={`${room.id}-sign`} text={room.label[lang]} at={[(room.x0 + room.x1) / 2, H - 0.14, back + 0.02]} />
+          ),
       )}
     </group>
   )
@@ -235,7 +293,7 @@ function Screen({ tv, story }: { tv: NonNullable<FlatLayout['tv']>; story: Story
   )
 }
 
-const CARRY: Vec3 = [0, 0.22, 0.15]
+const CARRY: Vec3 = [0, 0.245, 0.17]
 
 /** A letter or parcel handed from resident to resident. */
 function Prop({ id, story, cast }: { id: 'letter' | 'box'; story: Story; cast: CastMember[] }) {

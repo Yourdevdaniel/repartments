@@ -1,18 +1,24 @@
-import { ContactShadows } from '@react-three/drei'
+import { ContactShadows, useGLTF } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Suspense, useEffect, useMemo, useRef } from 'react'
 import { OrthographicCamera as OrthoCam, Vector3 } from 'three'
 import { Interior } from './Interior'
+import { ALL_MODELS } from './rooms'
 import { captionAt, sample, type Caption } from './story'
 import { Street } from './Street'
+import { SceneLangContext, type SceneLang } from './lang'
 import { StoryTimeContext, useStoryTime, type StoryTime } from './time'
 import { floorBase, Tower, TOWER, towerHeight } from './Tower'
 import type { FlatData } from './types'
 
+// Fetch every flat's models up front, so stepping inside never waits on the network.
+for (const m of ALL_MODELS.furniture) useGLTF.preload(`/models/furniture/${m}.glb`)
+for (const m of ALL_MODELS.characters) useGLTF.preload(`/models/characters/${m}.glb`)
+
 /** Room the side panel takes on wide screens; the scene centres in what's left. */
 const PANEL = 360
 /** Inside a flat, about two big rooms fill the screen. */
-const INSIDE_WIDTH = 5.4
+const INSIDE_WIDTH = 4.0
 
 export type View = { mode: 'building'; entering: string | null } | { mode: 'inside'; id: string }
 
@@ -50,7 +56,7 @@ function CameraRig({ flats, view, instant }: { flats: FlatData[]; view: View; in
   const want = useMemo<Frame>(() => {
     if (inside) {
       const fitW = Math.min(inside.layout.width + 0.8, INSIDE_WIDTH)
-      return { target: new Vector3(0, 0.62, 0), az: 0.16, el: 0.2, fitW, fitH: 2.5 }
+      return { target: new Vector3(0, 0.66, 0.1), az: 0.16, el: 0.22, fitW, fitH: 2.15 }
     }
     const entering = view.mode === 'building' ? flats.findIndex((f) => f.id === view.entering) : -1
     if (entering >= 0) {
@@ -145,6 +151,7 @@ function Clock({
 }
 
 type Props = {
+  lang: SceneLang
   flats: FlatData[]
   owner: string
   view: View
@@ -155,7 +162,7 @@ type Props = {
   onCaption: (c: Caption | null, step: number, total: number) => void
 }
 
-export function Stage({ flats, owner, view, hovered, onHover, onSelect, onBack, onCaption }: Props) {
+export function Stage({ lang, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption }: Props) {
   const reduce = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, [])
   const time = useMemo<StoryTime>(() => ({ current: reduce ? 9 : 0, paused: reduce }), [reduce])
   const inside = view.mode === 'inside' ? (flats.find((f) => f.id === view.id) ?? null) : null
@@ -185,6 +192,7 @@ export function Stage({ flats, owner, view, hovered, onHover, onSelect, onBack, 
         shadow-normalBias={0.02}
       />
       <directionalLight position={[-6, 4, 5]} intensity={0.45} color="#ffe9d6" />
+      <SceneLangContext.Provider value={lang}>
       <StoryTimeContext.Provider value={time}>
         <Clock time={time} narrator={inside} onCaption={onCaption} />
         <CameraRig flats={flats} view={view} instant={reduce} />
@@ -199,6 +207,7 @@ export function Stage({ flats, owner, view, hovered, onHover, onSelect, onBack, 
           )}
         </Suspense>
       </StoryTimeContext.Provider>
+      </SceneLangContext.Provider>
       <ContactShadows position={[0, inside ? -0.33 : -0.019, 0]} opacity={0.22} scale={inside ? 14 : 22} blur={2.4} far={3} />
     </Canvas>
   )
