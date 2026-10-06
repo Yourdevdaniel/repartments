@@ -107,8 +107,17 @@ export type Fetcher = (url: string, init: RequestInit) => Promise<Response>
 
 type GraphQLAnswer = { data?: { repositoryOwner: RawOwner | null }; errors?: { type?: string; message: string }[] }
 
-/** One owner's repos, from the start or from `after` (the cursor where the previous building ended). */
-export async function fetchOwner(login: string, token: string, fetcher: Fetcher = fetch, after: string | null = null, attempt = 0): Promise<RawOwner> {
+/**
+ * One owner's repos, from the start or from `after` (the cursor where the previous building ended).
+ * `partial` says a retry had to ask for less than the full building.
+ */
+export async function fetchOwner(
+  login: string,
+  token: string,
+  fetcher: Fetcher = fetch,
+  after: string | null = null,
+  attempt = 0,
+): Promise<{ owner: RawOwner; partial: boolean }> {
   const tries = after ? NEXT : FIRST
   let res: Response
   let json: GraphQLAnswer
@@ -137,5 +146,5 @@ export async function fetchOwner(login: string, token: string, fetcher: Fetcher 
   if (json.errors?.some((e) => e.type === 'RATE_LIMITED')) throw new GitHubError('rate-limited', 'GitHub rate limit')
   const owner = json.data?.repositoryOwner
   if (!owner) throw new GitHubError('not-found', `No GitHub user or organization called ${login}`)
-  return owner
+  return { owner, partial: attempt > 0 }
 }

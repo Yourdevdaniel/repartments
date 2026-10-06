@@ -200,6 +200,7 @@ describe('buildingFor', () => {
     const b = repo({}, { name: 'old', createdAt: '2024-01-01T00:00:00Z' })
     const answer = await buildingFor('x', 't', okFetch([a, b]))
     expect(answer.status).toBe(200)
+    expect(answer.cache).toBe('long')
     expect('apartments' in answer.body && answer.body.apartments.map((x) => x.name)).toEqual(['old', 'new'])
   })
 
@@ -222,8 +223,11 @@ describe('buildingFor', () => {
       if (count > 6) return new Response('<html>502 Bad Gateway</html>', { status: 502 })
       return okFetch([repo({})])()
     }
-    expect((await buildingFor('x', 't', slowForTwelve)).status).toBe(200)
+    const answer = await buildingFor('x', 't', slowForTwelve)
+    expect(answer.status).toBe(200)
     expect(asked).toEqual([12, 6])
+    // Cut short by a slow GitHub: cached only briefly, so the full building comes back soon.
+    expect(answer.cache).toBe('brief')
   })
 
   it('says where the next building starts when there are more repos than fit', async () => {

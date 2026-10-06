@@ -44,7 +44,7 @@ function devApi(): Plugin {
           const { buildingFor } = (await server.ssrLoadModule('/server/handler.ts')) as typeof import('./server/handler')
           const result = await buildingFor(user, token, undefined, after)
           answer = { at: Date.now(), status: result.status, body: JSON.stringify(result.body) }
-          if (result.cache) cache.set(key, answer)
+          if (result.cache === 'long') cache.set(key, answer)
         }
         res.statusCode = answer.status
         res.setHeader('Content-Type', 'application/json; charset=utf-8')
