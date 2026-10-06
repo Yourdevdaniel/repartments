@@ -339,7 +339,7 @@ export default function App() {
         ) : (
           <div className={`${glass} px-4 py-2.5 text-sm font-bold text-ink-soft`}>{copy.hint[lang]}</div>
         )}
-        <p className="text-[11px] font-semibold text-ink-soft/80">{copy.credits[lang]}</p>
+        <Credits lang={lang} />
       </div>
     </div>
   )
@@ -415,6 +415,31 @@ function Landing({ lang, onGo }: { lang: Lang; onGo: (path: string) => void }) {
         <p className="mt-5 text-[11px] leading-snug text-ink-soft">{copy.note[lang]}</p>
       </div>
     </div>
+  )
+}
+
+const AUTHOR = { name: 'Daniel Bernardes', github: 'https://github.com/Yourdevdaniel', site: 'https://bernardes.dev' }
+
+/** Who made it (with links to the author's GitHub and site) and who drew the characters. */
+function Credits({ lang }: { lang: Lang }) {
+  const link = 'pointer-events-auto font-extrabold text-ink underline-offset-2 hover:underline'
+  return (
+    <p className="flex flex-wrap items-center justify-center gap-x-1.5 text-[11px] font-semibold text-ink-soft/90">
+      <span>{copy.madeBy[lang]}</span>
+      <a href={AUTHOR.github} target="_blank" rel="noreferrer" className={link}>
+        {AUTHOR.name}
+      </a>
+      <span aria-hidden="true">·</span>
+      <a href={AUTHOR.github} target="_blank" rel="noreferrer" className={link}>
+        GitHub
+      </a>
+      <span aria-hidden="true">·</span>
+      <a href={AUTHOR.site} target="_blank" rel="noreferrer" className={link}>
+        bernardes.dev
+      </a>
+      <span aria-hidden="true">·</span>
+      <span>{copy.credits[lang]}</span>
+    </p>
   )
 }
 
