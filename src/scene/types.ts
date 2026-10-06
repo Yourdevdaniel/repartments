@@ -4,7 +4,7 @@ import type { Caption, Story, Vec3 } from './story'
 export type Placement = { model: string; at: Vec3; rotY?: number; scale?: number; tint?: string }
 
 /** Something on a back wall: a window onto the sky, a framed picture, a board of sticky notes. */
-export type Decor = { kind: 'window' | 'picture' | 'board'; x: number; y: number; w: number; h: number; color?: string }
+export type Decor = { kind: 'window' | 'picture' | 'board' | 'clock'; x: number; y: number; w: number; h: number; color?: string }
 
 export type Room = {
   id: string

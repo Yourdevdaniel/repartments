@@ -14,7 +14,18 @@ import { LOOK, useWeather } from './weather'
 const ease = (delta: number) => 1 - Math.exp(-delta * 1.6)
 
 /** Sun, sky light and fill, easing towards the current weather instead of snapping. */
-export function WeatherLights({ shadowTop }: { shadowTop: number }) {
+/**
+ * Indoors the lights are on: the weather only tints the room a little, and at night it turns warm
+ * instead of dark.
+ */
+const INDOOR: Record<string, { hemi: number; sun: number; sky: string; sunColor: string }> = {
+  sun: { hemi: 1.05, sun: 1.5, sky: '#ffffff', sunColor: '#fff4e0' },
+  clouds: { hemi: 1.0, sun: 1.1, sky: '#f4f5fa', sunColor: '#f6f4ef' },
+  rain: { hemi: 0.95, sun: 0.95, sky: '#eceff6', sunColor: '#f3eee6' },
+  night: { hemi: 0.85, sun: 0.9, sky: '#ffe7c4', sunColor: '#ffd9a3' },
+}
+
+export function WeatherLights({ shadowTop, indoor = false }: { shadowTop: number; indoor?: boolean }) {
   const weather = useWeather()
   const hemi = useRef<HemisphereLight>(null)
   const sun = useRef<DirectionalLight>(null)
@@ -22,7 +33,7 @@ export function WeatherLights({ shadowTop }: { shadowTop: number }) {
   const tmp = useMemo(() => new Color(), [])
 
   useFrame((_, delta) => {
-    const look = LOOK[weather]
+    const look = indoor ? { ...LOOK[weather], ...INDOOR[weather], ground: LOOK.sun.ground } : LOOK[weather]
     const k = ease(delta)
     if (hemi.current) {
       hemi.current.intensity += (look.hemi - hemi.current.intensity) * k
