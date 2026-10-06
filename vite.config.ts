@@ -1,6 +1,7 @@
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { defineConfig, type Plugin } from 'vite'
 
 /**
@@ -40,6 +41,14 @@ function devApi(): Plugin {
   }
 }
 
+/** The production security headers from vercel.json, so `vite preview` behaves like the real site. */
+const productionHeaders = Object.fromEntries(
+  (JSON.parse(readFileSync(new URL('./vercel.json', import.meta.url), 'utf8')).headers[0].headers as { key: string; value: string }[]).map(
+    (h) => [h.key, h.value],
+  ),
+)
+
 export default defineConfig({
   plugins: [react(), tailwindcss(), devApi()],
+  preview: { headers: productionHeaders },
 })
