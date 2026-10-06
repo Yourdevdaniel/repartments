@@ -77,7 +77,15 @@ export const copy = {
   } as Record<string, (login: string) => L>,
   cast: { en: 'Who lives here', pt: 'Quem mora aqui' },
   back: { en: 'Back to the building', pt: 'Voltar para o prédio' },
-  hint: { en: 'Click a flat to step inside', pt: 'Clique num apartamento para entrar' },
+  hint: {
+    en: 'Click a flat to step inside · drag to turn · scroll to zoom',
+    pt: 'Clique num apartamento para entrar · arraste para girar · role para dar zoom',
+  },
+  hintTouch: {
+    en: 'Tap a flat to step inside · drag to turn · pinch to zoom',
+    pt: 'Toque num apartamento para entrar · arraste para girar · pince para dar zoom',
+  },
+  recenter: { en: 'Whole building', pt: 'Ver o prédio todo' },
   loop: { en: 'Steps of the loop, it repeats', pt: 'Passos do ciclo, que se repete' },
   weather: { en: 'Weather', pt: 'Clima' },
   prOpen: (n: number): L => ({ en: n === 1 ? '1 open PR' : `${n} open PRs`, pt: n === 1 ? '1 PR aberto' : `${n} PRs abertos` }),
