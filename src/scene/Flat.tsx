@@ -533,6 +533,17 @@ export function Flat({ flat, hovered, interactive, onHover, onSelect }: FlatProp
       {cast.map((c) => (
         <Resident key={c.id} id={c.id} model={c.model} story={stories[c.story]} label={c.tech} color={c.color} />
       ))}
+      {flat.visitors.map((v) => (
+        <Resident
+          key={v.id}
+          id={v.id}
+          model={v.model}
+          story={stories[v.story]}
+          label={v.tech}
+          color={v.color}
+          hideFlag={`${v.id}:hidden`}
+        />
+      ))}
       {Object.keys(narrator.props).includes('letter') && <Prop id="letter" story={narrator} cast={cast} />}
       {Object.keys(narrator.props).includes('box') && <Prop id="box" story={narrator} cast={cast} />}
       <Highlight layout={layout} on={hovered && interactive} />

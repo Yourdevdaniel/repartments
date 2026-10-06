@@ -35,7 +35,7 @@ function actionX(flat: FlatData, t: number): number | null {
   for (const c of flat.cast) {
     if (c.story !== flat.narrator) continue
     const pose = sample(story, c.id, t)
-    if (pose.anim === 'idle') continue
+    if (pose.anim === 'idle' || pose.rest) continue
     sum += pose.x
     n++
   }

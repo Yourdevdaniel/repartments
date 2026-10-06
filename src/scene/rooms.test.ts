@@ -73,6 +73,32 @@ describe('buildFlat', () => {
     expect(flat.stories.coder.captions[0].caption.en).toBe('Python writes the code')
   })
 
+  it('turns red checks into an argument and a fix', () => {
+    const flat = buildFlat({ ...webApp, status: { ci: 'failing' } })
+    const captions = flat.stories.main.captions.map((c) => c.caption.en)
+    expect(captions).toContain('The tests fail')
+    expect(captions).toContain('Django fixes it')
+  })
+
+  it('brings in a visitor with a pull request, and argues over a conflict', () => {
+    const clean = buildFlat({ ...webApp, status: { prs: { open: 1 } } })
+    expect(clean.visitors).toHaveLength(1)
+    expect(clean.stories.main.captions.map((c) => c.caption.en)).toContain('Approved and merged')
+    const messy = buildFlat({ ...webApp, status: { prs: { open: 2, conflict: true } } })
+    expect(messy.stories.main.captions.map((c) => c.caption.en)).toContain('Merge conflict! They disagree')
+  })
+
+  it('has idle residents take a break with their hobby', () => {
+    const flat = buildFlat(webApp)
+    expect(flat.stories.main.tracks.database.some((s) => s.anim === 'sit')).toBe(true)
+  })
+
+  it('lets a lone coder review a pull request too', () => {
+    const flat = buildFlat({ ...spec([{ tech: 'Python', role: 'coder', color: '#3572a5' }]), status: { prs: { open: 1 } } })
+    expect(flat.visitors).toHaveLength(1)
+    expect(flat.stories.coder.captions.map((c) => c.caption.en)).toContain('A pull request arrives for Python')
+  })
+
   it('flags Docker when the devops resident lives there', () => {
     expect(buildFlat(webApp).docker).toBe(true)
   })
