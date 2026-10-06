@@ -96,6 +96,7 @@ export const copy = {
     pt: 'Uma ilustração de como as partes conversam. Nunca mostra código, rotas ou dados.',
   },
   credits: { en: 'Characters and furniture: Kenney (CC0)', pt: 'Personagens e móveis: Kenney (CC0)' },
+  madeBy: { en: 'Made by', pt: 'Feito por' },
   residents: (n: number): L => ({
     en: n === 1 ? '1 apartment' : `${n} apartments`,
     pt: n === 1 ? '1 apartamento' : `${n} apartamentos`,
