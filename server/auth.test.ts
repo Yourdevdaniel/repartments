@@ -165,3 +165,36 @@ describe('"Continue with GitHub"', () => {
     expect(res.headers.get('location')).toBe('/studio?signin=off')
   })
 })
+
+describe('the client secret', () => {
+  const SECRET = 'canary-secret-value'
+  const env2 = { GITHUB_CLIENT_ID: 'Iv1.public', GITHUB_CLIENT_SECRET: SECRET }
+
+  it('never leaves in an answer, a redirect or a cookie, and goes only to GitHub’s token endpoint', async () => {
+    const sent: { url: string; body: string }[] = []
+    const fetcher = async (url: string, init: RequestInit) => {
+      sent.push({ url, body: String(init.body) })
+      return new Response(JSON.stringify(url.includes('access_token') ? { error: 'bad_verification_code' } : {}), { status: 200 })
+    }
+    const login = await handleAuth(new Request(`${BASE}/api/auth/login`), { env: env2, fetcher })
+    const flow = login.headers.getSetCookie()[0].split(';')[0]
+    const state = new URL(login.headers.get('location')!).searchParams.get('state')
+    const answers = [
+      login,
+      await handleAuth(new Request(`${BASE}/api/auth/config`), { env: env2, fetcher }),
+      await handleAuth(new Request(`${BASE}/api/auth/callback?code=abcdef123456&state=${state}`, { headers: { cookie: flow } }), { env: env2, fetcher }),
+      await handleAuth(new Request(`${BASE}/api/auth/callback?code=abcdef123456&state=wrong`, { headers: { cookie: flow } }), { env: env2, fetcher }),
+      await handleAuth(post('/api/auth/claim'), { env: env2, fetcher }),
+      await handleAuth(post('/api/auth/device'), { env: env2, fetcher }),
+      await handleAuth(post('/api/auth/token', { device_code: 'dc_123456789' }), { env: env2, fetcher }),
+      await handleAuth(new Request(`${BASE}/api/auth/nowhere`), { env: env2, fetcher }),
+    ]
+    for (const res of answers) {
+      const everything = `${res.status} ${[...res.headers].join(' ')} ${res.headers.getSetCookie().join(' ')} ${await res.text()}`
+      expect(everything).not.toContain(SECRET)
+    }
+    const carrying = sent.filter((s) => s.body.includes(SECRET))
+    expect(carrying.length).toBe(1)
+    expect(carrying[0].url).toBe('https://github.com/login/oauth/access_token')
+  })
+})

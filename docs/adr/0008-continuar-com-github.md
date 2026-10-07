@@ -34,6 +34,7 @@ Opção 3. O estúdio mostra **Continuar com GitHub** quando o servidor tem `GIT
 - O token nunca aparece em endereço, na página nem em log. Ele passa do servidor ao cofre pelo cookie de 2 minutos e fica no cofre, como manda [0002](0002-token-so-no-navegador.md).
 - O `state` e o PKCE impedem que um retorno forjado ou repetido vire login. Os cookies são `Secure`, `HttpOnly` e com `Path` restrito.
 - A Callback URL do app tem de ser registrada exatamente como `https://<site>/api/auth/callback` (e `http://localhost:5173/api/auth/callback` para desenvolvimento, em outro OAuth App, se o app for OAuth).
+- O segredo só é lido em `server/auth.ts` e só viaja no corpo do pedido a `https://github.com/login/oauth/access_token`. Um teste passa por todas as rotas e confere que ele não aparece em nenhuma resposta, endereço ou cookie; e, como o Vite só põe no código do navegador variáveis que começam com `VITE_`, ele também não entra no site publicado (conferido com um build de teste).
 - Se o segredo vazar, ele deve ser trocado: a página do app no GitHub gera um novo, e o antigo deixa de valer. A variável na Vercel é atualizada e o site é reimplantado.
 - Sem o segredo, o estúdio continua funcionando pelo código, então a mudança é aditiva: nenhuma instalação atual quebra.
 - Quando o GitHub aceitar clientes públicos no fluxo web, a troca no servidor pode sair e o segredo deixa de ser necessário. Este ADR seria então substituído.
