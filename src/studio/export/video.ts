@@ -9,7 +9,8 @@
 /** What is written on a frame: the scene's kicker and title, and the step's caption with its icon. */
 export type Overlay = { kicker: string; title: string; caption: string; icon: string }
 
-export const VIDEO = { width: 1920, height: 1080, fps: 30, bitrate: 8_000_000 }
+/** 3 Mbit/s: sharp for flat colours and big captions, and about 22 MB a minute, small enough to send. */
+export const VIDEO = { width: 1920, height: 1080, fps: 30, bitrate: 3_000_000 }
 
 const FONT = '"Nunito Variable", Nunito, ui-rounded, system-ui, sans-serif'
 const INK = '#23263a'
