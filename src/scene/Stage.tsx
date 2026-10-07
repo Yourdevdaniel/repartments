@@ -61,6 +61,7 @@ function CameraRig({
   instant,
   recenter,
   onMoved,
+  panel,
 }: {
   flats: FlatData[]
   lot: number
@@ -68,6 +69,8 @@ function CameraRig({
   instant: boolean
   recenter: number
   onMoved: (moved: boolean) => void
+  /** Whether the side panel covers the right of the screen, so the shot centres on what's left. */
+  panel: boolean
 }) {
   const { camera, size, pointer, gl } = useThree()
   const time = useStoryTime()
@@ -118,8 +121,8 @@ function CameraRig({
   }, [inside, view, flats, height, size.width, size.height])
 
   // The latest of what the input handlers read, so they're bound once instead of every render.
-  const live = useRef({ free, want, size, onMoved })
-  live.current = { free, want, size, onMoved }
+  const live = useRef({ free, want, size, onMoved, panel })
+  live.current = { free, want, size, onMoved, panel }
 
   const report = () => {
     const m = !isHome(orbit.current)
@@ -151,8 +154,8 @@ function CameraRig({
     }
     /** Pixels per world unit at zoom 1, and where the middle of the shot is on screen. */
     const frame = () => {
-      const { want, size } = live.current
-      const avail = size.width - (size.width >= 1024 ? PANEL : 0)
+      const { want, size, panel } = live.current
+      const avail = size.width - (panel && size.width >= 1024 ? PANEL : 0)
       const rect = el.getBoundingClientRect()
       return { scale: Math.min(avail / want.fitW, size.height / want.fitH), cx: rect.left + avail / 2, cy: rect.top + size.height / 2 }
     }
@@ -275,11 +278,11 @@ function CameraRig({
   }, [gl])
 
   useEffect(() => {
-    const panel = size.width >= 1024 ? PANEL : 0
-    if (panel) cam.setViewOffset(size.width, size.height, panel / 2, 0, size.width, size.height)
+    const side = panel && size.width >= 1024 ? PANEL : 0
+    if (side) cam.setViewOffset(size.width, size.height, side / 2, 0, size.width, size.height)
     else cam.clearViewOffset()
     cam.updateProjectionMatrix()
-  }, [cam, size.width, size.height])
+  }, [cam, size.width, size.height, panel])
 
   useFrame((_, delta) => {
     const key = inside ? `in:${inside.id}` : `out:${lot}`
@@ -293,8 +296,7 @@ function CameraRig({
     snappy.current = Math.max(0, snappy.current - delta)
     const speed = snappy.current > 0 ? 14 : view.mode === 'building' && view.entering ? 6 : 3.2
     const k = instant ? 1 : 1 - Math.exp(-delta * speed)
-    const panel = size.width >= 1024 ? PANEL : 0
-    const avail = size.width - panel
+    const avail = size.width - (panel && size.width >= 1024 ? PANEL : 0)
 
     if (inside) {
       const x = actionX(inside, time.current)
@@ -355,7 +357,7 @@ function Clock({
 }) {
   const last = useRef<Caption | null | undefined>(undefined)
   useFrame((_, delta) => {
-    if (!time.paused) time.current += Math.min(delta, 0.1)
+    if (!time.paused) time.current += Math.min(delta, 0.1) * time.rate
     const story = narrator ? narrator.stories[narrator.narrator] : null
     const caption = story ? captionAt(story, time.current) : null
     if (caption !== last.current) {
@@ -386,16 +388,34 @@ type Props = {
   lot: number
   /** When this changes, the stories start again from their first step (a presentation entering a scene). */
   restart?: string | number | null
+  /** Playback, for the presenter's controls: stand still, and how fast the stories play (1 = as written). */
+  paused?: boolean
+  rate?: number
+  /** Handed the scene's clock, so the presenter can jump to a step, the start or the end. */
+  clock?: { current: StoryTime | null }
+  /** Whether a side panel covers the right of the screen (true unless said otherwise). */
+  panel?: boolean
 }
 
-export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption, recenter, onMoved, lot, restart }: Props) {
+export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption, recenter, onMoved, lot, restart, paused, rate, clock, panel = true }: Props) {
   const hood = useMemo(() => neighborhood(owner, lot), [owner, lot])
   const reduce = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, [])
-  const time = useMemo<StoryTime>(() => ({ current: reduce ? 9 : 0, paused: reduce }), [reduce])
+  const time = useMemo<StoryTime>(() => ({ current: reduce ? 9 : 0, paused: reduce, rate: 1 }), [reduce])
   // Before the next frame draws, so the new scene never shows a moment from the middle of its story.
   useLayoutEffect(() => {
     if (restart !== undefined && restart !== null && !reduce) time.current = 0
   }, [restart, reduce, time])
+  useLayoutEffect(() => {
+    time.paused = paused ?? reduce
+    time.rate = rate ?? 1
+  }, [paused, rate, reduce, time])
+  useLayoutEffect(() => {
+    if (!clock) return
+    clock.current = time
+    return () => {
+      clock.current = null
+    }
+  }, [clock, time])
   const inside = view.mode === 'inside' ? (flats.find((f) => f.id === view.id) ?? null) : null
   // Sharp on capable screens, softer when the frame rate drops (PerformanceMonitor below).
   const [dpr, setDpr] = useState(() => Math.min(window.devicePixelRatio || 1, 1.5))
@@ -417,7 +437,7 @@ export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onS
       <SceneLangContext.Provider value={lang}>
       <StoryTimeContext.Provider value={time}>
         <Clock time={time} narrator={inside} onCaption={onCaption} />
-        <CameraRig flats={flats} lot={lot} view={view} instant={reduce} recenter={recenter} onMoved={onMoved} />
+        <CameraRig flats={flats} lot={lot} view={view} instant={reduce} recenter={recenter} onMoved={onMoved} panel={panel} />
         {import.meta.env.DEV && <RenderStats />}
         <Suspense fallback={null}>
           {inside ? (

@@ -107,7 +107,7 @@ export function Resident({ id, model, story, label, color = '#999', y = 0, offse
     if (yaw.current === null) yaw.current = pose.yaw
     let diff = pose.yaw - yaw.current
     diff = Math.atan2(Math.sin(diff), Math.cos(diff))
-    yaw.current += diff * Math.min(1, delta * 10)
+    yaw.current += diff * Math.min(1, delta * 10 * Math.max(1, time.rate))
     group.rotation.y = yaw.current
 
     const base: AnimName = pose.anim
@@ -135,7 +135,7 @@ export function Resident({ id, model, story, label, color = '#999', y = 0, offse
       }
       now.carry = pose.carrying
     }
-    mixer.update(time.paused ? 1e-4 : delta)
+    mixer.update(time.paused ? 1e-4 : delta * time.rate)
 
     // Speech bubble: swap the picture when the line changes and pop it in.
     const line = bubbleAt(story, id, t)

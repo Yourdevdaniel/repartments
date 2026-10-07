@@ -10,25 +10,30 @@ export const glass = 'rounded-[22px] border border-white/80 bg-white/[0.86] shad
 
 /**
  * The loop at a glance: one little icon per step, the current one lifted and coloured, and an arrow
- * back to the start, because the story repeats.
+ * back to the start, because the story repeats. With `onPick`, each step is a button that jumps the
+ * scene to it.
  */
-export function LoopStrip({ steps, current, text, loopLabel }: { steps: Caption[]; current: number; text: string; loopLabel: string }) {
+export function LoopStrip({ steps, current, text, loopLabel, onPick }: { steps: Caption[]; current: number; text: string; loopLabel: string; onPick?: (step: number) => void }) {
   return (
     <div className={`${glass} pointer-events-auto flex max-w-[min(56rem,100%)] flex-col items-center gap-2.5 px-4 pt-3 pb-3.5`}>
       <ol className="flex flex-wrap items-center justify-center gap-1" aria-label={loopLabel}>
         {steps.map((step, i) => {
           const on = i === current
+          const look = `grid place-items-center rounded-full transition-all duration-300 ${
+            on ? 'size-10 -translate-y-0.5 bg-accent text-xl shadow-[0_8px_18px_-8px_rgba(47,143,230,0.8)]' : 'size-8 bg-white text-base'
+          } ${!on && i < current ? 'opacity-100' : !on ? 'opacity-60' : ''}`
           return (
             <li key={i} className="flex items-center gap-1">
               {i > 0 && <span aria-hidden="true" className={`h-0.5 w-2 rounded-full ${i <= current ? 'bg-accent/60' : 'bg-ink/10'}`} />}
-              <span
-                aria-current={on ? 'step' : undefined}
-                className={`grid place-items-center rounded-full transition-all duration-300 ${
-                  on ? 'size-10 -translate-y-0.5 bg-accent text-xl shadow-[0_8px_18px_-8px_rgba(47,143,230,0.8)]' : 'size-8 bg-white text-base'
-                } ${!on && i < current ? 'opacity-100' : !on ? 'opacity-60' : ''}`}
-              >
-                {step.icon ?? '•'}
-              </span>
+              {onPick ? (
+                <button type="button" onClick={() => onPick(i)} aria-current={on ? 'step' : undefined} aria-label={String(i + 1)} title={String(i + 1)} className={`${look} hover:opacity-100 hover:ring-2 hover:ring-accent/40`}>
+                  {step.icon ?? '•'}
+                </button>
+              ) : (
+                <span aria-current={on ? 'step' : undefined} className={look}>
+                  {step.icon ?? '•'}
+                </span>
+              )}
             </li>
           )
         })}

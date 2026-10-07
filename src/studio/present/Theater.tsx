@@ -6,17 +6,22 @@
  * Two ways to watch: browsing (side panel with the scenes, who takes part and the steps), and
  * presenting (full screen, just the scene and a big caption, arrows between scenes, optionally
  * moving on by itself once a scene has played through), for showing it to a client.
+ *
+ * Inside a scene, both have a remote (`Playback.tsx`): pause, step back and forth, the start and the
+ * end, stop, half to double speed, hide the controls, each with a key (? lists them).
  */
 import { useGLTF } from '@react-three/drei'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Flow } from '../../shared/studio'
 import { Stage, type View } from '../../scene/Stage'
 import type { Caption } from '../../scene/story'
+import type { StoryTime } from '../../scene/time'
 import { TOUR_MODELS } from '../../scene/tour'
 import type { FlatData } from '../../scene/types'
 import { Backdrop } from '../../ui/Backdrop'
 import { glass, LoopStrip } from '../../ui/kit'
 import type { L, Lang } from '../../ui/roles'
+import { PlaybackBar, pw, RATES, rateLabel, ShortcutsHelp } from './Playback'
 import { PresentSetup, type SetupOptions } from './PresentSetup'
 
 for (const m of TOUR_MODELS.furniture) useGLTF.preload(`/models/furniture/${m}.glb`)
@@ -25,6 +30,8 @@ for (const m of TOUR_MODELS.characters) useGLTF.preload(`/models/characters/${m}
 const SKY = 'linear-gradient(180deg,#cfe0ff 0%,#e6ecff 45%,#f1f0ff 100%)'
 /** Phones and tablets get "tap" and "pinch" in the hint instead of "click" and "scroll". */
 const TOUCH = window.matchMedia('(pointer: coarse)').matches
+/** People who asked for less motion start every scene paused, on its last frame; play is a key away. */
+const REDUCE = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 const w = {
   who: { en: 'Who takes part', pt: 'Quem participa' },
@@ -82,6 +89,14 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
   const [auto, setAuto] = useState(true)
   const [recenter, setRecenter] = useState(0)
   const [moved, setMoved] = useState(false)
+  const [paused, setPaused] = useState(REDUCE)
+  const [rate, setRate] = useState<number>(1)
+  const [hud, setHud] = useState(true)
+  const [help, setHelp] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+  const toastTimer = useRef(0)
+  /** The scene's clock, handed over by the stage, to jump to a step. */
+  const clock = useRef<StoryTime | null>(null)
   const timers = useRef<number[]>([])
   /** Seen the scene start, then its last step: one full play, so an automatic show can move on. */
   const seenStart = useRef(false)
@@ -106,8 +121,9 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     setHovered(null)
     seenStart.current = false
     reachedEnd.current = false
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (cut || reduce) {
+    // A new scene plays, even if the last one was paused or stopped.
+    setPaused(REDUCE)
+    if (cut || REDUCE) {
       setVeil(true)
       later(180, () => {
         setView({ mode: 'inside', id })
@@ -140,6 +156,61 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     [flows, index, enter],
   )
 
+  /** A short note in the middle of the screen, for what a key just did ("1,5x", "Pausado"). */
+  const flash = useCallback((text: string) => {
+    setToast(text)
+    window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToast(null), 1300)
+  }, [])
+  useEffect(() => () => window.clearTimeout(toastTimer.current), [])
+
+  const story = index >= 0 ? flats[index].stories[flats[index].narrator] : null
+  /** Jumps to the start of one step; counts as having watched, so the show still moves on after it. */
+  const seek = (i: number) => {
+    const t = clock.current
+    if (!story || !t || !story.captions.length) return
+    const k = Math.max(0, Math.min(story.captions.length - 1, i))
+    seenStart.current = true
+    reachedEnd.current = false
+    t.current = story.captions[k].t0 + 0.01
+  }
+  const last = (story?.captions.length ?? 1) - 1
+  const togglePause = () => {
+    flash(paused ? `▶ ${pw.playing[lang]}` : `⏸ ${pw.paused[lang]}`)
+    setPaused(!paused)
+  }
+  const nextStep = () => {
+    if (caption.step < last) seek(caption.step + 1)
+    else if (index + 1 < flows.length) step(1)
+    else flash(pw.lastScene[lang])
+  }
+  const prevStep = () => {
+    if (caption.step > 0) seek(caption.step - 1)
+    else if (index > 0) step(-1)
+    else seek(0)
+  }
+  const toStart = () => seek(0)
+  const toEnd = () => {
+    seek(last)
+    flash(pw.atEnd[lang])
+  }
+  const stop = () => {
+    seek(0)
+    setPaused(true)
+    flash(`■ ${pw.stopped[lang]}`)
+  }
+  const changeRate = (by: number, cycle = false) => {
+    const i = RATES.indexOf(rate as (typeof RATES)[number])
+    const at = i < 0 ? 1 : i + by
+    const next = RATES[cycle ? (at + RATES.length) % RATES.length : Math.max(0, Math.min(RATES.length - 1, at))]
+    setRate(next)
+    flash(`${pw.speed[lang]} ${rateLabel(next)}`)
+  }
+  const toggleHud = () => {
+    if (hud) flash(pw.hudHidden[lang])
+    setHud(!hud)
+  }
+
   const startPresenting = () => {
     setPresenting(true)
     document.documentElement.requestFullscreen?.().catch(() => undefined)
@@ -157,23 +228,47 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     return () => document.removeEventListener('fullscreenchange', onChange)
   }, [])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (keysOff) return
-      if (e.key === 'Escape') {
-        if (presenting) stopPresenting()
-        else if (view.mode === 'inside') back()
-      } else if (presenting && (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ')) {
-        e.preventDefault()
-        step(1)
-      } else if (presenting && (e.key === 'ArrowLeft' || e.key === 'PageUp')) {
-        e.preventDefault()
-        step(-1)
-      }
+  // The keys, like a video player's. Inside a scene the camera doesn't use the arrows, so they step
+  // through it; on the building they still turn the camera (Stage).
+  const onKey = (e: KeyboardEvent) => {
+    if (keysOff || e.altKey || e.ctrlKey || e.metaKey) return
+    const target = e.target as HTMLElement | null
+    if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return
+    const k = e.key
+    const done = (fn: () => void) => {
+      e.preventDefault()
+      fn()
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [presenting, view.mode, keysOff, back, step, stopPresenting])
+    if (help) {
+      if (k === 'Escape' || k === '?') done(() => setHelp(false))
+      return
+    }
+    if (k === 'Escape') {
+      if (presenting) stopPresenting()
+      else if (view.mode === 'inside') back()
+      return
+    }
+    if (k === '?') return done(() => setHelp(true))
+    if (k === 'h' || k === 'H') return done(toggleHud)
+    if (!flow) return
+    if (k === ' ' || k === 'k' || k === 'K') done(togglePause)
+    else if ((k === 'ArrowRight' && e.shiftKey) || k === 'PageDown') done(() => step(1))
+    else if ((k === 'ArrowLeft' && e.shiftKey) || k === 'PageUp') done(() => step(-1))
+    else if (k === 'ArrowRight' || k === 'l' || k === 'L') done(nextStep)
+    else if (k === 'ArrowLeft' || k === 'j' || k === 'J') done(prevStep)
+    else if (k === 'Home' || k === '0') done(toStart)
+    else if (k === 'End') done(toEnd)
+    else if (k === 's' || k === 'S') done(stop)
+    else if (k === '-' || k === '_' || k === ',' || k === '<') done(() => changeRate(-1))
+    else if (k === '+' || k === '=' || k === '.' || k === '>') done(() => changeRate(1))
+  }
+  const keyHandler = useRef(onKey)
+  keyHandler.current = onKey
+  useEffect(() => {
+    const listen = (e: KeyboardEvent) => keyHandler.current(e)
+    window.addEventListener('keydown', listen)
+    return () => window.removeEventListener('keydown', listen)
+  }, [])
 
   const onCaption = useCallback(
     (text: Caption | null, at: number, total: number) => {
@@ -208,7 +303,37 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
       onMoved={setMoved}
       lot={0}
       restart={insideId}
+      paused={paused}
+      rate={rate}
+      clock={clock}
+      panel={!presenting && hud}
     />
+  )
+
+  const playback = flow && (
+    <PlaybackBar
+      lang={lang}
+      paused={paused}
+      rate={rate}
+      onToggle={togglePause}
+      onStart={toStart}
+      onPrev={prevStep}
+      onNext={nextStep}
+      onEnd={toEnd}
+      onStop={stop}
+      onRate={() => changeRate(1, true)}
+      onKeys={() => setHelp(true)}
+    />
+  )
+  const overlays = (
+    <>
+      {toast && (
+        <div className="pointer-events-none absolute inset-x-0 top-1/3 z-10 flex justify-center px-4" aria-live="polite">
+          <p className="rounded-full bg-ink/80 px-5 py-2.5 text-sm font-extrabold text-white shadow-lg">{toast}</p>
+        </div>
+      )}
+      {help && <ShortcutsHelp lang={lang} presenting={presenting} onClose={() => setHelp(false)} />}
+    </>
   )
 
   if (presenting) {
@@ -217,7 +342,8 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
         <Backdrop near={flow !== null} weather="sun" />
         <div className="absolute inset-0">{stage}</div>
         <div aria-hidden="true" className={`pointer-events-none absolute inset-0 bg-white/80 transition-opacity duration-200 ${veil ? 'opacity-100' : 'opacity-0'}`} />
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-4 md:p-6">
+        {overlays}
+        <div className={`pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-4 md:p-6 ${hud ? '' : 'hidden'}`}>
           <div className={`${glass} max-w-[min(40rem,70vw)] px-4 py-3`}>
             <p className="text-xs font-bold tracking-wide text-ink-soft uppercase">{flow ? sceneOf(index + 1, flows.length)[lang] : owner}</p>
             <h2 className="text-lg leading-tight font-extrabold md:text-2xl">{flow ? flow.title[lang] : ''}</h2>
@@ -228,20 +354,24 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
               <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} className="accent-[#2f8fe6]" />
               {w.auto[lang]}
             </label>
+            <button type="button" onClick={toggleHud} title={`${pw.hud[lang]} (H)`} className={`${glass} h-10 px-3.5 text-xs font-extrabold text-ink-soft hover:text-ink`}>
+              {pw.hud[lang]}
+            </button>
             <button type="button" onClick={stopPresenting} className={`${glass} h-10 px-4 text-xs font-extrabold text-ink`}>
               {w.exit[lang]}
             </button>
           </div>
         </div>
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-3 p-4 md:p-8">
+        <div className={`pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-3 p-4 md:p-8 ${hud ? '' : 'hidden'}`}>
           {flow && caption.text && (
             <p className={`${glass} max-w-[min(60rem,100%)] px-6 py-4 text-center text-xl leading-snug font-extrabold md:text-3xl`} aria-live="polite">
               <span aria-hidden="true" className="mr-2">{caption.text.icon}</span>
               {caption.text[lang]}
             </p>
           )}
-          <div className="pointer-events-auto flex items-center gap-2">
-            <button type="button" onClick={() => step(-1)} disabled={index <= 0} aria-label={w.prev[lang]} className={`${glass} grid size-12 place-items-center text-lg font-extrabold disabled:opacity-40`}>
+          <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2">
+            {playback}
+            <button type="button" onClick={() => step(-1)} disabled={index <= 0} aria-label={w.prev[lang]} title={`${w.prev[lang]} (PgUp)`} className={`${glass} grid size-12 place-items-center text-lg font-extrabold disabled:opacity-40`}>
               ←
             </button>
             <ol className="flex max-w-[60vw] flex-wrap items-center justify-center gap-1.5">
@@ -258,7 +388,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
                 </li>
               ))}
             </ol>
-            <button type="button" onClick={() => step(1)} disabled={index >= flows.length - 1} aria-label={w.next[lang]} className={`${glass} grid size-12 place-items-center text-lg font-extrabold disabled:opacity-40`}>
+            <button type="button" onClick={() => step(1)} disabled={index >= flows.length - 1} aria-label={w.next[lang]} title={`${w.next[lang]} (PgDn)`} className={`${glass} grid size-12 place-items-center text-lg font-extrabold disabled:opacity-40`}>
               →
             </button>
           </div>
@@ -279,7 +409,8 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
         </div>
       )}
 
-      <aside className={`${glass} absolute top-3 right-3 hidden max-h-[calc(100%-1.5rem)] w-[21rem] overflow-y-auto p-4 lg:block`}>
+      {overlays}
+      <aside className={`${glass} absolute top-3 right-3 hidden max-h-[calc(100%-1.5rem)] w-[21rem] overflow-y-auto p-4 ${hud ? 'lg:block' : ''}`}>
         <div className="flex gap-2">
           <button type="button" onClick={() => (setup ? setPreparing(true) : startPresenting())} disabled={!flats.length} className="h-9 flex-1 rounded-full bg-accent px-3 text-sm font-extrabold text-white transition-transform active:scale-[0.97] disabled:opacity-50">
             ▶ {w.present[lang]}
@@ -362,7 +493,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
         <p className="mt-4 border-t border-ink/10 pt-3 text-xs leading-snug text-ink-soft">{note[lang]}</p>
       </aside>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-3 md:p-4">
+      <div className={`pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-3 md:p-4 ${hud ? '' : 'hidden'}`}>
         {/* Phones have no side panel: back and present sit at the bottom. */}
         <div className="pointer-events-auto flex flex-wrap justify-center gap-2 lg:hidden">
           {flow && (
@@ -376,7 +507,10 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
           {tools}
         </div>
         {flow ? (
-          <LoopStrip steps={flats[index].stories.main.captions.map((c) => c.caption)} current={caption.step} text={caption.text?.[lang] ?? ''} loopLabel={w.loop[lang]} />
+          <>
+            <LoopStrip steps={flats[index].stories.main.captions.map((c) => c.caption)} current={caption.step} text={caption.text?.[lang] ?? ''} loopLabel={w.loop[lang]} onPick={seek} />
+            {playback}
+          </>
         ) : (
           flats.length > 0 && (
             <div className="flex flex-wrap items-center justify-center gap-2">
