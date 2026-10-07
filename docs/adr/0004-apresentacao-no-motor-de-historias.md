@@ -23,7 +23,8 @@ Opção 3, em `src/scene/tour.ts`, com o mapa 2D como complemento técnico (`src
 - o `Stage` ganhou só a propriedade `restart` (recomeçar a história ao entrar numa cena);
 - uma cena de abertura, **"Conheça o sistema"**, gerada do modelo: um guia visita as partes principais e cada uma diz o que faz;
 - o roteiro (nomes, legendas, títulos, cenas ocultas) é editável e salvo à parte do modelo; renomear uma parte troca o nome também nas legendas, no mapa e nos commits; a apresentação pode ser baixada como arquivo e aberta sem login;
-- o mesmo palco (`src/studio/present/Theater.tsx`) toca também os commits ([0005](0005-commits-como-cenas.md)).
+- o mesmo palco (`src/studio/present/Theater.tsx`) toca também os commits ([0005](0005-commits-como-cenas.md));
+- cada participante tem um nome simples (o que aparece por padrão: "Recepção", "Buscar leads", "Banco de dados") e o nome do código (`technical`: "Backend Routes", "search_leads", "PostgreSQL"). Antes de apresentar, perguntas de sim ou não escolhem, para as partes, as ferramentas da IA e os serviços de fora, qual dos dois aparece (`ScriptEdits.naming`); as legendas trocam os nomes junto. Nomes escolhidos à mão valem quando o nome simples está escolhido; quando o do código está, ele prevalece.
 
 ## Consequências
 

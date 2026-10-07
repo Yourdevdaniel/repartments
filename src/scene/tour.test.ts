@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Actor, Flow, FlowStep } from '../shared/studio'
 import { flagAt, propAt, sample } from './story'
-import { actorKey, applyEdits, buildTour, NO_EDITS } from './tour'
+import { actorKey, applyEdits, buildTour, CODE, NO_EDITS, renameParts } from './tour'
 
 const t = (en: string, pt = en) => ({ en, pt })
 const actor = (id: string, kind: Actor['kind'], name: string, component: string | null = null): Actor => ({
@@ -169,8 +169,49 @@ describe('applyEdits', () => {
     expect(kept.steps[0].text.en).toBe('My own words')
   })
 
+  it('switches to the names from the code for a technical audience, part by part', () => {
+    const flow: Flow = {
+      ...request,
+      actors: request.actors.map((a) =>
+        a.id === 'api' ? { ...a, name: t('Front desk', 'Recepção'), technical: t('Backend Routes') } : a.id === 'db' ? { ...a, name: t('Database', 'Banco de dados'), external: 'ext:postgresql', component: null, technical: t('PostgreSQL') } : a,
+      ),
+      steps: [step('screen', 'api', 'ask', 'The screen asks the Front desk'), { ...step('service', 'db', 'save', 'x'), text: { en: 'Saved in the database', pt: 'Guarda no banco de dados' } }],
+    }
+    const [code] = applyEdits([flow], { ...NO_EDITS, naming: CODE })
+    expect(code.actors.find((a) => a.id === 'api')!.name.pt).toBe('Backend Routes')
+    expect(code.steps[0].text.en).toBe('The screen asks the Backend Routes')
+    // Mid-sentence, the plain name was lower case; the brand keeps its own capitals.
+    expect(code.steps[1].text.pt).toBe('Guarda no PostgreSQL')
+    const [mixed] = applyEdits([flow], { ...NO_EDITS, naming: { parts: 'plain', tools: 'plain', services: 'code' } })
+    expect(mixed.actors.find((a) => a.id === 'api')!.name.pt).toBe('Recepção')
+    expect(mixed.steps[1].text.pt).toBe('Guarda no PostgreSQL')
+    const [plain] = applyEdits([flow], NO_EDITS)
+    expect(plain.steps[1].text.pt).toBe('Guarda no banco de dados')
+    // The code's names win over a rename by hand when they are chosen.
+    const api = flow.actors.find((a) => a.id === 'api')!
+    const [renamed] = applyEdits([flow], { ...NO_EDITS, actors: { [actorKey(api)]: { pt: 'Balcão' } }, naming: CODE })
+    expect(renamed.actors.find((a) => a.id === 'api')!.name.pt).toBe('Backend Routes')
+  })
+
   it('ignores blank edits', () => {
     const [edited] = applyEdits([request], { ...NO_EDITS, titles: { [request.id]: { pt: '   ' } } })
     expect(edited.title.pt).toBe('Criar leads')
+  })
+})
+
+describe('renameParts', () => {
+  const parts = [
+    { id: 'agent', label: { en: 'Support assistant', pt: 'Assistente de atendimento' } },
+    { id: 'routes', label: { en: 'Front desk', pt: 'Recepção' } },
+  ]
+  const summary = { en: 'The support assistant chooses between 3 tools.', pt: 'O assistente de atendimento escolhe entre 3 ferramentas.' }
+
+  it('calls the parts what the presenter renamed them to', () => {
+    const edits = { ...NO_EDITS, actors: { agent: { pt: 'Assistente de vendas', en: 'Sales assistant' } } }
+    expect(renameParts(summary, parts, edits)).toEqual({ en: 'The Sales assistant chooses between 3 tools.', pt: 'O Assistente de vendas escolhe entre 3 ferramentas.' })
+  })
+
+  it('leaves the text alone without renames', () => {
+    expect(renameParts(summary, parts, NO_EDITS)).toEqual(summary)
   })
 })

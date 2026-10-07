@@ -54,7 +54,7 @@ export function introFlow(model: ArchitectureModel): Flow | null {
   }
   const actors: Actor[] = [
     guide,
-    ...parts.map((c, i): Actor => ({ id: `part${i}`, name: { en: c.name, pt: c.name }, kind: COMPONENT_KIND[c.layer], component: c.id, external: null, note: c.summary })),
+    ...parts.map((c, i): Actor => ({ id: `part${i}`, name: c.label ?? { en: c.name, pt: c.name }, technical: { en: c.name, pt: c.name }, kind: COMPONENT_KIND[c.layer], component: c.id, external: null, note: c.summary })),
   ]
   const n = parts.length
   const steps: FlowStep[] = [
@@ -72,7 +72,7 @@ export function introFlow(model: ArchitectureModel): Flow | null {
       from: 'guide',
       to: `part${i}`,
       action: 'ask',
-      text: { en: `${c.name}: ${c.summary.en}`, pt: `${c.name}: ${c.summary.pt}` },
+      text: { en: `${(c.label ?? { en: c.name }).en}: ${c.summary.en}`, pt: `${(c.label ?? { pt: c.name }).pt}: ${c.summary.pt}` },
       say: WORD[c.layer],
     })),
     {

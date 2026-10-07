@@ -8,7 +8,7 @@
  * buttons to walk to older or newer ones.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { buildTour } from '../../scene/tour'
+import { applyEdits, buildTour, namingExamples, NO_EDITS, type Naming } from '../../scene/tour'
 import type { ArchitectureModel, Branch, Churn, ChurnFile, CommitDetail, CommitFilters, CommitSummary, Flow, StudioErrorCode } from '../../shared/studio'
 import { glass } from '../../ui/kit'
 import type { L, Lang } from '../../ui/roles'
@@ -96,6 +96,8 @@ export function WorksTab({
   defaultBranch,
   model,
   lang,
+  naming,
+  onNaming,
   preloaded,
   onCommit,
   onChurn,
@@ -110,6 +112,9 @@ export function WorksTab({
   onCommit: (commit: CommitDetail | null) => void
   /** What the commits on screen add up to, for the map's heat overlay. */
   onChurn: (churn: Churn | null) => void
+  /** Plain or code names for the parts, the same switch as the presentation's. */
+  naming: Naming
+  onNaming: (naming: Naming) => void
   /** Commits saved with an opened presentation: shown as they are, nothing is fetched. */
   preloaded: CommitDetail[] | null
   /** The commits on screen, so "Save presentation" can take them along. */
@@ -196,8 +201,8 @@ export function WorksTab({
     }
     return out
   }, [details, model, lang])
-  const flows = useMemo(() => scenes.map((s) => s.flow), [scenes])
-  const flats = useMemo(() => scenes.map((s) => buildTour(s.flow, lang, { heat: s.heat, label: s.label })), [scenes, lang])
+  const flows = useMemo(() => applyEdits(scenes.map((s) => s.flow), { ...NO_EDITS, naming }), [scenes, naming])
+  const flats = useMemo(() => flows.map((f, i) => buildTour(f, lang, { heat: scenes[i].heat, label: scenes[i].label })), [flows, scenes, lang])
 
   const onScene = useCallback((id: string | null) => onCommit(scenes.find((s) => s.flow.id === id)?.commit ?? null), [scenes, onCommit])
 
@@ -295,6 +300,7 @@ export function WorksTab({
             note={w.note}
             empty={w.none}
             onScene={onScene}
+            setup={{ naming, onNaming, examples: namingExamples(scenes.map((s) => s.flow)) }}
           />
         )}
         {load.state === 'loading' && (

@@ -5,7 +5,7 @@
  */
 import { useMemo, useState } from 'react'
 import type { ArchitectureModel } from '../../shared/studio'
-import { actorKey, applyEdits, buildTour, type ScriptEdits } from '../../scene/tour'
+import { actorKey, applyEdits, buildTour, namingExamples, PLAIN, renameParts, type ScriptEdits } from '../../scene/tour'
 import type { Lang } from '../../ui/roles'
 import { scriptFlows } from './intro'
 import { ScriptEditor } from './ScriptEditor'
@@ -22,8 +22,8 @@ const w = {
     pt: 'Nenhum agente de IA encontrado neste repositório, então não há a cena "como a IA decide". O estúdio reconhece os SDKs da OpenAI, Anthropic, Google, Mistral, Cohere, Groq e Ollama, LangChain/LangGraph, LlamaIndex, CrewAI, o OpenAI Agents SDK e o Vercel AI SDK.',
   },
   note: {
-    en: 'Generated from the code: names come from folders and files, steps from imports, routes and the AI calls found.',
-    pt: 'Gerado a partir do código: os nomes vêm das pastas e arquivos, os passos dos imports, rotas e chamadas de IA encontrados.',
+    en: 'Written automatically from the system’s own code. Edit the script to use your client’s words.',
+    pt: 'Escrito automaticamente a partir do código do próprio sistema. Edite o roteiro para usar as palavras do seu cliente.',
   },
 }
 
@@ -32,6 +32,14 @@ export function PresentTab({ model, edits, onEdits, lang }: { model: Architectur
   const flows = useMemo(() => applyEdits(generated, edits).filter((f) => !edits.hidden.includes(f.id)), [generated, edits])
   const flats = useMemo(() => flows.map((f) => buildTour(f, lang)), [flows, lang])
   const [editing, setEditing] = useState(false)
+  const titles = useMemo(() => applyEdits(generated, edits), [generated, edits])
+  // Examples show the names the audience would see: renames by hand included.
+  const examples = useMemo(() => namingExamples(applyEdits(generated, { ...edits, naming: PLAIN })), [generated, edits])
+  // The summary lists kinds of parts ("as telas, a recepção") and names one part: the agent's.
+  const summary = useMemo(
+    () => renameParts(model.summary, model.components.filter((c) => model.agents.some((a) => a.component === c.id)), edits),
+    [model, edits],
+  )
 
   return (
     <>
@@ -46,7 +54,7 @@ export function PresentTab({ model, edits, onEdits, lang }: { model: Architectur
             <p className="text-xs font-bold tracking-wide text-ink-soft uppercase">
               {model.repo.owner}/{model.repo.name}
             </p>
-            <p className="mt-1 text-sm leading-snug">{model.summary[lang]}</p>
+            <p className="mt-1 text-sm leading-snug">{summary[lang]}</p>
             {!model.agents.length && <p className="mt-2 rounded-xl bg-ink/5 px-3 py-2 text-xs leading-snug text-ink-soft">{w.noAgent[lang]}</p>}
           </>
         }
@@ -64,6 +72,13 @@ export function PresentTab({ model, edits, onEdits, lang }: { model: Architectur
         note={w.note}
         empty={w.none}
         keysOff={editing}
+        setup={{
+          naming: edits.naming ?? PLAIN,
+          onNaming: (naming) => onEdits({ ...edits, naming }),
+          examples,
+          scenes: titles.map((f) => ({ id: f.id, title: f.title[lang], on: !edits.hidden.includes(f.id) })),
+          onScene: (id, on) => onEdits({ ...edits, hidden: on ? edits.hidden.filter((h) => h !== id) : [...edits.hidden, id] }),
+        }}
       />
       {editing && <ScriptEditor flows={generated} edits={edits} onChange={onEdits} lang={lang} onClose={() => setEditing(false)} keyOf={actorKey} />}
     </>

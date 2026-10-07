@@ -48,8 +48,9 @@ export function ScriptEditor({
 
   useEffect(() => {
     const d = dialog.current
+    // No close() on cleanup: React's development double-mount would fire `close` and shut the
+    // dialog right after opening it. The element goes away with the component anyway.
     if (d && !d.open) d.showModal()
-    return () => d?.close()
   }, [])
 
   /** Each participant once, however many scenes it appears in. */

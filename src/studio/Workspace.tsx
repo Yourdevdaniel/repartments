@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AnalysisEvent, ArchitectureModel, Churn, CommitDetail, RepoSummary, StudioErrorCode } from '../shared/studio'
-import type { ScriptEdits } from '../scene/tour'
+import { PLAIN, type ScriptEdits } from '../scene/tour'
 import { glass } from '../ui/kit'
 import type { Lang } from '../ui/roles'
 import { api, StudioApiError } from './api'
@@ -104,10 +104,32 @@ export function Workspace({ source, lang }: { source: Source; lang: Lang }) {
     }
   }
 
-  // The presenter's names for the parts, so the map and the commits say what the presentation says.
+  const naming = edits.naming ?? PLAIN
+
+  // The presenter's names for the parts (renamed by hand, or the plain label), so the commits tell
+  // a part the way the presentation does. `name` stays the code's name for the technical switch.
   const named = useMemo<ArchitectureModel | null>(
-    () => (model ? { ...model, components: model.components.map((c) => ({ ...c, name: edits.actors[c.id]?.[lang]?.trim() || c.name })) } : null),
-    [model, edits, lang],
+    () =>
+      model
+        ? {
+            ...model,
+            components: model.components.map((c) => {
+              const own = edits.actors[c.id]
+              if (!own?.en?.trim() && !own?.pt?.trim()) return c
+              const base = c.label ?? { en: c.name, pt: c.name }
+              return { ...c, label: { en: own.en?.trim() || base.en, pt: own.pt?.trim() || base.pt } }
+            }),
+          }
+        : null,
+    [model, edits],
+  )
+  // The map shows parts by the same names the presentation uses right now.
+  const mapModel = useMemo<ArchitectureModel | null>(
+    () =>
+      named && naming.parts === 'plain'
+        ? { ...named, components: named.components.map((c) => ({ ...c, name: (c.label ?? { en: c.name, pt: c.name })[lang] })) }
+        : named,
+    [named, naming.parts, lang],
   )
 
   const fmt = new Intl.DateTimeFormat(lang === 'pt' ? 'pt-BR' : 'en', { dateStyle: 'medium', timeStyle: 'short' })
@@ -173,10 +195,10 @@ export function Workspace({ source, lang }: { source: Source; lang: Lang }) {
           <AnalyzeCard lang={lang} canRead={source.kind === 'repo'} error={analysis.state === 'failed' ? analysis.error : null} onAnalyze={analyze} />
         ) : tab === 'present' && model ? (
           <PresentTab model={model} edits={edits} onEdits={setEdits} lang={lang} />
-        ) : tab === 'map' && named ? (
+        ) : tab === 'map' && mapModel ? (
           <div className="h-full overflow-y-auto px-3 pb-3 md:px-4 md:pb-4">
             <MapTab
-              model={named}
+              model={mapModel}
               lang={lang}
               churn={churn}
               onLoadChurn={source.kind === 'repo' ? loadChurn : () => setTab('commits')}
@@ -190,6 +212,8 @@ export function Workspace({ source, lang }: { source: Source; lang: Lang }) {
             repo={repo}
             defaultBranch={info?.defaultBranch ?? named.repo.branch}
             model={named}
+            naming={naming}
+            onNaming={(next) => setEdits({ ...edits, naming: next })}
             lang={lang}
             preloaded={source.kind === 'file' ? loaded : null}
             onCommit={setSelected}

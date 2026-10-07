@@ -646,50 +646,88 @@ export function buildTour(flow: Flow, lang: 'en' | 'pt', options: TourOptions = 
 // ─── Edits ──────────────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Which names the residents wear: plain ones for people who don't code ("Recepção", "Buscar leads",
+ * "Banco de dados") or the ones from the code ("Backend Routes", "search_leads", "PostgreSQL"), set
+ * separately for the system's parts, the AI's tools, and the outside services and AI model.
+ */
+export type Naming = { parts: 'plain' | 'code'; tools: 'plain' | 'code'; services: 'plain' | 'code' }
+
+export const PLAIN: Naming = { parts: 'plain', tools: 'plain', services: 'plain' }
+export const CODE: Naming = { parts: 'code', tools: 'code', services: 'code' }
+
+/** Which of the naming switches covers an actor (null: the person, who keeps their name). */
+export function namingGroup(a: Actor): keyof Naming | null {
+  if (a.kind === 'person') return null
+  if (a.kind === 'tool') return 'tools'
+  if (a.kind === 'llm' || (a.external && !a.component)) return 'services'
+  return 'parts'
+}
+
+/**
  * What the presenter changed in the generated script: renamed participants, rewritten captions,
- * scenes left out. Kept apart from the model so a fresh analysis can be re-applied on top of it.
- * Keys: actors by `actorKey`, steps by `<flow id>#<step index>`, titles by flow id.
+ * scenes left out, plain or technical names. Kept apart from the model so a fresh analysis can be
+ * re-applied on top of it. Keys: actors by `actorKey`, steps by `<flow id>#<step index>`, titles by
+ * flow id.
  */
 export type ScriptEdits = {
   actors: Record<string, Partial<Text>>
   steps: Record<string, Partial<Text>>
   titles: Record<string, Partial<Text>>
   hidden: string[]
+  /** Plain names unless set. */
+  naming?: Naming
 }
 
 export const NO_EDITS: ScriptEdits = { actors: {}, steps: {}, titles: {}, hidden: [] }
 
 /** The same participant across scenes (a component or service), so renaming it once renames it everywhere. */
-export const actorKey = (a: Actor) => a.component ?? a.external ?? `${a.kind}:${a.name.en}`
+export const actorKey = (a: Actor) => a.component ?? a.external ?? `${a.kind}:${(a.technical ?? a.name).en}`
 
 const merge = (base: Text, patch?: Partial<Text>): Text => ({ en: patch?.en?.trim() || base.en, pt: patch?.pt?.trim() || base.pt })
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const lowerFirst = (s: string) => s.charAt(0).toLocaleLowerCase() + s.slice(1)
 
-/** Swaps whole-word mentions of each renamed participant in a sentence ("Backend Routes" → "Recepção"). */
-function rename(text: string, names: [string, string][]): string {
+/**
+ * Swaps whole-word mentions of each participant in a sentence. A name written with a lower-case
+ * first letter mid-sentence ("o banco de dados") is swapped too; it stays lower-case when the new
+ * name is a plain one, and keeps its own capitals when it's a proper name ("o PostgreSQL").
+ */
+function rename(text: string, names: { from: string; to: string; plain: boolean }[]): string {
   let out = text
-  for (const [from, to] of names) {
+  for (const { from, to, plain } of names) {
     if (!from || from === to) continue
-    out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(from)}(?![\\p{L}\\p{N}])`, 'gu'), to)
+    const word = (w: string) => new RegExp(`(?<![\\p{L}\\p{N}])${escape(w)}(?![\\p{L}\\p{N}])`, 'gu')
+    out = out.replace(word(from), to)
+    const lower = lowerFirst(from)
+    if (lower !== from) out = out.replace(word(lower), plain ? lowerFirst(to) : to)
   }
   return out
 }
 
+/** Whether an actor shows the code's name: its switch says so and it has one. */
+function usesCode(a: Actor, naming: Naming): boolean {
+  const group = namingGroup(a)
+  return !!group && naming[group] === 'code' && !!a.technical
+}
+
 /**
- * The flows with the presenter's changes applied (hidden scenes kept, flagged by `hidden`). A
- * renamed participant is renamed in the captions and the title too, unless that caption was
- * rewritten by hand.
+ * The flows with the presenter's changes applied (hidden scenes kept, flagged by `hidden`): the
+ * chosen naming first, then renames by hand. Captions, titles and bubbles follow the new names,
+ * unless a caption was rewritten by hand.
  */
 export function applyEdits(flows: Flow[], edits: ScriptEdits): Flow[] {
+  const naming = edits.naming ?? PLAIN
   return flows.map((f) => {
-    const actors = f.actors.map((a) => ({ ...a, name: merge(a.name, edits.actors[actorKey(a)]) }))
+    // The code's names win over renames by hand: a rename is a plainer word for the same part, and
+    // whoever chose the code's names wants those.
+    const actors = f.actors.map((a) => ({ ...a, name: usesCode(a, naming) ? a.technical! : merge(a.name, edits.actors[actorKey(a)]) }))
     // Longest names first, so "Backend Routes" is swapped before a shorter name inside it.
     const swaps = (lang: 'en' | 'pt') =>
       f.actors
-        .map((a, i): [string, string] => [a.name[lang], actors[i].name[lang]])
-        .filter(([from, to]) => from !== to)
-        .sort((a, b) => b[0].length - a[0].length)
+        .map((a, i) => ({ from: a.name[lang], to: actors[i].name[lang], plain: !usesCode(a, naming) && !edits.actors[actorKey(a)]?.[lang]?.trim() }))
+        .filter(({ from, to }) => from !== to)
+        .sort((a, b) => b.from.length - a.from.length)
     const en = swaps('en')
     const pt = swaps('pt')
     const both = (t: Text): Text => ({ en: rename(t.en, en), pt: rename(t.pt, pt) })
@@ -701,4 +739,37 @@ export function applyEdits(flows: Flow[], edits: ScriptEdits): Flow[] {
       steps: f.steps.map((s, i) => ({ ...s, text: merge(both(s.text), edits.steps[`${f.id}#${i}`]), ...(s.say ? { say: both(s.say) } : {}) })),
     }
   })
+}
+
+/**
+ * A sentence about the whole system, such as the model's summary, with the presenter's renames of
+ * its parts, so it calls them what the scenes do.
+ */
+export function renameParts(text: Text, parts: { id: string; label?: Text }[], edits: ScriptEdits): Text {
+  const swaps = (lang: 'en' | 'pt') =>
+    parts
+      .flatMap((c) => {
+        const to = edits.actors[c.id]?.[lang]?.trim()
+        return c.label && to ? [{ from: c.label[lang], to, plain: false }] : []
+      })
+      .sort((a, b) => b.from.length - a.from.length)
+  return { en: rename(text.en, swaps('en')), pt: rename(text.pt, swaps('pt')) }
+}
+
+/** Which actors make the clearest example of a switch: the front desk before the screens, and so on. */
+const EXAMPLE_ORDER: ActorKind[] = ['api', 'service', 'agent', 'security', 'database', 'llm', 'tool', 'screen', 'worker', 'queue', 'cache', 'external']
+
+/**
+ * One example per naming switch from the scenes, [plain, code], for the presenter to choose by.
+ * Pass the flows with the presenter's renames applied (plain naming), so the plain side shows the
+ * names the audience would actually see.
+ */
+export function namingExamples(flows: Flow[]): Partial<Record<keyof Naming, [Text, Text]>> {
+  const out: Partial<Record<keyof Naming, [Text, Text]>> = {}
+  const actors = flows.flatMap((f) => f.actors).sort((a, b) => EXAMPLE_ORDER.indexOf(a.kind) - EXAMPLE_ORDER.indexOf(b.kind))
+  for (const a of actors) {
+    const group = namingGroup(a)
+    if (group && !out[group] && a.technical && a.technical.pt !== a.name.pt) out[group] = [a.name, a.technical]
+  }
+  return out
 }

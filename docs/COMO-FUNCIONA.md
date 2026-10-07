@@ -215,7 +215,13 @@ Cenas com 4 participantes ou mais viram um **escritório**: duas fileiras de sal
 
 Dentro da cena, cada parte é um morador com o nome no crachá; eles andam até o cômodo uns dos outros levando cartas (pedidos) e caixas (respostas), e a legenda explica cada passo. O painel lista quem participa e o passo a passo.
 
-- **Apresentar:** tela cheia, só a cena e uma legenda grande; ← e → trocam de cena; "Avançar sozinho" passa para a próxima quando a atual termina. Esc sai.
+- **Apresentar:** antes de começar, uma janela "Antes de apresentar" faz algumas perguntas de sim ou não, cada uma com um exemplo do que muda:
+  - "Trocar os nomes das partes do sistema por nomes mais simples?" (por exemplo, "Backend Routes" vira "Recepção");
+  - "Trocar os nomes das ferramentas da IA por nomes mais simples?" ("search_leads" vira "Buscar leads");
+  - "Trocar as marcas e o nome do modelo de IA por nomes gerais?" ("PostgreSQL" vira "Banco de dados", "gpt-4o-mini" vira "Modelo de IA");
+  - "Passar para a próxima cena sozinho?", e quais cenas mostrar.
+
+  Depois, tela cheia: só a cena e uma legenda grande; ← e → trocam de cena; Esc sai. As escolhas valem também para os commits e o mapa, e vão junto na apresentação salva.
 - **Editar roteiro:** renomear moradores com as palavras do cliente ("Backend Routes" → "Recepção"), reescrever legendas, mudar títulos e esconder cenas. O novo nome vale em todo lugar: legendas, mapa e commits.
 - **Salvar apresentação:** baixa um `.json` com o modelo, o roteiro e os commits em cena (nomes de arquivos e tamanhos, nunca código), para apresentar depois sem login.
 

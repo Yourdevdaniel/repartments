@@ -17,6 +17,7 @@ import type { FlatData } from '../../scene/types'
 import { Backdrop } from '../../ui/Backdrop'
 import { glass, LoopStrip } from '../../ui/kit'
 import type { L, Lang } from '../../ui/roles'
+import { PresentSetup, type SetupOptions } from './PresentSetup'
 
 for (const m of TOUR_MODELS.furniture) useGLTF.preload(`/models/furniture/${m}.glb`)
 for (const m of TOUR_MODELS.characters) useGLTF.preload(`/models/characters/${m}.glb`)
@@ -66,9 +67,13 @@ export type TheaterProps = {
   onScene?: (id: string | null) => void
   /** Pause the keyboard shortcuts (a dialog is open on top). */
   keysOff?: boolean
+  /** "Before presenting" choices (plain or technical names, scenes), asked when "Present" is pressed. */
+  setup?: SetupOptions
 }
 
-export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, listLead, listFooter, sceneExtra, tools, note, empty, onScene, keysOff = false }: TheaterProps) {
+export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, listLead, listFooter, sceneExtra, tools, note, empty, onScene, keysOff: keysOffOuter = false, setup }: TheaterProps) {
+  const [preparing, setPreparing] = useState(false)
+  const keysOff = keysOffOuter || preparing
   const [view, setView] = useState<View>({ mode: 'building', entering: null })
   const [hovered, setHovered] = useState<string | null>(null)
   const [caption, setCaption] = useState<CaptionState>({ text: null, step: -1, total: 0 })
@@ -276,7 +281,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
 
       <aside className={`${glass} absolute top-3 right-3 hidden max-h-[calc(100%-1.5rem)] w-[21rem] overflow-y-auto p-4 lg:block`}>
         <div className="flex gap-2">
-          <button type="button" onClick={startPresenting} disabled={!flats.length} className="h-9 flex-1 rounded-full bg-accent px-3 text-sm font-extrabold text-white transition-transform active:scale-[0.97] disabled:opacity-50">
+          <button type="button" onClick={() => (setup ? setPreparing(true) : startPresenting())} disabled={!flats.length} className="h-9 flex-1 rounded-full bg-accent px-3 text-sm font-extrabold text-white transition-transform active:scale-[0.97] disabled:opacity-50">
             ▶ {w.present[lang]}
           </button>
           {tools}
@@ -365,7 +370,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
               ← {listTitle[lang]}
             </button>
           )}
-          <button type="button" onClick={startPresenting} disabled={!flats.length} className="h-10 rounded-full bg-accent px-4 text-sm font-extrabold text-white disabled:opacity-50">
+          <button type="button" onClick={() => (setup ? setPreparing(true) : startPresenting())} disabled={!flats.length} className="h-10 rounded-full bg-accent px-4 text-sm font-extrabold text-white disabled:opacity-50">
             ▶ {w.present[lang]}
           </button>
           {tools}
@@ -385,6 +390,19 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
           )
         )}
       </div>
+      {preparing && setup && (
+        <PresentSetup
+          options={setup}
+          lang={lang}
+          auto={auto}
+          onAuto={setAuto}
+          onStart={() => {
+            setPreparing(false)
+            startPresenting()
+          }}
+          onClose={() => setPreparing(false)}
+        />
+      )}
     </div>
   )
 }

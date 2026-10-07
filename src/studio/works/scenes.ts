@@ -65,7 +65,7 @@ export function readMessage(headline: string): { kind: Text; text: string } {
 export const authorName = (c: CommitDetail) => (c.author.login ? `@${c.author.login}` : c.author.name || '?')
 
 function partActor(c: Component, i: number): Actor {
-  return { id: `part${i}`, name: { en: c.name, pt: c.name }, kind: COMPONENT_KIND[c.layer], component: c.id, external: null, note: c.summary }
+  return { id: `part${i}`, name: c.label ?? { en: c.name, pt: c.name }, technical: { en: c.name, pt: c.name }, kind: COMPONENT_KIND[c.layer], component: c.id, external: null, note: c.summary }
 }
 
 /** Groups changed files by the part of the system they belong to, busiest first. */
