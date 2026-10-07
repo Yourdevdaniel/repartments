@@ -346,6 +346,21 @@ function RenderStats() {
   return null
 }
 
+/**
+ * While a video or slides are being made: renders each frame itself (a frame callback with a
+ * priority takes over rendering) and hands the canvas over right after, while the picture is still
+ * in it; a WebGL canvas is cleared once the browser has shown it.
+ */
+function FrameTap({ onFrame }: { onFrame: (canvas: HTMLCanvasElement) => void }) {
+  const tap = useRef(onFrame)
+  tap.current = onFrame
+  useFrame(({ gl, scene, camera }) => {
+    gl.render(scene, camera)
+    tap.current(gl.domElement)
+  }, 1)
+  return null
+}
+
 function Clock({
   time,
   narrator,
@@ -395,9 +410,11 @@ type Props = {
   clock?: { current: StoryTime | null }
   /** Whether a side panel covers the right of the screen (true unless said otherwise). */
   panel?: boolean
+  /** Called with the canvas after every frame is drawn, to record it (only while recording). */
+  onFrame?: (canvas: HTMLCanvasElement) => void
 }
 
-export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption, recenter, onMoved, lot, restart, paused, rate, clock, panel = true }: Props) {
+export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption, recenter, onMoved, lot, restart, paused, rate, clock, panel = true, onFrame }: Props) {
   const hood = useMemo(() => neighborhood(owner, lot), [owner, lot])
   const reduce = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, [])
   const time = useMemo<StoryTime>(() => ({ current: reduce ? 9 : 0, paused: reduce, rate: 1 }), [reduce])
@@ -437,6 +454,7 @@ export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onS
       <SceneLangContext.Provider value={lang}>
       <StoryTimeContext.Provider value={time}>
         <Clock time={time} narrator={inside} onCaption={onCaption} />
+        {onFrame && <FrameTap onFrame={onFrame} />}
         <CameraRig flats={flats} lot={lot} view={view} instant={reduce} recenter={recenter} onMoved={onMoved} panel={panel} />
         {import.meta.env.DEV && <RenderStats />}
         <Suspense fallback={null}>

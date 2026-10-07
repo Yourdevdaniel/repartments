@@ -9,6 +9,9 @@
  *
  * Inside a scene, both have a remote (`Playback.tsx`): pause, step back and forth, the start and the
  * end, stop, half to double speed, hide the controls, each with a key (? lists them).
+ *
+ * The show can also leave as files (`../export/`): a video, recorded while it plays once through
+ * with the captions drawn in, and a PowerPoint, with a still of each scene and its steps.
  */
 import { useGLTF } from '@react-three/drei'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
@@ -21,6 +24,9 @@ import type { FlatData } from '../../scene/types'
 import { Backdrop } from '../../ui/Backdrop'
 import { glass, LoopStrip } from '../../ui/kit'
 import type { L, Lang } from '../../ui/roles'
+import type { Deck } from '../export/deck'
+import { canRecord, compositor, fontsReady, recordCanvas, videoFileName, type Overlay } from '../export/video'
+import { saveBlob } from '../store'
 import { PlaybackBar, pw, RATES, rateLabel, ShortcutsHelp } from './Playback'
 import { PresentSetup, type SetupOptions } from './PresentSetup'
 
@@ -45,7 +51,19 @@ const w = {
   exit: { en: 'Exit (Esc)', pt: 'Sair (Esc)' },
   auto: { en: 'Move on by itself', pt: 'Avançar sozinho' },
   steps: (n: number): L => ({ en: n === 1 ? '1 step' : `${n} steps`, pt: n === 1 ? '1 passo' : `${n} passos` }),
+  recording: { en: 'Recording the video', pt: 'Gravando o vídeo' },
+  makingDeck: { en: 'Making the PowerPoint', pt: 'Montando o PowerPoint' },
+  keepOpen: { en: 'Keep this tab open and in front until it ends.', pt: 'Deixe esta aba aberta e na frente até terminar.' },
+  cancel: { en: 'Cancel', pt: 'Cancelar' },
+  cancelled: { en: 'Cancelled', pt: 'Cancelado' },
+  savedVideo: (ext: string): L => ({ en: `Video saved (${ext.toUpperCase()})`, pt: `Vídeo salvo (${ext.toUpperCase()})` }),
+  savedDeck: { en: 'PowerPoint saved', pt: 'PowerPoint salvo' },
+  noRecording: { en: 'This browser can’t record video. Chrome, Edge or Firefox can.', pt: 'Este navegador não grava vídeo. O Chrome, o Edge e o Firefox gravam.' },
+  deckFailed: { en: 'The PowerPoint couldn’t be made.', pt: 'Não deu para montar o PowerPoint.' },
 }
+
+/** What a file made from the show is called and says on its cover. */
+export type ExportInfo = { title: string; summary: string; subtitle: string }
 
 type CaptionState = { text: Caption | null; step: number; total: number }
 
@@ -76,9 +94,11 @@ export type TheaterProps = {
   keysOff?: boolean
   /** "Before presenting" choices (plain or technical names, scenes), asked when "Present" is pressed. */
   setup?: SetupOptions
+  /** Offers the video and the PowerPoint in "Before presenting" when given. */
+  exportInfo?: ExportInfo
 }
 
-export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, listLead, listFooter, sceneExtra, tools, note, empty, onScene, keysOff: keysOffOuter = false, setup }: TheaterProps) {
+export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, listLead, listFooter, sceneExtra, tools, note, empty, onScene, keysOff: keysOffOuter = false, setup, exportInfo }: TheaterProps) {
   const [preparing, setPreparing] = useState(false)
   const keysOff = keysOffOuter || preparing
   const [view, setView] = useState<View>({ mode: 'building', entering: null })
@@ -101,10 +121,25 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
   /** Seen the scene start, then its last step: one full play, so an automatic show can move on. */
   const seenStart = useRef(false)
   const reachedEnd = useRef(false)
+  /** A file being made from the show: the video records as it plays, the slides take one still per scene. */
+  const [exporting, setExporting] = useState<'video' | 'deck' | null>(null)
+  const exportKind = useRef<'video' | 'deck' | null>(null)
+  exportKind.current = exporting
+  /** Gets every drawn frame while exporting; `frames` waits for some, `grab` reads one on the spot. */
+  const sink = useRef<((canvas: HTMLCanvasElement) => void) | null>(null)
+  const waiting = useRef<{ n: number; grab: (canvas: HTMLCanvasElement) => unknown; done: (v: unknown) => void }[]>([])
+  const cancelled = useRef(false)
 
   const insideId = view.mode === 'inside' ? view.id : null
   const index = insideId ? flows.findIndex((f) => f.id === insideId) : -1
   const flow = index >= 0 ? flows[index] : null
+  const insideRef = useRef(insideId)
+  insideRef.current = insideId
+  // What the video writes over the scene, kept current for the frame loop.
+  const overlay = useRef<Overlay | null>(null)
+  overlay.current = flow
+    ? { kicker: `${sceneOf(index + 1, flows.length)[lang]} · ${flats[index].language.name}`, title: flow.title[lang], caption: caption.text?.[lang] ?? '', icon: caption.text?.icon ?? '' }
+    : null
 
   const later = (ms: number, fn: () => void) => timers.current.push(window.setTimeout(fn, ms))
   useEffect(() => () => timers.current.forEach((id) => window.clearTimeout(id)), [])
@@ -239,6 +274,10 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
       e.preventDefault()
       fn()
     }
+    if (exporting) {
+      if (k === 'Escape') done(cancelExport)
+      return
+    }
     if (help) {
       if (k === 'Escape' || k === '?') done(() => setHelp(false))
       return
@@ -270,15 +309,141 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     return () => window.removeEventListener('keydown', listen)
   }, [])
 
+  /** Every frame drawn while exporting: to the recording, and to whoever waits for frames. */
+  const tap = useCallback((canvas: HTMLCanvasElement) => {
+    sink.current?.(canvas)
+    waiting.current = waiting.current.filter((w) => {
+      if (--w.n > 0) return true
+      w.done(w.grab(canvas))
+      return false
+    })
+  }, [])
+  /** Resolves after `n` frames with what `grab` read from the last one, while its picture is there. */
+  const frames = <T,>(n: number, grab: (canvas: HTMLCanvasElement) => T = () => null as T) =>
+    new Promise<T>((done) => waiting.current.push({ n, grab, done: done as (v: unknown) => void }))
+  const until = (ok: () => boolean, ms = 5000) =>
+    new Promise<boolean>((done) => {
+      const t0 = performance.now()
+      const tick = () => (ok() ? done(true) : performance.now() - t0 > ms ? done(false) : window.setTimeout(tick, 50))
+      tick()
+    })
+  const pause = (ms: number) => new Promise((done) => window.setTimeout(done, ms))
+
+  const endExport = () => {
+    sink.current = null
+    waiting.current = []
+    setExporting(null)
+    setPresenting(false)
+  }
+  const recorder = useRef<{ comp: ReturnType<typeof compositor>; rec: ReturnType<typeof recordCanvas> | null } | null>(null)
+
+  /** The video: plays every scene once, recording each frame with its words, then saves the file. */
+  const recordVideo = async () => {
+    setPreparing(false)
+    if (!flows.length || !exportInfo) return
+    if (!canRecord()) return flash(w.noRecording[lang])
+    await fontsReady()
+    cancelled.current = false
+    const comp = compositor()
+    recorder.current = { comp, rec: null }
+    // Frames count once the first scene is on: no building, no veil, at the start of the file.
+    sink.current = (canvas) => {
+      const r = recorder.current
+      if (!r || !insideRef.current) return
+      r.rec ??= recordCanvas(r.comp.canvas)
+      r.comp.draw(canvas, overlay.current)
+    }
+    setHelp(false)
+    setHud(true)
+    setExporting('video')
+    setPresenting(true)
+    enter(flows[0].id, true)
+  }
+  const finishVideo = async () => {
+    const r = recorder.current
+    recorder.current = null
+    endExport()
+    if (!r?.rec || !exportInfo) return
+    const blob = await r.rec.stop()
+    saveBlob(videoFileName(exportInfo.title, lang, r.rec.ext), blob)
+    flash(w.savedVideo(r.rec.ext)[lang])
+  }
+
+  /** The slides: visits each scene, takes a still in the middle of it, then builds the .pptx. */
+  const makeDeck = async () => {
+    setPreparing(false)
+    if (!flows.length || !exportInfo) return
+    cancelled.current = false
+    const comp = compositor(1600, 900)
+    setHelp(false)
+    setExporting('deck')
+    setPresenting(true)
+    const stills: (string | null)[] = []
+    for (let i = 0; i < flows.length; i++) {
+      if (cancelled.current) return
+      enter(flows[i].id, true)
+      await until(() => insideRef.current === flows[i].id)
+      // The camera settles in from a wider shot and the residents load: give it a moment.
+      await pause(1400)
+      const st = flats[i].stories[flats[i].narrator]
+      const k = Math.min(st.captions.length - 1, Math.max(1, Math.floor(st.captions.length * 0.4)))
+      const c = st.captions[k]
+      if (c && clock.current) clock.current.current = c.t0 + (c.t1 - c.t0) * 0.5
+      setPaused(true)
+      await frames(4)
+      if (cancelled.current) return
+      stills.push(await frames(1, (canvas) => (canvas.width ? comp.still(canvas) : null)))
+    }
+    try {
+      const deck: Deck = {
+        lang,
+        title: exportInfo.title,
+        summary: exportInfo.summary,
+        subtitle: exportInfo.subtitle,
+        scenes: flows.map((f, i) => ({
+          title: f.title[lang],
+          kind: flats[i].language.name,
+          summary: f.summary[lang],
+          image: stills[i] ?? null,
+          steps: f.steps.map((s) => s.text[lang]),
+          cast: flats[i].cast.map((c) => {
+            const a = f.actors.find((x) => x.id === c.id)
+            return { name: a ? a.name[lang] : c.id, note: a ? a.note[lang] : '', color: c.color }
+          }),
+        })),
+      }
+      // Loaded only now: the slide maker is the heaviest piece and few people need it.
+      const { buildDeck, deckFileName } = await import('../export/deck')
+      const blob = await buildDeck(deck)
+      if (cancelled.current) return
+      saveBlob(deckFileName(exportInfo.title, lang), blob)
+      flash(w.savedDeck[lang])
+    } catch {
+      flash(w.deckFailed[lang])
+    } finally {
+      if (!cancelled.current) endExport()
+    }
+  }
+
+  const cancelExport = () => {
+    cancelled.current = true
+    recorder.current?.rec?.cancel()
+    recorder.current = null
+    endExport()
+    flash(w.cancelled[lang])
+  }
+
   const onCaption = useCallback(
     (text: Caption | null, at: number, total: number) => {
       setCaption({ text, step: at, total })
       // Played once through (from its start to its last step) and started over: in an automatic
       // presentation, on to the next scene. A caption left over from the previous scene, before
       // the clock restarts, doesn't count as having seen the end.
-      if (at === 0 && reachedEnd.current && presenting && auto) {
+      const recording = exportKind.current === 'video'
+      if (at === 0 && reachedEnd.current && ((presenting && auto && !exportKind.current) || recording)) {
         reachedEnd.current = false
         if (index + 1 < flows.length) step(1)
+        else if (recording) void finishVideo()
         return
       }
       if (at >= 0 && at <= 1) seenStart.current = true
@@ -307,6 +472,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
       rate={rate}
       clock={clock}
       panel={!presenting && hud}
+      onFrame={exporting ? tap : undefined}
     />
   )
 
@@ -340,16 +506,34 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     return (
       <div className="fixed inset-0 z-50 overflow-hidden text-ink" style={{ background: SKY }}>
         <Backdrop near={flow !== null} weather="sun" />
-        <div className="absolute inset-0">{stage}</div>
+        {/* While recording, the scene is drawn 16:9 like the video, so it fills the frame. */}
+        <div className="absolute inset-0 grid place-items-center">
+          <div className={exporting ? 'relative aspect-video w-[min(100%,calc(100dvh*16/9))]' : 'absolute inset-0'}>{stage}</div>
+        </div>
         <div aria-hidden="true" className={`pointer-events-none absolute inset-0 bg-white/80 transition-opacity duration-200 ${veil ? 'opacity-100' : 'opacity-0'}`} />
         {overlays}
+        {exporting && (
+          <div className="pointer-events-none absolute top-0 right-0 z-20 flex max-w-[min(34rem,100%)] justify-end p-4 md:p-6">
+            <div className={`${glass} pointer-events-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-2 px-5 py-3`} role="status">
+              <span className="flex items-center gap-2 text-sm font-extrabold">
+                <span aria-hidden="true" className={`size-3 rounded-full ${exporting === 'video' ? 'animate-pulse bg-[#e2554f]' : 'bg-accent'}`} />
+                {(exporting === 'video' ? w.recording : w.makingDeck)[lang]}
+                {flow && <span className="font-bold text-ink-soft">· {sceneOf(index + 1, flows.length)[lang]}</span>}
+              </span>
+              <span className="text-xs text-ink-soft">{w.keepOpen[lang]}</span>
+              <button type="button" onClick={cancelExport} className="h-9 rounded-full bg-ink/5 px-4 text-xs font-extrabold text-ink hover:bg-ink/10">
+                {w.cancel[lang]} (Esc)
+              </button>
+            </div>
+          </div>
+        )}
         <div className={`pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-4 md:p-6 ${hud ? '' : 'hidden'}`}>
           <div className={`${glass} max-w-[min(40rem,70vw)] px-4 py-3`}>
             <p className="text-xs font-bold tracking-wide text-ink-soft uppercase">{flow ? sceneOf(index + 1, flows.length)[lang] : owner}</p>
             <h2 className="text-lg leading-tight font-extrabold md:text-2xl">{flow ? flow.title[lang] : ''}</h2>
             {flow && <p className="mt-0.5 hidden text-sm text-ink-soft md:block">{flow.summary[lang]}</p>}
           </div>
-          <div className="pointer-events-auto flex items-center gap-2">
+          <div className={`pointer-events-auto flex items-center gap-2 ${exporting ? 'hidden' : ''}`}>
             <label className={`${glass} flex h-10 cursor-pointer items-center gap-2 px-3.5 text-xs font-extrabold text-ink-soft`}>
               <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} className="accent-[#2f8fe6]" />
               {w.auto[lang]}
@@ -369,7 +553,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
               {caption.text[lang]}
             </p>
           )}
-          <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2">
+          <div className={`pointer-events-auto flex flex-wrap items-center justify-center gap-2 ${exporting ? 'hidden' : ''}`}>
             {playback}
             <button type="button" onClick={() => step(-1)} disabled={index <= 0} aria-label={w.prev[lang]} title={`${w.prev[lang]} (PgUp)`} className={`${glass} grid size-12 place-items-center text-lg font-extrabold disabled:opacity-40`}>
               ←
@@ -530,6 +714,10 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
           lang={lang}
           auto={auto}
           onAuto={setAuto}
+          rate={rate}
+          onRate={setRate}
+          onVideo={exportInfo ? () => void recordVideo() : undefined}
+          onDeck={exportInfo ? () => void makeDeck() : undefined}
           onStart={() => {
             setPreparing(false)
             startPresenting()

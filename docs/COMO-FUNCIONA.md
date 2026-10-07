@@ -238,6 +238,10 @@ Dentro da cena, cada parte é um morador com o nome no crachá; eles andam até 
   Clicar num ícone da faixa de passos também pula para ele. Trocar de cena volta a tocar; a velocidade continua a escolhida. Quem pediu ao sistema menos movimento começa com a cena pausada.
 - **Editar roteiro:** renomear moradores com as palavras do cliente ("Backend Routes" → "Recepção"), reescrever legendas, mudar títulos e esconder cenas. O novo nome vale em todo lugar: legendas, mapa e commits.
 - **Salvar apresentação:** baixa um `.json` com o modelo, o roteiro e os commits em cena (nomes de arquivos e tamanhos, nunca código), para apresentar depois sem login.
+- **Vídeo e PowerPoint** (na janela "Antes de apresentar", em "Ou salvar como"), com as mesmas escolhas de nomes, cenas e velocidade ([ADR 0007](adr/0007-video-e-powerpoint-no-navegador.md)):
+  - **🎬 Vídeo:** a apresentação toca uma vez, cena por cena, e é gravada em 1920×1080 com o título e a legenda de cada passo desenhados no vídeo. No fim, baixa um MP4 (ou WebM, nos navegadores que não gravam MP4). Leva o tempo da apresentação; a aba precisa ficar aberta e na frente. Esc cancela.
+  - **📊 PowerPoint:** em alguns segundos, o estúdio passa por cada cena e tira uma foto. O `.pptx` tem uma capa com o resumo, um slide por cena (foto, quem participa, passo a passo) com o texto completo nas anotações do apresentador, e um fechamento.
+  - Tudo é feito no navegador; nada vai para servidor nenhum.
 
 ### Commits (as obras)
 

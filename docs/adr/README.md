@@ -10,6 +10,7 @@ Cada decisão que muda a forma do sistema fica registrada aqui, no formato [MADR
 | [0004](0004-apresentacao-no-motor-de-historias.md) | Apresentação gerada sobre o motor de histórias existente | Aceito |
 | [0005](0005-commits-como-cenas.md) | Commits como cenas com os moradores, não como lista e diff | Aceito |
 | [0006](0006-escritorio-e-desvio-de-moveis.md) | Planta de escritório para cenas grandes, e moradores que desviam dos móveis | Aceito |
+| [0007](0007-video-e-powerpoint-no-navegador.md) | Vídeo e PowerPoint feitos no próprio navegador | Aceito |
 
 Para uma decisão nova, copie o modelo abaixo para `NNNN-titulo-curto.md` e adicione a linha na tabela.
 

@@ -142,12 +142,18 @@ export function parsePresentation(text: string): PresentationFile | null {
 
 /** Offers a JSON file to save. */
 export function download(name: string, data: unknown) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
+  saveBlob(name, new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
+}
+
+/** Offers any file to save (a video, slides), straight from memory. */
+export function saveBlob(name: string, blob: Blob) {
+  const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
   a.download = name
   document.body.appendChild(a)
   a.click()
   a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  // Large files take a moment to hand over; the address only needs to outlive that.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }

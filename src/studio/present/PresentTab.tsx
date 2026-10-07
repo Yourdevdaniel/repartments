@@ -16,6 +16,7 @@ const w = {
   scenesLead: { en: 'Each floor is one scene. Step inside to watch it.', pt: 'Cada andar é uma cena. Entre para assistir.' },
   sceneOf: (n: number, of: number) => ({ en: `Scene ${n} of ${of}`, pt: `Cena ${n} de ${of}` }),
   edit: { en: 'Edit script', pt: 'Editar roteiro' },
+  readOn: (date: string) => ({ en: `Read from the code on ${date}`, pt: `Lido do código em ${date}` }),
   none: { en: 'No scenes to show: every scene is hidden in the script.', pt: 'Nenhuma cena para mostrar: todas estão ocultas no roteiro.' },
   noAgent: {
     en: 'No AI agent found in this repo, so there is no "how the AI decides" scene. The studio recognises OpenAI, Anthropic, Google, Mistral, Cohere, Groq and Ollama SDKs, LangChain/LangGraph, LlamaIndex, CrewAI, the OpenAI Agents SDK and the Vercel AI SDK.',
@@ -78,6 +79,11 @@ export function PresentTab({ model, edits, onEdits, lang }: { model: Architectur
           examples,
           scenes: titles.map((f) => ({ id: f.id, title: f.title[lang], on: !edits.hidden.includes(f.id) })),
           onScene: (id, on) => onEdits({ ...edits, hidden: on ? edits.hidden.filter((h) => h !== id) : [...edits.hidden, id] }),
+        }}
+        exportInfo={{
+          title: `${model.repo.owner}/${model.repo.name}`,
+          summary: summary[lang],
+          subtitle: w.readOn(new Intl.DateTimeFormat(lang === 'pt' ? 'pt-BR' : 'en', { dateStyle: 'long' }).format(new Date(model.generatedAt)))[lang],
         }}
       />
       {editing && <ScriptEditor flows={generated} edits={edits} onChange={onEdits} lang={lang} onClose={() => setEditing(false)} keyOf={actorKey} />}

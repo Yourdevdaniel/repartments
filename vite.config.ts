@@ -108,4 +108,7 @@ const productionHeaders = Object.fromEntries(
 export default defineConfig({
   plugins: [react(), tailwindcss(), devApi(), devAuth()],
   preview: { headers: productionHeaders },
+  // Loaded only when someone saves a PowerPoint; listed so the development server prepares it up
+  // front instead of reloading the page the first time.
+  optimizeDeps: { include: ['pptxgenjs'] },
 })

@@ -2,12 +2,14 @@
  * "Before presenting": a few yes/no questions right before going full screen, each with an example
  * of what it changes. Plain names ("Recepção", "Buscar leads", "Banco de dados") or the code's own
  * ("Backend Routes", "search_leads", "PostgreSQL"), one switch at a time; whether scenes move on by
- * themselves; and which scenes to show. No labels about who's watching: it's the presenter's call.
+ * themselves, at what speed; and which scenes to show. No labels about who's watching: it's the
+ * presenter's call. The same choices can instead go into a video or a PowerPoint.
  */
 import { useEffect, useRef } from 'react'
 import type { Text } from '../../shared/studio'
 import type { Naming } from '../../scene/tour'
 import type { L, Lang } from '../../ui/roles'
+import { RATES, rateLabel } from './Playback'
 
 export type SetupOptions = {
   naming: Naming
@@ -31,6 +33,13 @@ const w = {
   auto: { en: 'Move on to the next scene by itself?', pt: 'Passar para a próxima cena sozinho?' },
   autoHint: { en: 'Each scene plays once, then the next one starts.', pt: 'Cada cena passa uma vez e a próxima começa.' },
   scenes: { en: 'Which scenes to show?', pt: 'Quais cenas mostrar?' },
+  speed: { en: 'At what speed?', pt: 'Em que velocidade?' },
+  speedHint: { en: 'It can also change during the show with − and +.', pt: 'Também dá para mudar durante a apresentação com − e +.' },
+  files: { en: 'Or save it as', pt: 'Ou salvar como' },
+  video: { en: 'Video', pt: 'Vídeo' },
+  videoHint: { en: 'Plays every scene once and saves a video with the captions', pt: 'Passa cada cena uma vez e salva um vídeo com as legendas' },
+  deck: { en: 'PowerPoint', pt: 'PowerPoint' },
+  deckHint: { en: 'One slide per scene, with a picture and the steps', pt: 'Um slide por cena, com uma imagem e o passo a passo' },
   cancel: { en: 'Cancel', pt: 'Cancelar' },
   start: { en: 'Start', pt: 'Começar' },
 }
@@ -65,6 +74,10 @@ export function PresentSetup({
   lang,
   auto,
   onAuto,
+  rate,
+  onRate,
+  onVideo,
+  onDeck,
   onStart,
   onClose,
 }: {
@@ -72,6 +85,11 @@ export function PresentSetup({
   lang: Lang
   auto: boolean
   onAuto: (on: boolean) => void
+  rate: number
+  onRate: (rate: number) => void
+  /** Save the show as a video or as slides instead, with the same choices; left out when not offered. */
+  onVideo?: () => void
+  onDeck?: () => void
   onStart: () => void
   onClose: () => void
 }) {
@@ -117,6 +135,25 @@ export function PresentSetup({
               )
             })}
             <Question title={w.auto[lang]} hint={w.autoHint[lang]} on={auto} onChange={onAuto} lang={lang} />
+            <li className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 shadow-[0_4px_14px_-10px_rgba(40,52,110,0.5)]">
+              <div className="min-w-0 flex-1 basis-56">
+                <p className="text-[13px] leading-snug font-extrabold">{w.speed[lang]}</p>
+                <p className="mt-0.5 text-xs leading-snug text-ink-soft">{w.speedHint[lang]}</p>
+              </div>
+              <span className="flex shrink-0 rounded-full bg-ink/[0.06] p-1" role="group" aria-label={w.speed[lang]}>
+                {RATES.map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    aria-pressed={rate === r}
+                    onClick={() => onRate(r)}
+                    className={`h-8 min-w-12 rounded-full px-2.5 text-xs font-extrabold tabular-nums transition-colors ${rate === r ? 'bg-ink text-white' : 'text-ink-soft hover:text-ink'}`}
+                  >
+                    {rateLabel(r)}
+                  </button>
+                ))}
+              </span>
+            </li>
           </ul>
           {scenes && onScene && (
             <section>
@@ -134,7 +171,22 @@ export function PresentSetup({
             </section>
           )}
         </div>
-        <footer className="flex justify-end gap-2 border-t border-ink/10 px-5 py-3">
+        <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-ink/10 px-5 py-3">
+          {(onVideo || onDeck) && (
+            <div className="mr-auto flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-bold text-ink-soft">{w.files[lang]}</span>
+              {onVideo && (
+                <button type="button" disabled={!anyOn} onClick={onVideo} title={w.videoHint[lang]} className="h-9 rounded-full bg-ink/5 px-3.5 text-xs font-extrabold text-ink hover:bg-ink/10 disabled:opacity-50">
+                  🎬 {w.video[lang]}
+                </button>
+              )}
+              {onDeck && (
+                <button type="button" disabled={!anyOn} onClick={onDeck} title={w.deckHint[lang]} className="h-9 rounded-full bg-ink/5 px-3.5 text-xs font-extrabold text-ink hover:bg-ink/10 disabled:opacity-50">
+                  📊 {w.deck[lang]}
+                </button>
+              )}
+            </div>
+          )}
           <button type="button" onClick={() => dialog.current?.close()} className="h-10 rounded-full px-4 text-sm font-extrabold text-ink-soft hover:bg-ink/5 hover:text-ink">
             {w.cancel[lang]}
           </button>

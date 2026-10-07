@@ -26,6 +26,11 @@ const AT_ONCE = 4
 
 const w = {
   floors: { en: 'Commits', pt: 'Commits' },
+  exportLead: {
+    en: 'The latest commits, told as scenes: who changed which part of the system, and how much.',
+    pt: 'Os últimos commits, contados como cenas: quem mudou cada parte do sistema, e quanto.',
+  },
+  exportOf: (n: number) => ({ en: n === 1 ? '1 scene' : `${n} scenes`, pt: n === 1 ? '1 cena' : `${n} cenas` }),
   floorsLead: { en: 'Each floor is a commit, the newest on top. Step inside to watch the author at work.', pt: 'Cada andar é um commit, o mais novo no topo. Entre para ver o autor trabalhando.' },
   sceneOf: (n: number, of: number): L => ({ en: `Floor ${n} of ${of}`, pt: `Andar ${n} de ${of}` }),
   branch: { en: 'Branch', pt: 'Branch' },
@@ -301,6 +306,7 @@ export function WorksTab({
             empty={w.none}
             onScene={onScene}
             setup={{ naming, onNaming, examples: namingExamples(scenes.map((s) => s.flow)) }}
+            exportInfo={{ title: `${owner}/${repo} · commits`, summary: w.exportLead[lang], subtitle: w.exportOf(flows.length)[lang] }}
           />
         )}
         {load.state === 'loading' && (
