@@ -129,6 +129,7 @@ flowchart LR
 | `src/studio/works/*` | Commits em cena (`scenes.ts`, puro) e a aba (`WorksTab.tsx`): 12 commits por prédio, filtros, calor. |
 | `src/studio/map/*` | Mapa em faixas por camada (C4 simplificado), sobreposições de calor e do commit, grafo de decisão dos agentes. |
 | `src/studio/store.ts`, `example.ts` | Memória da aba, arquivo de apresentação (validado ao abrir) e o exemplo de CRM. |
+| `src/studio/export/*` | A apresentação como arquivo, feita no navegador: vídeo gravado do canvas com as legendas desenhadas (`video.ts`) e PowerPoint com uma foto por cena (`deck.ts`, carregado só quando pedido). [ADR 0007](adr/0007-video-e-powerpoint-no-navegador.md). |
 | `src/github/*` | Cliente do GitHub para o navegador; repositórios; commits, branches e calor. |
 | `src/architecture/*` | Análise estática ([analise.md](analise.md)). |
 | `src/scene/tour.ts` | Gera um apartamento jogável a partir de uma cena (fileira para cenas pequenas, escritório com corredor para as grandes); aplica o roteiro; paredes aquecidas pelo calor. |
