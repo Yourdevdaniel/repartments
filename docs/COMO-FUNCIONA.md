@@ -18,7 +18,7 @@ A animação é **ilustrativa**. O site nunca mostra código, rota, dado ou segr
 | 3D | three.js + react-three-fiber + drei | O prédio, os apartamentos, a câmera, as luzes |
 | Personagens e móveis | Kenney Mini Characters e Furniture Kit (CC0) | Modelos `.glb` com animações (andar, pegar, acenar, sentar…) |
 | Back-end | Funções serverless da Vercel (`api/`) | Prédio público e repasse do login |
-| Login | Device flow do GitHub (GitHub App ou OAuth App) | Cada pessoa entra com a própria conta, sem chave no servidor |
+| Login | "Continuar com GitHub" (GitHub App ou OAuth App, com o segredo do app no servidor), ou o device flow sem segredo | Cada pessoa entra com a própria conta; o servidor não guarda sessão nem banco |
 | Dados | APIs GraphQL e REST do GitHub | Repositórios, manifestos, PRs, status, commits, diffs, árvore de arquivos |
 | Testes | Vitest | Partes puras: analisadores, geradores, motor de animação, sessão, rotas, layout do mapa |
 | Hospedagem | Vercel | Site estático + função + cache na borda |
@@ -29,12 +29,12 @@ A animação é **ilustrativa**. O site nunca mostra código, rota, dado ou segr
 repartments/
 ├─ api/
 │  ├─ building.ts         ← prédio público (GET /api/building?user=...)
-│  └─ auth/               ← repasse do login do estúdio: config, device, token
+│  └─ auth/               ← repasse do login do estúdio: config, login, callback, claim, device, token
 ├─ server/
 │  ├─ github.ts           ← a consulta GraphQL do prédio público
 │  ├─ analyze.ts          ← manifestos → moradores (regras)
 │  ├─ handler.ts          ← valida, chama, analisa, monta a resposta
-│  ├─ auth.ts             ← repasse sem estado do device flow do GitHub
+│  ├─ auth.ts             ← repasse sem estado do login do GitHub (web e device flow)
 │  └─ limiter.ts          ← freio por visitante
 ├─ src/
 │  ├─ App.tsx             ← tela inicial, rotas, painéis, faixa do ciclo
@@ -193,14 +193,15 @@ Na cena, `Resident.tsx` lê `sample()` a cada quadro: posiciona o boneco, gira s
 
 O prédio público só mostra o que é público e nunca mostra código. O **estúdio** (o botão **Prédio | Estúdio** no topo troca entre os dois) é a parte com login: a pessoa entra com a conta do GitHub, abre qualquer repositório que essa conta enxerga (privados também) e o transforma numa apresentação animada para mostrar a um cliente. A arquitetura completa está em [arquitetura.md](arquitetura.md), as decisões em [adr/](adr/README.md), a leitura do código em [analise.md](analise.md) e a configuração em [configuracao.md](configuracao.md).
 
-### Entrar, sem chave nenhuma no servidor
+### Entrar com o GitHub
 
-1. Em `/studio`, **Entrar com o GitHub** mostra um código curto (como o login do GitHub CLI). O botão copia o código e abre `github.com/login/device`; a pessoa cola, autoriza, e a página continua sozinha.
-2. O GitHub entrega o token para um **cofre**: um worker do navegador que guarda o token na memória dele. A página nunca vê o token; ela pede leituras ao cofre, e o cofre só faz as leituras de uma lista fechada (repositórios, commits, arquivos), direto na API do GitHub. O servidor do Repartments só repassa as duas chamadas do login, porque o GitHub não aceita que páginas façam essas duas diretamente, e não guarda nada.
+1. Em `/studio`, **Continuar com GitHub** leva a aba ao GitHub. A pessoa confere a conta e autoriza, e o GitHub a traz de volta para o mesmo estúdio, já com o login feito.
+2. O token vai para um **cofre**: um worker do navegador que guarda o token na memória dele. A página nunca vê o token; ela pede leituras ao cofre, e o cofre só faz as leituras de uma lista fechada (repositórios, commits, arquivos), direto na API do GitHub. O servidor do Repartments só repassa essas trocas com o GitHub, porque o GitHub não aceita que páginas as façam diretamente, e não guarda nada: o código que volta do GitHub vira token no servidor, com o segredo do app, e esse token segue para o cofre por um cookie que dura dois minutos e é lido uma vez.
+   - **Sem o segredo do app configurado**, o botão é **Entrar com o GitHub**: mostra um código curto (como o login do GitHub CLI). O botão copia o código e abre `github.com/login/device`; a pessoa cola, autoriza, e a página continua sozinha. Os dois caminhos chegam ao mesmo lugar.
 3. **O login dura no máximo 8 horas.** O cabeçalho mostra quanto falta ("termina em 7 h 52 min"); nos últimos 10 minutos aparece um aviso para salvar a apresentação; ao terminar, o estúdio explica e pede para entrar de novo. Fechar o site, sair, ou recarregar a página sem outra aba do estúdio aberta também encerra.
 4. A lista mostra os repositórios da conta (próprios, de colaboração e de organizações), com busca e "Carregar mais". Privados têm o selo 🔒.
 
-Sem login: **Ver um exemplo** abre um CRM de exemplo (com assistente de vendas de IA e algumas semanas de commits), e **Abrir uma apresentação salva** abre um arquivo baixado antes. Em desenvolvimento, sem app do GitHub configurado, "Entrar" usa o login do GitHub CLI da própria máquina.
+Sem login: **Ver um exemplo** abre um CRM de exemplo (com assistente de vendas de IA e algumas semanas de commits), e **Abrir uma apresentação salva** abre um arquivo baixado antes. Em desenvolvimento, sem app do GitHub configurado, o botão de entrar usa o login do GitHub CLI da própria máquina.
 
 ### Como funciona (a apresentação)
 

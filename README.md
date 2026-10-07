@@ -16,7 +16,7 @@ Switch to **Studio** at the top (or go to `/studio`) and sign in with GitHub to 
 
 No sign-in? "See an example" opens a made-up CRM with an AI sales assistant.
 
-Sign-in uses GitHub's device flow (the GitHub CLI's "enter this code" login): the server only needs the app's public client ID and keeps no keys. The token stays in the browser tab, which talks to api.github.com directly, and the analysis runs there too: static and deterministic, no AI service ever reads the code.
+Sign-in is "Continue with GitHub" when the app's client secret is configured: the server trades the sign-in code for a token with that secret (kept only in the server's environment), with no session and no database. Without the secret, sign-in uses GitHub's device flow (the GitHub CLI's "enter this code" login) with just the public client ID. The token stays in the browser tab, which talks to api.github.com directly, and the analysis runs there too: static and deterministic, no AI service ever reads the code.
 
 ## Stack
 
@@ -24,7 +24,7 @@ Sign-in uses GitHub's device flow (the GitHub CLI's "enter this code" login): th
 - three.js with react-three-fiber and drei
 - Kenney Mini Characters and Furniture Kit (CC0)
 - Vercel functions talking to GitHub's GraphQL and REST APIs (tokens stay on the server)
-- GitHub sign-in through the device flow (GitHub App or OAuth App), no secrets on the server
+- GitHub sign-in: "Continue with GitHub" (GitHub App or OAuth App, with the client secret kept only in the server's environment), or the device flow without a secret
 - Vitest
 
 ## Run your own
@@ -40,7 +40,7 @@ The API needs a GitHub token of your own. Either be logged in with the GitHub CL
 
 To put it online, import the repo on Vercel and set `GITHUB_TOKEN` there. Fine-grained tokens expire: in the last two weeks the function warns in its logs, and after that every building fails until you make a new one.
 
-The studio needs only the client ID of a GitHub App (recommended, read-only) or an OAuth App with the device flow enabled: `GITHUB_CLIENT_ID`. It's public; there is no client secret or session secret. In development, without it, "Sign in" uses your GitHub CLI login instead (only from your own machine). Step by step, in Portuguese: [docs/configuracao.md](docs/configuracao.md).
+The studio needs the client ID of a GitHub App (recommended, read-only) or an OAuth App: `GITHUB_CLIENT_ID`, which is public. Add its client secret, `GITHUB_CLIENT_SECRET`, to get the "Continue with GitHub" button; it is secret and belongs only in `.env.local` or the host's environment (marked sensitive on Vercel). There is no session secret. Without the client secret, sign-in uses the device flow with the client ID alone (enable "Device Flow" on the app). In development, without a client ID, "Sign in" uses your GitHub CLI login instead (only from your own machine). Step by step, in Portuguese: [docs/configuracao.md](docs/configuracao.md).
 
 ## Security
 
@@ -52,7 +52,7 @@ For the public building:
 
 For the studio:
 
-- **No keys on the server.** Sign-in is GitHub's device flow with a public client ID; the server only relays those two calls and stores nothing.
+- **No sessions on the server.** Sign-in is "Continue with GitHub" (the client secret is used only to trade the sign-in code, and the token reaches the vault through a two-minute cookie read once) or the device flow with the public client ID. The server relays those calls, keeps no session and no database, and the state and PKCE verifier protect the return from GitHub against forgery.
 - **The token is locked in a vault.** A worker holds it in its own memory and the page never sees it, not even at sign-in. The vault only makes the reads the studio needs (no writes, whatever the token's scope), and forgets the token after 8 hours at most; the header counts down and warns in the last 10 minutes.
 - **A strict CSP with Trusted Types** (`script-src 'self'`, `connect-src 'self' https://api.github.com`, `require-trusted-types-for 'script'`) shuts the usual doors to injected scripts.
 - **Code stays with its owner.** The analysis runs in the browser of the person signed in with access to the repo; the code comes straight from GitHub and never reaches Repartments' server or any AI service. `.env` files, keys and certificates are never read. A saved presentation holds the script and file names, never code.

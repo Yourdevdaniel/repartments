@@ -15,7 +15,7 @@ O estúdio nasceu do pedido de uma software house: mostrar a um cliente, de form
 
 Metas de qualidade, em ordem:
 
-1. **Privacidade e segurança:** nenhuma chave do estúdio no servidor; o código de clientes vai do GitHub direto para o navegador de quem tem acesso; nada fica guardado depois que a aba fecha, a não ser o que a pessoa salvar.
+1. **Privacidade e segurança:** nenhum token do estúdio no servidor (o segredo do app de login só troca o código de entrada, e nada fica guardado); o código de clientes vai do GitHub direto para o navegador de quem tem acesso; nada fica guardado depois que a aba fecha, a não ser o que a pessoa salvar.
 2. **Clareza para quem não é técnico:** frases simples em português e inglês, tamanhos em palavras, o roteiro editável com as palavras do cliente.
 3. **Encantar numa apresentação:** a cena 3D, o modo tela cheia, as cenas em sequência.
 4. **Previsibilidade:** a mesma análise para o mesmo commit (sem LLM); regras testadas.
@@ -48,7 +48,8 @@ flowchart LR
 
 ## 4. Estratégia da solução
 
-- **Login pelo device flow** do GitHub, com só o *Client ID* (público) no servidor ([ADR 0001](adr/0001-login-pelo-device-flow.md)).
+- **Login com "Continuar com GitHub"** (fluxo web) quando o servidor tem o *client secret*: o servidor troca o código por token, e o token vai ao cofre por um cookie de 2 minutos, sem sessão nem banco ([ADR 0008](adr/0008-continuar-com-github.md)).
+- **Login pelo device flow** do GitHub, com só o *Client ID* (público), como alternativa quando não há segredo ([ADR 0001](adr/0001-login-pelo-device-flow.md)).
 - **Token só na aba** e **chamadas diretas** do navegador ao GitHub; o servidor só repassa o login ([ADR 0002](adr/0002-token-so-no-navegador.md)).
 - **Análise estática no navegador** que produz um modelo de arquitetura com as cenas já escritas ([ADR 0003](adr/0003-analise-estatica-sem-llm.md), [analise.md](analise.md)).
 - **Um palco para tudo**: o motor de histórias do prédio público toca a apresentação e os commits ([ADR 0004](adr/0004-apresentacao-no-motor-de-historias.md), [ADR 0005](adr/0005-commits-como-cenas.md)).
@@ -72,7 +73,7 @@ flowchart TB
   subgraph vercel[Vercel]
     static[Arquivos estáticos<br/>dist/ + public/models]
     fn_building[api/building.ts]
-    fn_auth[api/auth/config, device, token<br/>server/auth.ts]
+    fn_auth[api/auth/config, login, callback, claim,<br/>device, token<br/>server/auth.ts]
   end
   gh[(api.github.com)]
   ghlogin[(github.com/login)]
@@ -86,15 +87,17 @@ flowchart TB
   engine --> ghclient
   spa -- "GET /api/building" --> fn_building
   fn_building -- "token do servidor, só público" --> gh
+  spa -- "GET /api/auth/login, /callback (redirecionamentos)" --> fn_auth
+  vault -- "POST /api/auth/claim" --> fn_auth
   vault -- "POST /api/auth/device, /token" --> fn_auth
-  fn_auth -- "client_id (público)" --> ghlogin
+  fn_auth -- "client_id (público) e client_secret" --> ghlogin
 ```
 
 ### 5.2 Servidor
 
 | Arquivo | Responsabilidade |
 |---|---|
-| `server/auth.ts` | Repasse sem estado do device flow: `config`, `device`, `token`; atalho do GitHub CLI só em desenvolvimento. Freios por visitante, origem própria em POST. |
+| `server/auth.ts` | Repasse sem estado do login: "Continuar com GitHub" (`login`, `callback`, `claim`, com o segredo) e o device flow (`device`, `token`, só com o *Client ID*); `config` diz qual está ligado; atalho do GitHub CLI só em desenvolvimento. Freios por visitante, origem própria em POST. |
 | `server/limiter.ts` | Freio por visitante, em memória. |
 | `server/handler.ts`, `github.ts`, `analyze.ts` | Prédio público (inalterados). |
 
@@ -102,7 +105,7 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  Studio[Studio.tsx<br/>moldura, login, exemplo] --> Session[session.ts<br/>device flow, token na aba]
+  Studio[Studio.tsx<br/>moldura, login, exemplo] --> Session[session.ts<br/>login web ou device flow, token na aba]
   Studio --> Picker[RepoPicker.tsx]
   Studio --> Workspace[Workspace.tsx<br/>abas, modelo, roteiro, commits]
   Workspace --> Present[present/PresentTab<br/>+ intro.ts + ScriptEditor]
@@ -119,9 +122,9 @@ flowchart LR
 
 | Pasta / arquivo | Responsabilidade |
 |---|---|
-| `src/studio/Studio.tsx` | Cabeçalho, estados do login (código do device flow), lista de repositórios, exemplo embutido, abrir apresentação salva. |
+| `src/studio/Studio.tsx` | Cabeçalho, botão "Continuar com GitHub" (ou os estados do login pelo código, sem segredo), lista de repositórios, exemplo embutido, abrir apresentação salva. |
 | `src/studio/session.ts` | O estado do login para as telas (vindo do cofre), contagem regressiva das 8 horas. |
-| `src/github/vault*.ts`, `allow.ts` | O cofre do token: um worker que faz o device flow, guarda o token na memória, só deixa passar leituras e esquece tudo em 8 horas. |
+| `src/github/vault*.ts`, `allow.ts` | O cofre do token: um worker que recebe o token pelo login web (`claim`) ou faz o device flow, guarda o token na memória, só deixa passar leituras e esquece tudo em 8 horas. |
 | `src/security.ts` | Política de Trusted Types: só scripts do próprio site, nunca texto virando HTML. |
 | `src/studio/api.ts` | Todas as chamadas ao GitHub feitas pela página, com erros traduzidos. |
 | `src/studio/Workspace.tsx` | Abas Como funciona / Commits / Mapa; guarda o modelo, o roteiro, o commit em cena e o calor; aplica os nomes do roteiro no mapa e nos commits; salvar apresentação. |
@@ -139,7 +142,7 @@ flowchart LR
 
 ### 6.1 Login
 
-Diagrama completo em [api.md](api.md#login-do-estúdio-serverauthts). Em resumo: a página pede um código pelo repasse, mostra o código e abre `github.com/login/device`, consulta o repasse no ritmo que o GitHub pede e, aprovado, guarda o token na aba e pergunta ao GitHub quem é a pessoa.
+Diagramas completos em [api.md](api.md#login-do-estúdio-serverauthts). Com o *client secret* configurado, o caminho principal é **Continuar com GitHub**: a página leva a aba inteira ao GitHub, a pessoa autoriza, o GitHub volta ao servidor com um código, o servidor troca o código por token com o segredo e deixa o token num cookie de 2 minutos; a página volta ao estúdio já com `signin=1`, e o cofre pega o token com `claim`, guarda-o na aba e pergunta ao GitHub quem é a pessoa. Sem o segredo, vale o device flow: a página pede um código pelo repasse, mostra o código e abre `github.com/login/device`, consulta o repasse no ritmo que o GitHub pede e, aprovado, segue igual.
 
 ### 6.2 Análise da arquitetura
 

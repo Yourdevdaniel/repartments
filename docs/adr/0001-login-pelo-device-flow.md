@@ -1,6 +1,6 @@
 # 0001. Login com o GitHub pelo device flow, sem segredo no servidor
 
-- Estado: aceito
+- Estado: aceito; complementado por [0008](0008-continuar-com-github.md)
 - Data: 2026-10-07
 
 ## Contexto e problema
