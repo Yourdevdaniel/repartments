@@ -15,6 +15,7 @@ let port: Port | null = null
 let nextId = 1
 const pending = new Map<number, { resolve: (r: Response) => void; reject: (e: Error) => void }>()
 const listeners = new Set<(s: VaultState) => void>()
+const claims = new Set<(ok: boolean) => void>()
 let last: VaultState | null = null
 
 function connect(): Port {
@@ -30,6 +31,11 @@ function connect(): Port {
     if (m.type === 'state') {
       last = m.state
       listeners.forEach((l) => l(m.state))
+      return
+    }
+    if (m.type === 'claimed') {
+      claims.forEach((done) => done(m.ok))
+      claims.clear()
       return
     }
     const p = pending.get(m.id)
@@ -60,6 +66,12 @@ export function onVaultState(listener: (s: VaultState) => void): () => void {
 export const vault = {
   /** Starts GitHub's device flow; the code to type arrives as a `waiting` state. */
   start: () => connect().postMessage({ type: 'start' }),
+  /** Back from "Continue with GitHub": the vault picks up the token the server left for it, if any. */
+  claim: () =>
+    new Promise<boolean>((done) => {
+      claims.add(done)
+      connect().postMessage({ type: 'claim' })
+    }),
   /** Development only: sign in with the GitHub CLI's token. */
   dev: () => connect().postMessage({ type: 'dev' }),
   cancel: () => connect().postMessage({ type: 'cancel' }),

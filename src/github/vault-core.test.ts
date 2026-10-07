@@ -119,3 +119,28 @@ describe('Vault', () => {
     expect(w.states().at(-1)).toEqual({ status: 'signed-out', reason: 'denied' })
   })
 })
+
+describe('Vault, after "Continue with GitHub"', () => {
+  it('claims the token the server left for it, and tells pages who signed in', async () => {
+    const w = world({
+      'https://site.example/api/auth/claim': () => ({ access_token: 'ghu_abcdefgh1234', expires_in: 28800 }),
+      'https://api.github.com/user': () => ({ login: 'ana', name: 'Ana', avatar_url: 'https://a' }),
+    })
+    const replies: VaultMessage[] = []
+    await w.vault.handle({ type: 'claim' }, (m) => replies.push(m))
+    await w.pass(0)
+    expect(replies).toEqual([{ type: 'claimed', ok: true }])
+    expect(w.calls[0].init.method).toBe('POST')
+    expect(w.states().at(-1)).toMatchObject({ status: 'signed-in', user: { login: 'ana' } })
+    expect(JSON.stringify(w.messages)).not.toContain('ghu_abcdefgh1234')
+  })
+
+  it('changes nothing when there is no token waiting (a reload of the page GitHub came back to)', async () => {
+    const w = world({ 'https://site.example/api/auth/claim': () => new Response(JSON.stringify({ error: 'none' }), { status: 404 }) })
+    const replies: VaultMessage[] = []
+    await w.vault.handle({ type: 'claim' }, (m) => replies.push(m))
+    await w.pass(0)
+    expect(replies).toEqual([{ type: 'claimed', ok: false }])
+    expect(w.states()).toEqual([])
+  })
+})

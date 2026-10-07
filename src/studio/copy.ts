@@ -11,6 +11,7 @@ export const t = {
     pt: 'Entre com o GitHub para navegar nos commits, mapear a arquitetura e transformar tudo numa apresentação animada que qualquer pessoa entende.',
   },
   signIn: { en: 'Sign in with GitHub', pt: 'Entrar com o GitHub' },
+  signInWeb: { en: 'Continue with GitHub', pt: 'Continuar com GitHub' },
   signInDev: { en: 'Sign in (GitHub CLI, development)', pt: 'Entrar (GitHub CLI, desenvolvimento)' },
   signInOff: {
     en: "Sign-in isn't set up on this server yet. See docs/configuracao.md to create the GitHub app.",
@@ -23,6 +24,10 @@ export const t = {
       pt: 'Por segurança, o login dura no máximo 8 horas, e este terminou. Entre de novo para continuar.',
     },
     unavailable: { en: "Couldn't reach GitHub. Please try again.", pt: 'Não deu para falar com o GitHub. Tente de novo.' },
+  },
+  privacyWeb: {
+    en: 'You sign in on GitHub itself. The key is locked away from this page’s scripts, only reads, and goes straight to GitHub: this site stores nothing. It lasts 8 hours at most; closing the site or signing out forgets it.',
+    pt: 'O login é feito no próprio GitHub. A chave fica trancada longe dos scripts desta página, só faz leituras e vai direto para o GitHub: este site não guarda nada. Ela dura no máximo 8 horas; fechar o site ou sair apaga tudo.',
   },
   privacy: {
     en: "Sign-in is GitHub's own, with a code like the GitHub CLI's. The key is locked away from this page's scripts, only reads, and goes straight to GitHub: this site stores nothing. It lasts 8 hours at most; closing the site or signing out forgets it.",

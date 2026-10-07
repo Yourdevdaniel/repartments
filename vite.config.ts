@@ -68,6 +68,7 @@ function devAuth(): Plugin {
       const env = {
         GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID || file.GITHUB_CLIENT_ID,
         GITHUB_OAUTH_SCOPE: process.env.GITHUB_OAUTH_SCOPE || file.GITHUB_OAUTH_SCOPE,
+        GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET || file.GITHUB_CLIENT_SECRET,
       }
       server.middlewares.use('/api/auth', async (req, res) => {
         try {
@@ -86,7 +87,10 @@ function devAuth(): Plugin {
           const local = /^(::1|127\.\d+\.\d+\.\d+|::ffff:127\.\d+\.\d+\.\d+)$/.test(req.socket.remoteAddress ?? '')
           const response = await handleAuth(request, { env, devToken: local ? readToken : undefined })
           res.statusCode = response.status
-          response.headers.forEach((value, key) => res.setHeader(key, value))
+          response.headers.forEach((value, key) => key !== 'set-cookie' && res.setHeader(key, value))
+          // Several cookies come as several headers; setHeader with one would keep only the last.
+          const cookies = response.headers.getSetCookie()
+          if (cookies.length) res.setHeader('Set-Cookie', cookies)
           res.end(Buffer.from(await response.arrayBuffer()))
         } catch (err) {
           server.config.logger.error(String(err))

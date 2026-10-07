@@ -1,17 +1,27 @@
 /**
- * Signing in to the studio with GitHub's **device flow**: the same "enter this code on github.com"
- * sign-in the GitHub CLI uses. It needs only the app's *client ID*, which is public, never a client
- * secret, so this server keeps no key of any kind.
+ * Signing in to the studio with GitHub, two ways:
+ *
+ * - **"Continue with GitHub"** (when `GITHUB_CLIENT_SECRET` is set): the usual button. The page
+ *   goes to GitHub, the person approves, GitHub comes back to `/api/auth/callback` with a code, and
+ *   this server trades the code for a token. GitHub only makes that trade with the app's *client
+ *   secret* (even with PKCE, which is used too), so the secret lives in the server's environment and
+ *   nowhere else. The token is handed to the browser in a cookie that only `/api/auth/claim` reads,
+ *   once, within two minutes: no token in an address, a page or a log.
+ * - **The device flow** (client ID only): the "enter this code on github.com" sign-in the GitHub
+ *   CLI uses, with no secret at all.
  *
  * GitHub's sign-in endpoints (`github.com/login/...`) can't be called from a web page (they don't
- * allow cross-site requests), so these two routes pass the requests along, unchanged, and remember
- * nothing. The token GitHub hands back goes straight to the person's browser tab; every studio call
- * after that goes from the browser to api.github.com directly.
+ * allow cross-site requests), so these routes pass the requests along and remember nothing: no
+ * session, no database. The token goes to the person's browser, where the vault keeps it; every
+ * studio call after that goes from the browser to api.github.com directly.
  *
- *   GET  /api/auth/config  → { enabled, devLogin? }        is sign-in set up here?
- *   POST /api/auth/device  → { user_code, verification_uri, device_code, interval, expires_in }
- *   POST /api/auth/token   { device_code } → { access_token, expires_in? } or { error, interval? }
- *   GET  /api/auth/dev     → { access_token }   development only: the GitHub CLI's token
+ *   GET  /api/auth/config    → { enabled, web, devLogin? }   is sign-in set up here, and which kind?
+ *   GET  /api/auth/login     ?next=/studio/…  → 302 to GitHub
+ *   GET  /api/auth/callback  ?code&state      → 302 back to the studio, token in a short cookie
+ *   POST /api/auth/claim     → { access_token, expires_in? }  once; the vault calls it
+ *   POST /api/auth/device    → { user_code, verification_uri, device_code, interval, expires_in }
+ *   POST /api/auth/token     { device_code } → { access_token, expires_in? } or { error, interval? }
+ *   GET  /api/auth/dev       → { access_token }   development only: the GitHub CLI's token
  */
 import { clientKey, createLimiter } from './limiter.js'
 
@@ -20,6 +30,8 @@ export type AuthEnv = {
   GITHUB_CLIENT_ID?: string
   /** OAuth App only: scopes to ask for. `repo` reads private repos; GitHub Apps ignore it. */
   GITHUB_OAUTH_SCOPE?: string
+  /** The app's client secret, for "Continue with GitHub". Secret: set it as a sensitive variable. */
+  GITHUB_CLIENT_SECRET?: string
 }
 
 export type Fetcher = (url: string, init: RequestInit) => Promise<Response>
@@ -43,8 +55,53 @@ const DEVICE_CODE = /^[A-Za-z0-9_-]{8,128}$/
 /** Errors GitHub's polling endpoint answers with, passed on as they are. */
 const POLL_ERRORS = new Set(['authorization_pending', 'slow_down', 'expired_token', 'access_denied', 'incorrect_device_code', 'device_flow_disabled'])
 
+/** GitHub's codes and our state values: short opaque strings. */
+const OPAQUE = /^[A-Za-z0-9_-]{8,256}$/
+/** Where "Continue with GitHub" may come back to: the studio's own pages. */
+const NEXT = /^\/studio(\/[\w.-]+){0,2}$/
+
+/** The cookie that carries the sign-in's state and PKCE verifier across GitHub, for ten minutes. */
+const FLOW_COOKIE = 'gh_flow'
+/** The cookie that hands the token to the vault: read once by /api/auth/claim, gone in two minutes. */
+const HANDOFF_COOKIE = 'gh_handoff'
+
 const startBrake = createLimiter(20, 60_000)
 const pollBrake = createLimiter(60, 60_000)
+
+/** 32 random bytes, URL-safe: the state and the PKCE verifier. */
+function randomToken(): string {
+  return base64url(crypto.getRandomValues(new Uint8Array(32)))
+}
+
+function base64url(bytes: Uint8Array): string {
+  let s = ''
+  for (const b of bytes) s += String.fromCharCode(b)
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+/** PKCE's S256 challenge: the verifier's SHA-256, URL-safe. */
+export async function challengeOf(verifier: string): Promise<string> {
+  return base64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))))
+}
+
+function cookieOf(request: Request, name: string): string | null {
+  for (const part of (request.headers.get('cookie') ?? '').split(';')) {
+    const [k, ...v] = part.trim().split('=')
+    if (k === name) return v.join('=')
+  }
+  return null
+}
+
+/** A cookie only this site's server reads: no page script, no other site, HTTPS only. */
+function cookie(name: string, value: string, path: string, maxAge: number, sameSite: 'Lax' | 'Strict'): string {
+  return `${name}=${value}; Path=${path}; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=${sameSite}`
+}
+
+function redirect(location: string, cookies: string[] = []): Response {
+  const headers = new Headers({ Location: location, ...NO_STORE })
+  for (const c of cookies) headers.append('Set-Cookie', c)
+  return new Response(null, { status: 302, headers })
+}
 
 /** Calls from this site's own pages only: a custom header other sites can't send without asking. */
 const fromSite = (request: Request) => {
@@ -75,8 +132,77 @@ export async function handleAuth(request: Request, { env, fetcher = fetch, devTo
   const method = request.method.toUpperCase()
   const clientId = env.GITHUB_CLIENT_ID?.trim()
 
+  const secret = env.GITHUB_CLIENT_SECRET?.trim()
+  const origin = new URL(request.url).origin
+  const callbackUrl = `${origin}/api/auth/callback`
+
   if (route === '/api/auth/config' && method === 'GET') {
-    return json({ enabled: !!clientId, ...(devToken && !clientId ? { devLogin: true } : {}) })
+    return json({ enabled: !!clientId, web: !!(clientId && secret), ...(devToken && !clientId ? { devLogin: true } : {}) })
+  }
+
+  // "Continue with GitHub": off to GitHub, remembering the state and the PKCE verifier in a cookie.
+  if (route === '/api/auth/login' && method === 'GET') {
+    if (!clientId || !secret) return redirect('/studio?signin=off')
+    if (!startBrake(clientKey(request.headers))) return redirect('/studio?signin=busy')
+    const asked = new URL(request.url).searchParams.get('next') ?? ''
+    const next = NEXT.test(asked) ? asked : '/studio'
+    const state = randomToken()
+    const verifier = randomToken()
+    const authorize = new URL('https://github.com/login/oauth/authorize')
+    authorize.search = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: callbackUrl,
+      state,
+      code_challenge: await challengeOf(verifier),
+      code_challenge_method: 'S256',
+      scope: env.GITHUB_OAUTH_SCOPE ?? 'repo',
+      allow_signup: 'true',
+    }).toString()
+    // Lax, so the cookie comes back when GitHub sends the person here; the next page is ours.
+    return redirect(authorize.toString(), [cookie(FLOW_COOKIE, `${state}.${verifier}.${base64url(new TextEncoder().encode(next))}`, '/api/auth', 600, 'Lax')])
+  }
+
+  // Back from GitHub: check the state, trade the code for a token, hand it over in a short cookie.
+  if (route === '/api/auth/callback' && method === 'GET') {
+    const params = new URL(request.url).searchParams
+    const clear = cookie(FLOW_COOKIE, '', '/api/auth', 0, 'Lax')
+    const [state, verifier, nextB64] = (cookieOf(request, FLOW_COOKIE) ?? '').split('.')
+    let next = '/studio'
+    try {
+      const decoded = new TextDecoder().decode(Uint8Array.from(atob((nextB64 ?? '').replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)))
+      if (NEXT.test(decoded)) next = decoded
+    } catch {
+      // The studio's front page, then.
+    }
+    const back = (signin: string, cookies: string[] = [clear]) => redirect(`${next}?signin=${signin}`, cookies)
+    if (params.get('error') === 'access_denied') return back('denied')
+    const code = params.get('code') ?? ''
+    // A state that doesn't match the one this browser set out with: a forged or replayed return.
+    if (!clientId || !secret || !state || !verifier || params.get('state') !== state || !OPAQUE.test(code)) return back('failed')
+    const answer = await askGitHub(fetcher, 'https://github.com/login/oauth/access_token', {
+      client_id: clientId,
+      client_secret: secret,
+      code,
+      redirect_uri: callbackUrl,
+      code_verifier: verifier,
+    })
+    if (!answer || typeof answer.access_token !== 'string' || !OPAQUE.test(answer.access_token)) {
+      console.warn(`GitHub refused the sign-in code: ${String(answer?.error ?? 'no answer')}`)
+      return back('failed')
+    }
+    const expires = typeof answer.expires_in === 'number' ? `.${Math.round(answer.expires_in)}` : ''
+    return back('1', [clear, cookie(HANDOFF_COOKIE, `${answer.access_token}${expires}`, '/api/auth/claim', 120, 'Strict')])
+  }
+
+  // The vault picks the token up, once.
+  if (route === '/api/auth/claim' && method === 'POST') {
+    if (!fromSite(request)) return json({ error: 'forbidden' }, 403)
+    const [token, expires] = (cookieOf(request, HANDOFF_COOKIE) ?? '').split('.')
+    const headers = new Headers({ 'Content-Type': 'application/json; charset=utf-8', ...NO_STORE })
+    headers.append('Set-Cookie', cookie(HANDOFF_COOKIE, '', '/api/auth/claim', 0, 'Strict'))
+    if (!token || !OPAQUE.test(token)) return new Response(JSON.stringify({ error: 'none' }), { status: 404, headers })
+    const body = { access_token: token, ...(Number(expires) > 0 ? { expires_in: Number(expires) } : {}) }
+    return new Response(JSON.stringify(body), { status: 200, headers })
   }
 
   if (route === '/api/auth/dev' && method === 'GET' && devToken) {

@@ -1,9 +1,10 @@
 /**
  * The token vault: where the signed-in person's GitHub token lives, inside a worker, out of reach of
- * the page's scripts. The page never sees the token, not even at sign-in: the vault runs the device
- * flow itself (asking the sign-in relay for a code, then polling it), keeps the token in its own
- * memory, and makes GitHub requests on the page's behalf, but only the reads the studio needs
- * (`allow.ts`).
+ * the page's scripts. The page never sees the token, not even at sign-in: after "Continue with
+ * GitHub" the vault itself claims the token the server left in a cookie only its claim route reads,
+ * and with the device flow it asks the sign-in relay for a code and polls it. It keeps the token in
+ * its own memory and makes GitHub requests on the page's behalf, but only the reads the studio
+ * needs (`allow.ts`).
  *
  * A sign-in lasts 8 hours at most (a GitHub App's own tokens expire then too); after that the vault
  * forgets the token and tells every page. Closing every tab of the site ends the worker, and the
@@ -29,6 +30,7 @@ export type VaultState =
 export type VaultRequest =
   | { type: 'hello' }
   | { type: 'start' }
+  | { type: 'claim' }
   | { type: 'dev' }
   | { type: 'cancel' }
   | { type: 'sign-out' }
@@ -39,6 +41,8 @@ export type VaultMessage =
   | { type: 'state'; state: VaultState }
   | { type: 'response'; id: number; status: number; headers: Record<string, string>; body: string }
   | { type: 'refused'; id: number; reason: 'blocked' | 'signed-out' | 'network' }
+  /** The answer to a claim: whether a token was waiting (the page stops showing "signing in…"). */
+  | { type: 'claimed'; ok: boolean }
 
 export type VaultDeps = {
   fetch: (url: string, init: RequestInit) => Promise<Response>
@@ -145,6 +149,25 @@ export class Vault {
     if (!flow.cancelled) this.forget('expired')
   }
 
+  /**
+   * After "Continue with GitHub": the server left the token in a cookie that only its claim route
+   * reads, once. Nothing waiting (a reload of the page GitHub came back to) changes nothing.
+   */
+  private async claim(): Promise<boolean> {
+    try {
+      const answer = await this.relay('/api/auth/claim', {})
+      if (typeof answer.access_token === 'string') {
+        await this.adopt(answer.access_token, typeof answer.expires_in === 'number' ? answer.expires_in : null)
+        return this.state.status === 'signed-in'
+      }
+      if (answer.error === 'none') return false
+    } catch {
+      // Falls through.
+    }
+    this.forget('unavailable')
+    return false
+  }
+
   /** Development only: the relay hands over the GitHub CLI's token (it refuses outside a dev server). */
   private async dev() {
     try {
@@ -188,6 +211,8 @@ export class Vault {
         return reply({ type: 'state', state: this.state })
       case 'start':
         return this.start()
+      case 'claim':
+        return reply({ type: 'claimed', ok: await this.claim() })
       case 'dev':
         return this.dev()
       case 'cancel':
