@@ -39,6 +39,16 @@ describe('/api/auth/device', () => {
     expect(res.headers.get('cache-control')).toBe('no-store')
   })
 
+  it('tells an app without the device flow apart from GitHub being unreachable, whatever the status', async () => {
+    const answer = (body: unknown, status: number) => async () => new Response(JSON.stringify(body), { status })
+    const off = await run(post('/api/auth/device'), { fetcher: answer({ error: 'device_flow_disabled' }, 400) })
+    expect(await off.json()).toEqual({ error: 'login-disabled' })
+    const unknown = await run(post('/api/auth/device'), { fetcher: answer({ error: 'Not Found' }, 404) })
+    expect(await unknown.json()).toEqual({ error: 'unavailable' })
+    const down = await run(post('/api/auth/device'), { fetcher: async () => new Response('<html>', { status: 503 }) })
+    expect(await down.json()).toEqual({ error: 'unavailable' })
+  })
+
   it('refuses requests from other sites and is off without a client ID', async () => {
     expect((await run(post('/api/auth/device', {}, {}))).status).toBe(403)
     expect((await run(post('/api/auth/device', {}, { 'x-requested-with': 'x', origin: 'https://evil.example' }))).status).toBe(403)

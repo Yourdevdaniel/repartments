@@ -65,6 +65,6 @@ npm run build
 
 - [ ] `.env.local` não está no git (`git status` não mostra; o `.gitignore` cobre `.env*`).
 - [ ] O app do GitHub pede só leitura (GitHub App) ou `public_repo` se privados não forem necessários.
-- [ ] *Enable Device Flow* marcado no app (sem ele o login responde `login-disabled`).
+- [ ] *Enable Device Flow* marcado no app (sem ele o login responde `login-disabled`). Se o login responder "indisponível", o log do servidor diz o motivo que o GitHub deu (`GitHub refused the device code: …`): `Not Found` é um Client ID errado.
 - [ ] A CSP de `vercel.json` continua com `script-src 'self'`, `connect-src 'self' https://api.github.com` e `require-trusted-types-for 'script'`: o token fica trancado no cofre do navegador, e a CSP é o que impede scripts de fora de rodar na página ([ADR 0002](adr/0002-token-so-no-navegador.md)).
 - [ ] `npm audit` sem vulnerabilidades altas.

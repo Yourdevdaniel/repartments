@@ -60,8 +60,11 @@ async function askGitHub(fetcher: Fetcher, url: string, body: Record<string, str
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'repartments' },
       body: JSON.stringify(body),
     })
-    if (!res.ok) return null
-    return (await res.json()) as Record<string, unknown>
+    // GitHub explains a refusal in the body ("device_flow_disabled", "Not Found" for an unknown client
+    // ID), sometimes with an error status, so the body is read either way.
+    const answer = (await res.json().catch(() => null)) as Record<string, unknown> | null
+    if (answer && typeof answer === 'object') return answer
+    return null
   } catch {
     return null
   }
@@ -87,6 +90,8 @@ export async function handleAuth(request: Request, { env, fetcher = fetch, devTo
     if (!startBrake(clientKey(request.headers))) return json({ error: 'rate-limited' }, 429)
     const answer = await askGitHub(fetcher, 'https://github.com/login/device/code', { client_id: clientId, scope: env.GITHUB_OAUTH_SCOPE ?? 'repo' })
     if (!answer || typeof answer.device_code !== 'string' || typeof answer.user_code !== 'string') {
+      // Shows up in the server's log: the usual causes are a mistyped client ID or "Enable Device Flow" left off.
+      console.warn(`GitHub refused the device code: ${String(answer?.error ?? 'no answer')}`)
       return json({ error: answer?.error === 'device_flow_disabled' ? 'login-disabled' : 'unavailable' }, 502)
     }
     return json({
