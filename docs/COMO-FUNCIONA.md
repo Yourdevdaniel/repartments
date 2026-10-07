@@ -221,7 +221,21 @@ Dentro da cena, cada parte é um morador com o nome no crachá; eles andam até 
   - "Trocar as marcas e o nome do modelo de IA por nomes gerais?" ("PostgreSQL" vira "Banco de dados", "gpt-4o-mini" vira "Modelo de IA");
   - "Passar para a próxima cena sozinho?", e quais cenas mostrar.
 
-  Depois, tela cheia: só a cena e uma legenda grande; ← e → trocam de cena; Esc sai. As escolhas valem também para os commits e o mapa, e vão junto na apresentação salva.
+  Depois, tela cheia: só a cena, uma legenda grande e os controles. As escolhas valem também para os commits e o mapa, e vão junto na apresentação salva.
+- **Controles da cena** (apresentando ou não, dentro de uma cena): uma barra como a de um player de vídeo, e o teclado, como no YouTube. `?` mostra a lista na tela.
+
+  | Tecla | O que faz |
+  |---|---|
+  | Espaço ou K | Pausar ou continuar |
+  | → ou L / ← ou J | Próximo passo / passo anterior (depois do último passo, a próxima cena) |
+  | PgDn ou Shift → / PgUp ou Shift ← | Próxima cena / cena anterior |
+  | Home ou 0 / End | Voltar ao começo da cena / ir para o final |
+  | S | Parar: volta ao começo e pausa |
+  | − e + | Mais devagar ou mais rápido: 0,5x, 1x, 1,5x, 2x |
+  | H | Esconder ou mostrar os controles (a cena fica sozinha na tela, boa para gravar) |
+  | Esc | Sair da apresentação (ou voltar para o prédio) |
+
+  Clicar num ícone da faixa de passos também pula para ele. Trocar de cena volta a tocar; a velocidade continua a escolhida. Quem pediu ao sistema menos movimento começa com a cena pausada.
 - **Editar roteiro:** renomear moradores com as palavras do cliente ("Backend Routes" → "Recepção"), reescrever legendas, mudar títulos e esconder cenas. O novo nome vale em todo lugar: legendas, mapa e commits.
 - **Salvar apresentação:** baixa um `.json` com o modelo, o roteiro e os commits em cena (nomes de arquivos e tamanhos, nunca código), para apresentar depois sem login.
 
