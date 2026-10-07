@@ -12,18 +12,50 @@ O prédio público de um usuário ou organização: até 12 repositórios públi
 
 ### Login do estúdio (`server/auth.ts`)
 
-Repasse **sem estado** do *device flow* do GitHub ([ADR 0001](adr/0001-login-pelo-device-flow.md)). Existe só porque `github.com/login/...` não aceita pedidos de páginas web. Não guarda nada; respostas com `Cache-Control: no-store`.
+Repasse **sem estado** do login do GitHub. Existe porque `github.com/login/...` não aceita pedidos de páginas web. Há dois jeitos: **Continuar com GitHub** (fluxo web, com o segredo do app, [ADR 0008](adr/0008-continuar-com-github.md)) e o *device flow* pelo código ([ADR 0001](adr/0001-login-pelo-device-flow.md)), que fica como alternativa quando não há segredo. Não guarda sessão nem banco; respostas com `Cache-Control: no-store`.
 
 | Rota | Corpo | Resposta |
 |---|---|---|
-| `GET /api/auth/config` | | `{ enabled, devLogin? }`: se o login está configurado (há `GITHUB_CLIENT_ID`), e, só no servidor de desenvolvimento sem app, se o atalho do GitHub CLI existe. |
+| `GET /api/auth/config` | | `{ enabled, web, devLogin? }`: se o login está configurado (há `GITHUB_CLIENT_ID`); `web` é `true` quando também há `GITHUB_CLIENT_SECRET`, e então o estúdio mostra "Continuar com GitHub". `devLogin` só existe no servidor de desenvolvimento sem app, quando o atalho do GitHub CLI existe. |
+| `GET /api/auth/login` | | `?next=/studio/…` (só caminhos `/studio…`). **302** para `github.com/login/oauth/authorize`, com `state` e o desafio PKCE (S256). Guarda `state`, o verificador PKCE e `next` no cookie `gh_flow` (HttpOnly, Secure, SameSite=Lax, 10 min). Sem os dois IDs, volta para `/studio?signin=off`. |
+| `GET /api/auth/callback` | | `?code&state`, com o cookie `gh_flow`. Confere o `state` contra o cookie e troca o código por token no GitHub, com o *client secret* e o verificador PKCE. **302** para `next?signin=1`, com o token no cookie `gh_handoff` (HttpOnly, Secure, SameSite=Strict, só para `/api/auth/claim`, **2 min**). Cancelado no GitHub: `?signin=denied`; qualquer outra falha: `?signin=failed`, e o log do servidor diz o que o GitHub respondeu. |
+| `POST /api/auth/claim` | | `{ access_token, expires_in? }`, **uma vez**: lê e apaga o cookie `gh_handoff`. Sem nada para entregar, `{ "error": "none" }` (404). Chamada de outro site: 403. Quem chama é o cofre. |
 | `POST /api/auth/device` | | `{ device_code, user_code, verification_uri, expires_in, interval }`. Pede um código ao GitHub com o *Client ID* (e o escopo, para OAuth App). |
 | `POST /api/auth/token` | `{ device_code }` | `{ access_token, expires_in? }` quando a pessoa autorizou; senão `{ error, interval? }` com `authorization_pending`, `slow_down`, `expired_token`, `access_denied`, `incorrect_device_code` ou `device_flow_disabled`. |
 | `GET /api/auth/dev` | | **Só no servidor de desenvolvimento**, sem *Client ID* e a partir da própria máquina: `{ access_token }` com o token do GitHub CLI. |
 
-`POST` exige o cabeçalho `X-Requested-With` e `Origin` do próprio site (403 caso contrário). Freios por visitante: 20 códigos e 60 consultas por minuto. Erros do repasse: `{ "error": "login-disabled" }` (503, sem *Client ID*), `forbidden` (403), `invalid` (400), `rate-limited` (429), `unavailable` (502).
+`POST` exige o cabeçalho `X-Requested-With` e `Origin` do próprio site (403 caso contrário). Freios por visitante: 20 inícios de login (ou códigos, no *device flow*) e 60 consultas por minuto. Erros do repasse: `{ "error": "login-disabled" }` (503, sem *Client ID*), `forbidden` (403), `invalid` (400), `rate-limited` (429), `unavailable` (502), `none` (404, no `claim`).
 
-Quem conversa com o repasse é o **cofre do token** (`src/github/vault-core.ts`), um worker da página, e não a página em si: o token nunca chega ao código da página ([ADR 0002](adr/0002-token-so-no-navegador.md)).
+Quem conversa com o repasse é o **cofre do token** (`src/github/vault-core.ts`), um worker da página, e não a página em si: o token nunca chega ao código da página ([ADR 0002](adr/0002-token-so-no-navegador.md)). No fluxo web, o token passa do cookie do servidor direto para o cofre, pelo `claim`.
+
+### Continuar com GitHub (fluxo web)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant P as Página (estúdio)
+  participant V as Cofre (worker)
+  participant R as Repartments (/api/auth)
+  participant G as github.com
+  participant A as api.github.com
+  P->>R: GET /api/auth/login?next=/studio/… (a aba inteira)
+  R-->>P: 302 para github.com/login/oauth/authorize (state, code_challenge)
+  P->>G: a pessoa confere e autoriza
+  G-->>P: 302 para /api/auth/callback?code&state
+  P->>R: GET /api/auth/callback?code&state (cookie gh_flow)
+  R->>G: POST /login/oauth/access_token (client_id, client_secret, code, code_verifier)
+  G-->>R: access_token
+  R-->>P: 302 para next?signin=1 (cookie gh_handoff, 2 min)
+  P->>V: pede o login (signin=1)
+  V->>R: POST /api/auth/claim
+  R-->>V: { access_token, expires_in } (uma vez, o cookie some)
+  V->>A: GET /user (Authorization: Bearer …)
+  V-->>P: quem entrou e até quando, nunca o token
+  P->>V: pedidos de leitura (repos, commits, árvore, arquivos)
+  V->>A: só os da lista de leituras, com o token
+```
+
+### Entrar pelo código (device flow, sem segredo)
 
 ```mermaid
 sequenceDiagram
