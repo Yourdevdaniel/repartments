@@ -17,6 +17,7 @@
  */
 import type { Actor, ActorKind, Flow, FlowStep, StepAction, Text } from '../shared/studio'
 import type { Role } from '../shared/types'
+import { ptGender } from '../architecture/plain'
 import { footprintOf, navigator } from './nav'
 import { FOOTPRINTS } from './footprints'
 import { DEPTH, HEIGHT } from './rooms'
@@ -688,19 +689,67 @@ const merge = (base: Text, patch?: Partial<Text>): Text => ({ en: patch?.en?.tri
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const lowerFirst = (s: string) => s.charAt(0).toLocaleLowerCase() + s.slice(1)
 
+type Gender = 'o' | 'a' | 'os' | 'as'
+/** Portuguese articles, alone or joined to a preposition, by preposition and gender. */
+const PT_FORMS: Record<string, Record<Gender, string>> = {
+  '': { o: 'o', a: 'a', os: 'os', as: 'as' },
+  a: { o: 'ao', a: 'à', os: 'aos', as: 'às' },
+  de: { o: 'do', a: 'da', os: 'dos', as: 'das' },
+  em: { o: 'no', a: 'na', os: 'nos', as: 'nas' },
+  por: { o: 'pelo', a: 'pela', os: 'pelos', as: 'pelas' },
+}
+const PT_ARTICLE = new Map(Object.entries(PT_FORMS).flatMap(([prep, forms]) => Object.values(forms).map((form) => [form, prep] as const)))
+const PT_ARTICLES = [...PT_ARTICLE.keys()].join('|')
+
+/** Words that follow a subject without being its verb ("os bastidores de leads"). */
+const NOT_VERBS = new Set(['de', 'do', 'da', 'dos', 'das', 'em', 'no', 'na', 'nos', 'nas', 'que', 'com', 'para', 'por', 'pelo', 'pela', 'e', 'ou', 'se', 'sem', 'sobre', 'entre', 'até', 'também', 'já', 'não', 'só', 'a', 'o', 'as', 'os'])
+const PT_IRREGULAR: [string, string][] = [['lê', 'leem'], ['tem', 'têm'], ['vem', 'vêm'], ['dá', 'dão'], ['vai', 'vão'], ['é', 'são'], ['está', 'estão']]
+
+/**
+ * The verb right after a subject that went from plural to singular or back ("os bastidores pegam"
+ * → "o Carteiro pega"): the scenes only use the present tense, so the regular endings and a few
+ * irregular verbs cover them.
+ */
+function agree(verb: string, plural: boolean): string {
+  const lower = verb.toLowerCase()
+  if (NOT_VERBS.has(lower) || verb.length < 2) return verb
+  const irregular = PT_IRREGULAR.find(([one, many]) => (plural ? one : many) === lower)
+  if (irregular) return plural ? irregular[1] : irregular[0]
+  if (plural) return /[ae]$/.test(lower) ? `${verb}m` : verb
+  return /[ae]m$/.test(lower) ? verb.slice(0, -1) : verb
+}
+
 /**
  * Swaps whole-word mentions of each participant in a sentence. A name written with a lower-case
  * first letter mid-sentence ("o banco de dados") is swapped too; it stays lower-case when the new
- * name is a plain one, and keeps its own capitals when it's a proper name ("o PostgreSQL").
+ * name is a plain one, and keeps its own capitals when it's a proper name ("o PostgreSQL"). In
+ * Portuguese, the article in front follows the new name ("pelos bastidores" → "pelo Carteiro").
  */
-function rename(text: string, names: { from: string; to: string; plain: boolean }[]): string {
+function rename(text: string, names: { from: string; to: string; plain: boolean }[], lang: 'en' | 'pt' = 'en'): string {
   let out = text
   for (const { from, to, plain } of names) {
     if (!from || from === to) continue
-    const word = (w: string) => new RegExp(`(?<![\\p{L}\\p{N}])${escape(w)}(?![\\p{L}\\p{N}])`, 'gu')
-    out = out.replace(word(from), to)
     const lower = lowerFirst(from)
-    if (lower !== from) out = out.replace(word(lower), plain ? lowerFirst(to) : to)
+    const swap = (w: string) => (w === from ? to : plain ? lowerFirst(to) : to)
+    for (const w of lower !== from ? [from, lower] : [from]) {
+      if (lang === 'pt') {
+        const gender = ptGender(to)
+        const plural = gender.endsWith('s')
+        // A subject that starts a sentence: its verb comes right after and follows the new number.
+        const subject = new RegExp(`(^|[.!?]\\s+)(${PT_ARTICLES})\\s+${escape(w)}\\s+(\\p{L}+)`, 'giu')
+        out = out.replace(subject, (_, lead: string, article: string, verb: string) => {
+          const was = ptGender(from).endsWith('s')
+          return `${lead}${article} ${w} ${was === plural ? verb : agree(verb, plural)}`
+        })
+        const articled = new RegExp(`(?<![\\p{L}\\p{N}])(${PT_ARTICLES})\\s+${escape(w)}(?![\\p{L}\\p{N}])`, 'giu')
+        out = out.replace(articled, (_, article: string) => {
+          const form = PT_FORMS[PT_ARTICLE.get(article.toLowerCase()) ?? ''][gender]
+          const cased = article[0] !== article[0].toLowerCase() ? form[0].toUpperCase() + form.slice(1) : form
+          return `${cased} ${swap(w)}`
+        })
+      }
+      out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(w)}(?![\\p{L}\\p{N}])`, 'gu'), swap(w))
+    }
   }
   return out
 }
@@ -730,7 +779,7 @@ export function applyEdits(flows: Flow[], edits: ScriptEdits): Flow[] {
         .sort((a, b) => b.from.length - a.from.length)
     const en = swaps('en')
     const pt = swaps('pt')
-    const both = (t: Text): Text => ({ en: rename(t.en, en), pt: rename(t.pt, pt) })
+    const both = (t: Text): Text => ({ en: rename(t.en, en), pt: rename(t.pt, pt, 'pt') })
     return {
       ...f,
       title: merge(both(f.title), edits.titles[f.id]),
@@ -753,7 +802,7 @@ export function renameParts(text: Text, parts: { id: string; label?: Text }[], e
         return c.label && to ? [{ from: c.label[lang], to, plain: false }] : []
       })
       .sort((a, b) => b.from.length - a.from.length)
-  return { en: rename(text.en, swaps('en')), pt: rename(text.pt, swaps('pt')) }
+  return { en: rename(text.en, swaps('en')), pt: rename(text.pt, swaps('pt'), 'pt') }
 }
 
 /** Which actors make the clearest example of a switch: the front desk before the screens, and so on. */

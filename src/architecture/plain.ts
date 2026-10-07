@@ -194,7 +194,7 @@ function lowerFirst(s: string): string {
 }
 
 /** The Portuguese gender of a name, from its first word; unknown words are guessed from their ending. */
-function ptGender(name: string): 'o' | 'a' | 'os' | 'as' {
+export function ptGender(name: string): 'o' | 'a' | 'os' | 'as' {
   const head = name.split(' ')[0].toLowerCase()
   const known = PT_GENDER.get(head)
   if (known) return known

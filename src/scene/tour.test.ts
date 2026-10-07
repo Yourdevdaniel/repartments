@@ -156,6 +156,36 @@ describe('applyEdits', () => {
     expect(edited.title.pt).toBe('Cadastrar cliente')
   })
 
+  it('makes the Portuguese article in front agree with the new name', () => {
+    const worker: Actor = { ...actor('jobs', 'worker', 'Bastidores', 'backend/jobs'), name: t('Back office', 'Bastidores') }
+    const flow: Flow = {
+      ...request,
+      actors: [...request.actors, worker],
+      steps: [
+        { ...step('jobs', 'jobs', 'think', 'x'), text: t('x', 'A tarefa é pega pelos bastidores na fila') },
+        { ...step('jobs', 'jobs', 'think', 'x'), text: t('x', 'Os bastidores guardam o resultado; nada fica com os bastidores') },
+      ],
+    }
+    const [edited] = applyEdits([flow], { ...NO_EDITS, actors: { [actorKey(worker)]: { pt: 'Carteiro' } } })
+    expect(edited.steps[0].text.pt).toBe('A tarefa é pega pelo Carteiro na fila')
+    expect(edited.steps[1].text.pt).toBe('O Carteiro guarda o resultado; nada fica com o Carteiro')
+  })
+
+  it('turns the verb after a renamed subject to the new number, and leaves other words alone', () => {
+    const screen: Actor = { ...actor('pages', 'screen', 'Páginas', 'frontend/pages'), name: t('Pages', 'Páginas') }
+    const flow: Flow = {
+      ...request,
+      actors: [...request.actors, screen],
+      steps: [
+        { ...step('pages', 'pages', 'show', 'x'), text: t('x', 'As páginas mostram a lista. As páginas leem a resposta') },
+        { ...step('pages', 'pages', 'show', 'x'), text: t('x', 'As páginas de leads somem') },
+      ],
+    }
+    const [edited] = applyEdits([flow], { ...NO_EDITS, actors: { [actorKey(screen)]: { pt: 'Tela de leads' } } })
+    expect(edited.steps[0].text.pt).toBe('A Tela de leads mostra a lista. A Tela de leads lê a resposta')
+    expect(edited.steps[1].text.pt).toBe('A Tela de leads de leads somem')
+  })
+
   it('carries a rename into the captions, whole words only, unless the caption was rewritten', () => {
     const api = request.actors.find((a) => a.id === 'api')!
     const flow: Flow = {
