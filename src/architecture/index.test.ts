@@ -67,16 +67,27 @@ describe('buildModel on the CRM fixture', () => {
     expect(model.flows[2].title.pt).toBe('Listar leads')
   })
 
+  it('names a part after its only screen or its only agent when the folder says nothing', () => {
+    const label = (id: string) => model.components.find((c) => c.id === id)?.label
+    expect(label('frontend/src/pages')).toEqual({ pt: 'Tela de leads', en: 'Leads screen' })
+    expect(label('backend/src/agent')).toEqual({ pt: 'Assistente de atendimento', en: 'Support assistant' })
+    expect(model.components.find((c) => c.id === 'frontend/src/pages')?.name).toBe('Frontend Pages')
+  })
+
+  it('leaves the e-mail out of the list scene: reading the leads sends nothing', () => {
+    expect(model.flows[2].actors.some((a) => a.name.pt === 'Serviço de e-mail')).toBe(false)
+  })
+
   it('tells the Criar leads scene with what the form asks for, what the service saves, and the e-mail it sends', () => {
     const create = model.flows[1]
     const pt = create.steps.map((s) => s.text.pt)
-    expect(pt[0]).toBe('O usuário abre Leads, preenche nome, empresa, e-mail e telefone e clica em “Salvar lead”')
-    expect(pt[1]).toBe('A tela envia o novo lead (nome, empresa, e-mail e telefone) para Backend Routes')
-    expect(pt).toContain('Backend Services guarda o novo lead em PostgreSQL: nome, empresa, e-mail e telefone')
-    expect(pt).toContain('PostgreSQL confirma: o lead foi guardado')
-    expect(pt).toContain('Backend Services envia o e-mail “Olá!” por Resend')
-    expect(pt[pt.length - 1]).toBe('A tela mostra que o lead foi salvo')
-    expect(create.steps[0].text.en).toBe('The user opens Leads, fills in nome, empresa, e-mail and telefone and clicks “Salvar lead”')
+    expect(pt[0]).toBe('O usuário abre a tela de leads, preenche nome, empresa, e-mail e telefone e clica em “Salvar lead”')
+    expect(pt[1]).toBe('A tela de leads envia o novo lead (nome, empresa, e-mail e telefone) para a recepção')
+    expect(pt).toContain('As regras do negócio guardam o novo lead no banco de dados: nome, empresa, e-mail e telefone')
+    expect(pt).toContain('O banco de dados confirma para as regras do negócio: o lead foi guardado')
+    expect(pt).toContain('As regras do negócio enviam o e-mail “Olá!” usando o serviço de e-mail')
+    expect(pt[pt.length - 1]).toBe('A tela de leads mostra que o lead foi salvo')
+    expect(create.steps[0].text.en).toBe('The user opens the leads screen, fills in nome, empresa, e-mail and telefone and clicks “Salvar lead”')
   })
 
   it('keeps every scene within the limits, with every step pointing at its own actors', () => {
@@ -96,8 +107,9 @@ describe('buildModel on the CRM fixture', () => {
 
   it('writes a summary in both languages within 400 characters, with the parts and the services in it', () => {
     expect(model.summary.pt.length).toBeLessThanOrEqual(400)
-    expect(model.summary.pt).toContain('crm é um sistema escrito em TypeScript')
-    expect(model.summary.pt).toContain('PostgreSQL')
+    expect(model.summary.pt).toMatch(/^O crm tem \d+ partes: /)
+    expect(model.summary.pt).toContain('Usa um banco de dados')
+    expect(model.summary.pt).not.toMatch(/TypeScript|PostgreSQL/)
     expect(model.summary.en).toContain('It uses')
   })
 
@@ -127,7 +139,7 @@ describe('buildModel on other inputs', () => {
     const model = buildModel({ repo: { owner: 'a', name: 'empty', branch: 'main', sha: 's', private: false }, tree: [], files: new Map(), truncated: false })
     expect(model.components).toEqual([])
     expect(model.flows).toEqual([])
-    expect(model.summary.pt).toBe('empty é um sistema.')
+    expect(model.summary.pt).toBe('O empty é um sistema.')
   })
 
   it('skips broken tree entries and unreadable texts', () => {

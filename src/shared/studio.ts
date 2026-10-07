@@ -141,8 +141,14 @@ export const LAYERS: Layer[] = ['interface', 'api', 'security', 'logic', 'ai', '
 export type Component = {
   /** Stable id: the folder path, plus "#direct" when it only covers the loose files in it. */
   id: string
-  /** Human name derived from the folder, e.g. "Leads" for `backend/apps/leads`. */
+  /** Human name derived from the folder, e.g. "Leads" for `backend/apps/leads`. Used by the map. */
   name: string
+  /**
+   * The name for people who don't code, used by the presentation's residents: what the part is in
+   * the system ("Recepção", "Regras de pedidos", "Porteiro") instead of a folder name. Older saved
+   * presentations don't have it; `name` stands in.
+   */
+  label?: Text
   /** The folder it covers, relative to the repo root ("" for the root itself). */
   path: string
   /** Only the files directly in `path`, not its subfolders (they became components of their own). */
@@ -225,8 +231,15 @@ export type ActorKind =
 export type Actor = {
   /** Unique within its flow. */
   id: string
-  /** Shown on the character's name tag: a component's name, a tool's name, "Usuário"/"User"… */
+  /** Shown on the character's name tag: a plain name ("Recepção", "Buscar leads", "Banco de dados"). */
   name: Text
+  /**
+   * The same participant as people who code know it: the folder name, the tool's name in the code,
+   * the brand or model id ("Backend Routes", "search_leads", "PostgreSQL", "gpt-4o-mini"). The
+   * presenter can switch to these before presenting to a technical audience; captions mention
+   * actors by `name` (or with its first letter in lower case) so the switch can swap them.
+   */
+  technical?: Text
   kind: ActorKind
   /** The component or external service it stands for, if any. */
   component: string | null

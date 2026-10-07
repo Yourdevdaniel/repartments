@@ -65,9 +65,9 @@ describe('buildFlows: request scenes', () => {
     expect(flow.actors.map((a) => a.id)).toEqual(['person', 'c:frontend/pages', 'c:backend/routes', 'c:backend/middleware', 'c:backend/services', 'e:ext:postgresql', 'e:ext:resend'])
     // The e-mail goes out before the answer goes back.
     expect(flow.steps.map((s) => s.action)).toEqual(['ask', 'ask', 'check', 'reply', 'call', 'save', 'reply', 'send', 'reply', 'reply', 'show'])
-    expect(flow.steps[5].text.pt).toBe('Backend Services guarda as mudanças em PostgreSQL')
-    expect(flow.steps[6].text.pt).toBe('PostgreSQL confirma que guardou')
-    expect(flow.steps[0].text.pt).toBe('O usuário usa a tela Frontend Pages')
+    expect(flow.steps[5].text.pt).toBe('As regras do negócio guardam as mudanças no banco de dados')
+    expect(flow.steps[6].text.pt).toBe('O banco de dados confirma para as regras do negócio que guardou')
+    expect(flow.steps[0].text.pt).toBe('O usuário usa as páginas')
     expect(flow.steps[1].ref).toEqual({ file: 'backend/routes/routes.ts', line: 3 })
     expectWellFormed(flow)
   })
@@ -149,12 +149,13 @@ describe('buildFlows: agent scenes', () => {
     const [flow] = buildFlows({ components, dependencies, externals: [ext('ext:openai', 'OpenAI', 'llm', ['backend/ai'])], endpoints: [], agents: [agent] })
     expect(flow.id).toBe('agent:backend/ai/bot.py')
     expect(flow.kind).toBe('agent')
-    expect(flow.title).toEqual({ pt: 'Como o Bot decide', en: 'How Bot decides' })
+    expect(flow.title).toEqual({ pt: 'Como o assistente de IA decide', en: 'How the AI assistant decides' })
     const decide = flow.steps.find((s) => s.action === 'decide')
-    expect(decide?.text.pt).toBe('Bot escolhe o caminho: se tools, vai para tools; se end, vai para Fim')
-    expect(flow.steps.find((s) => s.action === 'think')?.text.pt).toBe('Bot lê as instruções: “Você responde dúvidas.”')
+    expect(decide?.text.pt).toBe('O assistente de IA escolhe o caminho: se tools, vai para Ferramentas; se end, vai para Fim')
+    expect(flow.steps.find((s) => s.action === 'think')?.text.pt).toBe('O assistente de IA lê as instruções: “Você responde dúvidas.”')
     const llm = flow.actors.find((a) => a.kind === 'llm')
-    expect(llm?.name.pt).toBe('Modelo de IA (gpt-4o)')
+    expect(llm?.name.pt).toBe('Modelo de IA')
+    expect(llm?.technical?.pt).toBe('gpt-4o')
     expect(llm?.external).toBe('ext:openai')
     expect(flow.steps.some((s) => s.action === 'use-tool' && s.ref?.line === 4)).toBe(true)
     expectWellFormed(flow)
@@ -191,7 +192,7 @@ describe('buildFlows: background jobs', () => {
     const job = flows.find((f) => f.kind === 'job') as Flow
     expect(job.title).toEqual({ pt: 'Tarefas em segundo plano', en: 'Background tasks' })
     expect(job.steps.map((s) => s.action)).toEqual(['queue', 'call', 'save', 'reply'])
-    expect(job.steps[0].text.pt).toBe('Services deixa uma tarefa na fila BullMQ')
+    expect(job.steps[0].text.pt).toBe('As regras do negócio deixam uma tarefa na fila de tarefas')
     expectWellFormed(job)
   })
 })
@@ -205,7 +206,7 @@ describe('buildFlows: overview and limits', () => {
     ]
     const flows = buildFlows({ components, dependencies: [dep('app', 'lib/a', 3), dep('app', 'lib/b')], externals: [], endpoints: [], agents: [] })
     expect(flows.map((f) => f.kind)).toEqual(['overview'])
-    expect(flows[0].steps.map((s) => s.text.en)).toEqual(['App hands the work to A', 'App hands the work to B'])
+    expect(flows[0].steps.map((s) => s.text.en)).toEqual(['The app hands the work to the helpers', 'The app hands the work to the helpers 2'])
     expectWellFormed(flows[0])
   })
 
@@ -263,32 +264,33 @@ describe('buildFlows: with the details of the code', () => {
 
   it('says what the person fills in, the button to press, what is sent and saved, and the e-mail subject', () => {
     const [flow] = run([endpoint('POST', '/api/leads', 'backend/routes')])
-    expect(flow.steps[0].text.pt).toBe('O usuário abre Leads, preenche nome, empresa, e-mail e telefone e clica em “Salvar lead”')
-    expect(flow.steps[1].text.pt).toBe('A tela envia o novo lead (nome, empresa, e-mail e telefone) para Backend Routes')
-    expect(flow.steps[0].text.en).toBe('The user opens Leads, fills in nome, empresa, e-mail and telefone and clicks “Salvar lead”')
-    expect(flow.steps[1].text.en).toBe('The screen sends the new lead (name, company, email and phone) to Backend Routes')
-    expect(flow.steps.map((s) => s.text.pt)).toContain('Backend Services guarda o novo lead em PostgreSQL: nome, empresa, e-mail e telefone')
-    expect(flow.steps.map((s) => s.text.pt)).toContain('PostgreSQL confirma: o lead foi guardado')
-    expect(flow.steps.map((s) => s.text.pt)).toContain('Backend Services envia o e-mail “Olá!” por Resend')
-    expect(flow.steps[flow.steps.length - 1].text.pt).toBe('A tela mostra que o lead foi salvo')
+    expect(flow.steps[0].text.pt).toBe('O usuário abre “Leads” nas páginas, preenche nome, empresa, e-mail e telefone e clica em “Salvar lead”')
+    expect(flow.steps[1].text.pt).toBe('As páginas enviam o novo lead (nome, empresa, e-mail e telefone) para a recepção')
+    expect(flow.steps[0].text.en).toBe('The user opens “Leads” in the pages, fills in nome, empresa, e-mail and telefone and clicks “Salvar lead”')
+    expect(flow.steps[1].text.en).toBe('The pages send the new lead (name, company, email and phone) to the front desk')
+    expect(flow.steps.map((s) => s.text.pt)).toContain('As regras do negócio guardam o novo lead no banco de dados: nome, empresa, e-mail e telefone')
+    expect(flow.steps.map((s) => s.text.pt)).toContain('O banco de dados confirma para as regras do negócio: o lead foi guardado')
+    expect(flow.steps.map((s) => s.text.pt)).toContain('As regras do negócio enviam o e-mail “Olá!” usando o serviço de e-mail')
+    expect(flow.steps[flow.steps.length - 1].text.pt).toBe('As páginas mostram que o lead foi salvo')
     expectWellFormed(flow)
   })
 
   it('tells a list as the screen asking for it, the data fetched, and the list shown', () => {
     const [flow] = run([endpoint('GET', '/api/leads', 'backend/routes')])
-    expect(flow.steps[0].text.pt).toBe('O usuário abre Leads para ver os leads')
-    expect(flow.steps[1].text.pt).toBe('A tela pede a lista de leads para Backend Routes')
-    expect(flow.steps.map((s) => s.text.pt)).toContain('Backend Services procura os leads em PostgreSQL')
-    expect(flow.steps.map((s) => s.text.pt)).toContain('PostgreSQL devolve a lista de leads')
-    expect(flow.steps[flow.steps.length - 1].text.pt).toBe('A tela mostra a lista de leads')
+    expect(flow.steps[0].text.pt).toBe('O usuário abre “Leads” nas páginas para ver os leads')
+    expect(flow.steps[1].text.pt).toBe('As páginas pedem a lista de leads para a recepção')
+    expect(flow.steps.map((s) => s.text.pt)).toContain('As regras do negócio procuram os leads no banco de dados')
+    expect(flow.steps.map((s) => s.text.pt)).toContain('O banco de dados devolve a lista de leads para as regras do negócio')
+    expect(flow.steps[flow.steps.length - 1].text.pt).toBe('As páginas mostram a lista de leads')
+    expect(flow.actors.some((a) => a.name.pt === 'Serviço de e-mail')).toBe(false)
     expectWellFormed(flow)
   })
 
   it('tells a delete as the person asking to remove one lead, and the service removing it', () => {
     const [flow] = run([endpoint('DELETE', '/api/leads/:id', 'backend/routes')])
-    expect(flow.steps[0].text.pt).toBe('O usuário abre Leads e pede para apagar um lead')
-    expect(flow.steps.map((s) => s.text.pt)).toContain('Backend Services apaga o lead em PostgreSQL')
-    expect(flow.steps.map((s) => s.text.pt)).toContain('PostgreSQL confirma: o lead foi apagado')
+    expect(flow.steps[0].text.pt).toBe('O usuário abre “Leads” nas páginas e pede para apagar um lead')
+    expect(flow.steps.map((s) => s.text.pt)).toContain('As regras do negócio apagam o lead no banco de dados')
+    expect(flow.steps.map((s) => s.text.pt)).toContain('O banco de dados confirma para as regras do negócio: o lead foi apagado')
     expectWellFormed(flow)
   })
 
@@ -317,11 +319,107 @@ describe('buildFlows: with the details of the code', () => {
       details: { models: [], calls: new Map(), screens: new Map(), subjects: new Map(), tasks: ['followups'] },
     })
     const job = withTask.find((f) => f.kind === 'job') as Flow
-    expect(job.steps[0].text.pt).toBe('Services deixa uma tarefa de retorno na fila BullMQ')
-    expect(job.steps[1].text.pt).toBe('Jobs pega a tarefa de retorno da fila')
+    expect(job.steps[0].text.pt).toBe('As regras do negócio deixam uma tarefa de retorno na fila de tarefas')
+    expect(job.steps[1].text.pt).toBe('A tarefa de retorno é pega pelos bastidores na fila de tarefas')
     expectWellFormed(job)
 
     const without = buildFlows({ components: jobComponents, dependencies: jobDeps, externals: jobExternals, endpoints: [], agents: [] })
-    expect((without.find((f) => f.kind === 'job') as Flow).steps[0].text.pt).toBe('Services deixa uma tarefa na fila BullMQ')
+    expect((without.find((f) => f.kind === 'job') as Flow).steps[0].text.pt).toBe('As regras do negócio deixam uma tarefa na fila de tarefas')
+  })
+})
+
+describe('buildFlows: plain and technical names', () => {
+  const components = [
+    component('frontend/pages', 'interface', { name: 'Frontend Pages' }),
+    component('backend/routes', 'api', { name: 'Backend Routes' }),
+    component('backend/middleware', 'security', { name: 'Backend Middleware' }),
+    component('backend/services', 'logic', { name: 'Backend Services' }),
+    component('backend/db', 'data', { name: 'Backend Db' }),
+    component('backend/jobs', 'jobs', { name: 'Backend Jobs' }),
+    component('backend/ai', 'ai', { name: 'Backend Ai' }),
+  ]
+  const dependencies = [
+    dep('frontend/pages', 'backend/routes', 2),
+    dep('backend/routes', 'backend/middleware'),
+    dep('backend/routes', 'backend/services'),
+    dep('backend/services', 'backend/db'),
+    dep('backend/services', 'backend/jobs'),
+  ]
+  const externals = [
+    ext('ext:postgresql', 'PostgreSQL', 'database', ['backend/db']),
+    ext('ext:resend', 'Resend', 'email', ['backend/services']),
+    ext('ext:bullmq', 'BullMQ', 'queue', ['backend/jobs']),
+    ext('ext:openai', 'OpenAI', 'llm', ['backend/ai']),
+  ]
+  const agent: Agent = {
+    id: 'backend/ai/bot.py',
+    name: 'Support',
+    file: 'backend/ai/bot.py',
+    component: 'backend/ai',
+    provider: 'OpenAI',
+    model: 'gpt-4o-mini',
+    framework: null,
+    instructions: 'Você ajuda a equipe.',
+    tools: [
+      { name: 'search_leads', description: 'Find leads by company.', file: 'backend/ai/tools.py', line: 2 },
+      { name: 'add_note', description: null, file: 'backend/ai/tools.py', line: 9 },
+    ],
+    graph: { nodes: [], links: [], explicit: false },
+    loop: true,
+  }
+  const details: FlowDetails = {
+    models: [{ name: 'Lead', fields: ['name', 'company'], line: 1 }],
+    calls: new Map([['POST /api/leads', { file: 'frontend/pages/LeadsPage.tsx', sent: ['name', 'company'] }]]),
+    screens: new Map([['frontend/pages/LeadsPage.tsx', { title: 'Leads', buttons: ['Salvar lead'], fields: ['Nome', 'Empresa'] }]]),
+    subjects: new Map([['backend/services', ['Olá!']]]),
+    tasks: ['followups'],
+  }
+  const flows = buildFlows({
+    components,
+    dependencies,
+    externals,
+    endpoints: [endpoint('POST', '/api/leads', 'backend/routes'), endpoint('GET', '/api/leads', 'backend/routes')],
+    agents: [agent],
+    details,
+  })
+
+  const lowerFirst = (s: string) => (s.charAt(1) === s.charAt(1).toUpperCase() && s.charAt(1) !== s.charAt(1).toLowerCase() ? s : s.charAt(0).toLowerCase() + s.slice(1))
+  const mentions = (text: string, name: string) => text.includes(name) || text.includes(lowerFirst(name))
+
+  it('gives every actor except the person its technical name', () => {
+    expect(flows.length).toBeGreaterThan(2)
+    for (const flow of flows) {
+      for (const actor of flow.actors) {
+        if (actor.id === 'person') continue
+        expect(actor.technical, `${flow.id} / ${actor.id}`).toBeDefined()
+        expect(actor.technical?.pt.length).toBeGreaterThan(0)
+      }
+    }
+    const byId = (id: string) => flows.flatMap((f) => f.actors).find((a) => a.id === id)
+    expect(byId('c:backend/services')?.technical).toEqual({ pt: 'Backend Services', en: 'Backend Services' })
+    expect(byId('e:ext:postgresql')?.technical).toEqual({ pt: 'PostgreSQL', en: 'PostgreSQL' })
+    expect(byId('t:search_leads')?.technical).toEqual({ pt: 'search_leads', en: 'search_leads' })
+    expect(byId('m')?.technical).toEqual({ pt: 'gpt-4o-mini', en: 'gpt-4o-mini' })
+  })
+
+  it('names every participant of a caption with its plain name, or the same name with a lower-case first letter', () => {
+    for (const flow of flows) {
+      const byId = new Map(flow.actors.map((a) => [a.id, a]))
+      for (const step of flow.steps) {
+        for (const id of [step.from, step.to]) {
+          const actor = byId.get(id)
+          if (!actor || actor.id === 'person') continue
+          expect(mentions(step.text.pt, actor.name.pt), `pt "${step.text.pt}" should name ${actor.name.pt}`).toBe(true)
+          expect(mentions(step.text.en, actor.name.en), `en "${step.text.en}" should name ${actor.name.en}`).toBe(true)
+        }
+      }
+    }
+  })
+
+  it('keeps the brands in the notes, not in the names people read', () => {
+    const names = flows.flatMap((f) => f.actors).map((a) => a.name.pt)
+    expect(names.some((n) => /PostgreSQL|Resend|BullMQ|OpenAI|gpt-4o/.test(n))).toBe(false)
+    const note = flows.flatMap((f) => f.actors).find((a) => a.id === 'e:ext:postgresql')?.note.pt
+    expect(note).toBe('PostgreSQL guarda os dados do sistema.')
   })
 })

@@ -15,6 +15,7 @@ import { readFiles } from './fetch'
 import { callsOf, endpointsOf, matchCall, type RouteDef } from './endpoints'
 import { databaseLabelOf, externalsFrom, imagesOf, type Usage } from './externals'
 import { buildFlows } from './flows'
+import { indefiniteArticle, nameWith, plainAgentName, plainExternalName, plainLayerName, screenPartName, subjectOf } from './plain'
 import { importsOf } from './imports'
 import { normalizePath, createResolver } from './resolve'
 import { selectFiles, type TreeEntry } from './select'
@@ -55,19 +56,8 @@ const LANGUAGE_NAMES: Record<string, string> = {
   cs: 'C#',
 }
 
-/** The layer names used in the model's summary sentence. */
-const LAYER_WORDS: Record<Component['layer'], Text> = {
-  interface: { en: 'screens', pt: 'telas' },
-  api: { en: 'an API', pt: 'uma API' },
-  security: { en: 'access control', pt: 'controle de acesso' },
-  logic: { en: 'business rules', pt: 'regras de negócio' },
-  ai: { en: 'AI agents', pt: 'agentes de IA' },
-  jobs: { en: 'background tasks', pt: 'tarefas em segundo plano' },
-  data: { en: 'data', pt: 'dados' },
-  shared: { en: 'shared helpers', pt: 'utilidades' },
-  infra: { en: 'configuration', pt: 'configuração' },
-  tests: { en: 'tests', pt: 'testes' },
-}
+
+/** The order the layers are told in the model's summary. */
 const LAYER_ORDER: Component['layer'][] = ['interface', 'api', 'security', 'logic', 'ai', 'jobs', 'data', 'shared', 'infra', 'tests']
 
 /** Files of a language, top six by count. */
@@ -95,29 +85,79 @@ function entryFilesOf(path: string, text: string): string[] {
   }
 }
 
-/** The one-paragraph summary of the whole system. */
-function summaryOf(repoName: string, languages: { name: string }[], components: Component[], externals: External[], agents: Agent[]): Text {
-  const langs = languages.slice(0, 2).map((l) => l.name)
+/**
+ * The one-paragraph summary of the whole system, in the words the presentation uses: parts by their
+ * plain names, outside services by what they do, and the first agent's choices. No language names,
+ * brands or model ids, since the people watching don't code.
+ */
+function summaryOf(repoName: string, components: Component[], externals: External[], agents: Agent[]): Text {
   const layers = LAYER_ORDER.filter((l) => components.some((c) => c.layer === l) && l !== 'tests').slice(0, 5)
-  const pt: string[] = [`${repoName} é um sistema${langs.length ? ` escrito em ${joinList(langs, 'pt')}` : ''}`]
-  const en: string[] = [`${repoName} is a system${langs.length ? ` written in ${joinList(langs, 'en')}` : ''}`]
+  const kinds = [...new Set(externals.map((e) => e.kind))].slice(0, 4)
+  const agent = agents[0]
+  const agentComp = agent ? components.find((c) => c.id === agent.component) : undefined
+  const agentName = plainAgentName(agentComp ?? null, agent?.name)
+  const tools = agent?.tools.length ?? 0
+  const pt: string[] = []
+  const en: string[] = []
   if (components.length) {
-    pt[0] += ` com ${count(components.length, 'parte', 'partes')}: ${joinList(layers.map((l) => LAYER_WORDS[l].pt), 'pt')}`
-    en[0] += ` with ${count(components.length, 'part', 'parts')}: ${joinList(layers.map((l) => LAYER_WORDS[l].en), 'en')}`
+    pt.push(`O ${repoName} tem ${count(components.length, 'parte', 'partes')}: ${joinList(layers.map((l) => nameWith('none', plainLayerName(l).pt, 'pt')), 'pt')}.`)
+    en.push(`The ${repoName} has ${count(components.length, 'part', 'parts')}: ${joinList(layers.map((l) => nameWith('none', plainLayerName(l).en, 'en')), 'en')}.`)
+  } else {
+    pt.push(`O ${repoName} é um sistema.`)
+    en.push(`The ${repoName} is a system.`)
   }
-  pt[0] += '.'
-  en[0] += '.'
-  if (externals.length) {
-    const names = externals.slice(0, 4).map((e) => e.name)
-    pt.push(`Usa ${joinList(names, 'pt')}.`)
-    en.push(`It uses ${joinList(names, 'en')}.`)
+  if (kinds.length) {
+    pt.push(`Usa ${joinList(kinds.map((k) => indefiniteArticle(plainExternalName(k).pt, 'pt')), 'pt')}.`)
+    en.push(`It uses ${joinList(kinds.map((k) => indefiniteArticle(plainExternalName(k).en, 'en')), 'en')}.`)
   }
-  if (agents.length) {
-    const tools = agents.reduce((n, a) => n + a.tools.length, 0)
-    pt.push(`Tem ${agents.length === 1 ? 'um agente de IA' : `${agents.length} agentes de IA`}${tools ? ` que decide entre ${count(tools, 'ferramenta', 'ferramentas')}` : ''}.`)
-    en.push(`It has ${agents.length === 1 ? 'an AI agent' : `${agents.length} AI agents`}${tools ? ` that chooses between ${count(tools, 'tool', 'tools')}` : ''}.`)
+  if (agent && tools) {
+    pt.push(`${nameWith('none', agentName.pt, 'pt', true)} escolhe entre ${count(tools, 'ferramenta', 'ferramentas')}.`)
+    en.push(`${nameWith('none', agentName.en, 'en', true)} chooses between ${count(tools, 'tool', 'tools')}.`)
   }
   return { pt: clip(pt.join(' '), 400), en: clip(en.join(' '), 400) }
+}
+
+/**
+ * A screens part whose folder names nothing ("pages") but that holds a single screen is named after
+ * that screen's title: "Páginas" with a "Leads" heading becomes "Tela de leads". Parts with several
+ * screens, or whose new name another part already wears, keep theirs.
+ */
+function titledScreens(components: Component[], files: Map<string, string>): Component[] {
+  const taken = new Set(components.map((c) => c.label?.pt))
+  return components.map((c) => {
+    if (c.layer !== 'interface' || subjectOf(c.path)) return c
+    const titles = new Set<string>()
+    for (const [path, text] of files) {
+      if (componentOf(path, components)?.id !== c.id) continue
+      try {
+        const title = screenDetailsOf(path, text).title
+        if (title) titles.add(title.trim())
+      } catch {
+        // A screen that can't be read names nothing.
+      }
+    }
+    const label = titles.size === 1 ? screenPartName([...titles][0]) : null
+    if (!label || taken.has(label.pt)) return c
+    taken.add(label.pt)
+    return { ...c, label }
+  })
+}
+
+/**
+ * A part whose folder names nothing ("agent") but that holds a single agent wears the agent's name, so
+ * the commits and the map call it what its scene does ("Assistente de atendimento" for `support`).
+ */
+function withAgentNames(components: Component[], agents: Agent[]): Component[] {
+  const taken = new Set(components.map((c) => c.label?.pt))
+  return components.map((c) => {
+    if (subjectOf(c.path)) return c
+    const own = agents.filter((a) => a.component === c.id)
+    if (own.length !== 1) return c
+    const label = plainAgentName(c, own[0].name)
+    if (label.pt === plainAgentName(null).pt || taken.has(label.pt)) return c
+    taken.add(label.pt)
+    return { ...c, label }
+  })
 }
 
 /**
@@ -259,7 +299,7 @@ function buildModelWith(input: SourceInput, progress: (stage: 'graph' | 'flows')
       routes: (routesOf.get(p) ?? []).map((r) => `${r.method} ${r.path}`),
     }
   })
-  const components = buildComponents({ files: componentFiles, repoName: input.repo.name, databaseLabel, entryFiles })
+  const components = titledScreens(buildComponents({ files: componentFiles, repoName: input.repo.name, entryFiles }), files)
   const compOf = (path: string): string | null => componentOf(path, components)?.id ?? null
   const layerById = new Map(components.map((c) => [c.id, c.layer]))
 
@@ -324,7 +364,8 @@ function buildModelWith(input: SourceInput, progress: (stage: 'graph' | 'flows')
 
   progress('flows')
   const details = flowDetailsOf({ files, targetsOf, compOf, endpoints })
-  const flows = buildFlows({ components, dependencies, externals, endpoints, agents, fileDeps, details })
+  const parts = withAgentNames(components, agents)
+  const flows = buildFlows({ components: parts, dependencies, externals, endpoints, agents, fileDeps, details })
 
   const lines = [...files.values()].reduce((n, t) => n + (t ? t.split('\n').length : 0), 0)
   return {
@@ -338,8 +379,8 @@ function buildModelWith(input: SourceInput, progress: (stage: 'graph' | 'flows')
       truncated: input.truncated,
       languages: languagesOf(sources),
     },
-    summary: summaryOf(input.repo.name, languagesOf(sources), components, externals, agents),
-    components,
+    summary: summaryOf(input.repo.name, parts, externals, agents),
+    components: parts,
     dependencies,
     externals,
     endpoints,

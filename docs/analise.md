@@ -11,7 +11,8 @@ flowchart LR
   E --> F[endpoints.ts<br/>rotas e chamadas HTTP]
   F --> G[externals.ts<br/>bancos, IA, e-mail…]
   G --> H[agents.ts<br/>agentes de IA]
-  H --> I[flows.ts + text.ts<br/>cenas e frases]
+  H --> P[plain.ts<br/>nomes simples]
+  P --> I[flows.ts + text.ts<br/>cenas e frases]
   I --> M[(ArchitectureModel)]
 ```
 
@@ -43,7 +44,7 @@ Cada import vira um **arquivo do repositório** ou um **pacote**:
 
 - Começa com uma parte por pasta do topo e vai **dividindo a maior** (mais de 30% dos arquivos, ou mais de 40) nas subpastas, até 16 partes. Pastas "embrulho" (`src`, `app`, `lib`, `packages`, `apps`, `internal`…) são sempre abertas. Arquivos soltos numa pasta dividida formam uma parte "direta" (`id` termina em `#direct`). Qual parte é dona de cada arquivo: `componentOf()` em `src/shared/components.ts`, usado também pelos commits.
 - **Camada** de cada arquivo por pontuação de nome de pasta e conteúdo, e a da parte pela maioria: telas (`components`, `pages`, `.tsx`…), API (`routes`, `controllers`, `@app.get(`…), segurança (`auth`, `middleware`, `guards`…), regras (`services`, `domain`…), IA (`agents`, `prompts` + SDK de IA), tarefas (`jobs`, `workers`, `celery`…), dados (`models`, `repositories`, `prisma`, `models.Model`…), compartilhado, infraestrutura e testes.
-- **Nome** a partir da pasta ("Frontend Pages", "Backend Routes"), único; **tecnologias** pelos pacotes importados; **ponto de entrada** (`main.*`, `server.*`, `manage.py`, `createRoot(`, `app.listen(`, `main`/`bin` do `package.json`…).
+- **Nome** a partir da pasta ("Frontend Pages", "Backend Routes"), único, usado pelo mapa; e um **nome simples** (`label`, seção 9) para a apresentação; **tecnologias** pelos pacotes importados; **ponto de entrada** (`main.*`, `server.*`, `manage.py`, `createRoot(`, `app.listen(`, `main`/`bin` do `package.json`…).
 - **Conexões**: quantos imports resolvidos vão de uma parte para outra (testes fora).
 - **Resumo** de uma frase por camada, com o que foi encontrado ("Recebe os pedidos do sistema, como POST /leads e GET /leads.").
 
@@ -93,11 +94,25 @@ Para as legendas dizerem o que a pessoa vê e faz, e não só "a API chama o ser
 - **O que a tela envia** (`JSON.stringify({ … })`, `axios.post(url, { … })`), o **assunto dos e-mails** e o nome das **filas**.
 - Nomes de campos viram palavras ("companyName" → "empresa"), com um dicionário de termos comuns em português.
 
-Com isso, uma cena de pedido vira: "O usuário abre Leads, preenche nome, empresa, e-mail e telefone e clica em “Salvar lead”" → "A tela envia o novo lead (nome, empresa, e-mail e telefone)…" → "… guarda o novo lead em PostgreSQL: nome, empresa, e-mail e telefone" → "PostgreSQL confirma: o lead foi guardado" → "… envia o e-mail “Olá!” por Resend" → "A tela mostra que o lead foi salvo". Uma mesma API pode ter uma cena de escrita e outra de leitura (criar e listar).
+Com isso, uma cena de pedido vira: "O usuário abre a tela de leads, preenche nome, empresa, e-mail e telefone e clica em “Salvar lead”" → "A tela de leads envia o novo lead (nome, empresa, e-mail e telefone) para a recepção" → "As regras do negócio guardam o novo lead no banco de dados: nome, empresa, e-mail e telefone" → "O banco de dados confirma para as regras do negócio: o lead foi guardado" → "As regras do negócio enviam o e-mail “Olá!” usando o serviço de e-mail" → "A tela de leads mostra que o lead foi salvo". Uma mesma API pode ter uma cena de escrita e outra de leitura (criar e listar); e-mails e tarefas na fila só aparecem nas de escrita, porque ler uma lista não manda e-mail.
+
+## 9. Nomes simples e nomes do código (`plain.ts`)
+
+Quem assiste não programa, então nenhum nome de pasta, de função, de marca ou de modelo aparece nas legendas por padrão. Cada participante de cena tem dois nomes: o **simples** (`name`), que aparece, e o **do código** (`technical`), guardado para quem preferir.
+
+| Participante | Nome simples | Nome do código |
+|---|---|---|
+| Parte do sistema | O papel dela pela camada ("Telas", "Recepção", "Porteiro", "Regras do negócio", "Bastidores", "Arquivo"), com o assunto da pasta quando há um ("Recepção de pedidos", "Regras de leads"). Pastas genéricas (`routes`, `services`, `pages`…) não dão assunto. Uma parte de telas sem assunto que tem uma tela só leva o título dela ("Tela de leads"); uma parte de agente sem assunto que tem um agente só leva o assunto do nome do agente (`support` → "Assistente de atendimento"). Nomes repetidos ganham a pasta de cima ou um número; até 28 caracteres. | "Backend Routes" |
+| Ferramenta da IA | O verbo e os substantivos traduzidos: `search_leads` → "Buscar leads", `schedule_call` → "Agendar ligação". | `search_leads` |
+| Serviço de fora | O tipo de serviço: "Banco de dados", "Fila de tarefas", "Serviço de e-mail", "Modelo de IA". A marca vai para a nota ("PostgreSQL guarda os dados do sistema."). | "PostgreSQL", "gpt-4o-mini" |
+
+As frases usam o nome simples com o artigo e a preposição certos ("a recepção passa o trabalho para as regras do negócio", "no banco de dados"); quando a tela tem título e a parte não foi batizada por ele, a legenda diz qual tela ("O usuário abre “Leads” nas páginas…"). O resumo do sistema também é simples: "O crm tem 12 partes: as telas, a recepção, o porteiro… Usa um banco de dados, uma fila de tarefas, um modelo de IA e um serviço de e-mail."
+
+Como cada legenda nomeia seus participantes pelo nome simples, a apresentação troca um pelo outro palavra a palavra (`applyEdits` em `src/scene/tour.ts`): é assim que as perguntas "Antes de apresentar" mostram os nomes do código e que os nomes escolhidos à mão chegam às legendas ([ADR 0004](adr/0004-apresentacao-no-motor-de-historias.md)).
 
 ## Limites conhecidos
 
-- Nomes de partes vêm de pastas; o roteiro editável existe para trocá-los pelas palavras do cliente.
+- Nomes simples vêm do papel da parte e do assunto da pasta; quando a pasta não diz nada do negócio ("Regras do negócio" de `services`), o roteiro editável existe para trocá-los pelas palavras do cliente.
 - Até 16 partes: pastas além disso ficam fora do mapa.
 - Agentes que montam o prompt em tempo de execução, registram ferramentas por reflexão ou chamam a API do modelo com `fetch` cru podem aparecer incompletos ou não aparecer.
 - Resolução de Java, Kotlin, Ruby, PHP e C# é aproximada; Go só pelo `go.mod` da raiz.

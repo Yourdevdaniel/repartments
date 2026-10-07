@@ -9,7 +9,8 @@
 import type { Component, Layer, Text } from '../shared/studio'
 import { dirOf } from '../shared/components'
 import { callsModel, llmProviderOf, matchPackage } from './externals'
-import { basenameOf, joinList, titleWords } from './text'
+import { basenameOf, clip, titleWords } from './text'
+import { plainPartName, subjectText } from './plain'
 import { isTestPath } from './select'
 
 /** Folders that only group other folders; they are looked through, never named. */
@@ -161,8 +162,6 @@ export type ComponentFile = {
 export type ComponentInput = {
   files: ComponentFile[]
   repoName: string
-  /** The database the repo names in its config, if any. */
-  databaseLabel: string | null
   /** Files that start something: the `main` of a package.json, a bin script. */
   entryFiles?: string[]
 }
@@ -224,39 +223,73 @@ function nameOf(path: string, repoName: string): string {
   return titleWords(last)
 }
 
-/** A plain sentence for what the part does, from its layer and what was found in it. */
-function summaryFor(layer: Layer, routes: string[], providers: string[], databaseLabel: string | null): Text {
-  switch (layer) {
-    case 'interface':
-      return { en: 'Shows the screens the person uses.', pt: 'Mostra as telas que a pessoa usa.' }
-    case 'api':
-      return routes.length
-        ? {
-            en: `Takes the system's requests, such as ${joinList(routes.slice(0, 2), 'en')}.`,
-            pt: `Recebe os pedidos do sistema, como ${joinList(routes.slice(0, 2), 'pt')}.`,
-          }
-        : { en: "Takes the system's requests.", pt: 'Recebe os pedidos do sistema.' }
-    case 'security':
-      return { en: 'Checks who can get in and what each person may do.', pt: 'Confere quem pode entrar e o que cada pessoa pode fazer.' }
-    case 'logic':
-      return { en: 'Applies the business rules.', pt: 'Aplica as regras do negócio.' }
-    case 'ai':
-      return providers.length
-        ? { en: `Talks to ${joinList(providers, 'en')} to decide what to do.`, pt: `Conversa com ${joinList(providers, 'pt')} para decidir o que fazer.` }
-        : { en: 'Uses an AI model to decide what to do.', pt: 'Usa um modelo de IA para decidir o que fazer.' }
-    case 'jobs':
-      return { en: 'Runs background tasks, away from the screen.', pt: 'Executa tarefas em segundo plano, fora da tela.' }
-    case 'data':
-      return databaseLabel
-        ? { en: `Stores and fetches the data (${databaseLabel}).`, pt: `Guarda e busca os dados (${databaseLabel}).` }
-        : { en: 'Stores and fetches the data.', pt: 'Guarda e busca os dados.' }
-    case 'shared':
-      return { en: 'Helper functions and types used in many places.', pt: 'Funções e tipos usados em várias partes.' }
-    case 'infra':
-      return { en: 'Configures and publishes the system.', pt: 'Configura e publica o sistema.' }
-    case 'tests':
-      return { en: 'Tests that check the rest keeps working.', pt: 'Testes que garantem que o resto funciona.' }
+/**
+ * A plain sentence for what the part does for the people who use the system, from its layer and its
+ * subject. No routes, packages or brands: those stay in the 2D map and the notes.
+ */
+function summaryFor(layer: Layer, subject: Text | null): Text {
+  const plain = SUMMARIES[layer]
+  if (subject && plain.withSubject) {
+    const fill = (t: string, s: string) => t.replace('{s}', s)
+    return { pt: clip(fill(plain.withSubject.pt, subject.pt), 140), en: clip(fill(plain.withSubject.en, subject.en), 140) }
   }
+  return plain.plain
+}
+
+/** The sentences per layer; `{s}` is the subject of the folder, when it has one. */
+const SUMMARIES: Record<Layer, { plain: Text; withSubject?: Text }> = {
+  interface: {
+    plain: { en: 'Shows the screens the person uses.', pt: 'Mostra as telas que a pessoa usa.' },
+    withSubject: { en: 'Shows the {s} screens the person uses.', pt: 'Mostra as telas de {s} que a pessoa usa.' },
+  },
+  api: {
+    plain: {
+      en: 'Takes the requests from the screens and passes each one to whoever handles it.',
+      pt: 'Recebe os pedidos das telas e encaminha cada um para quem resolve.',
+    },
+    withSubject: {
+      en: 'Takes the requests about {s} and passes each one to whoever handles it.',
+      pt: 'Recebe os pedidos sobre {s} e encaminha para quem resolve.',
+    },
+  },
+  security: {
+    plain: { en: 'Checks who can get in and what each person may do.', pt: 'Confere quem pode entrar e o que cada pessoa pode fazer.' },
+    withSubject: {
+      en: 'Checks who can get into {s} and what each person may do.',
+      pt: 'Confere quem pode entrar em {s} e o que cada pessoa pode fazer.',
+    },
+  },
+  logic: {
+    plain: { en: 'Applies the business rules.', pt: 'Aplica as regras do negócio.' },
+    withSubject: { en: 'Applies the rules for {s}.', pt: 'Aplica as regras de {s}.' },
+  },
+  ai: {
+    plain: {
+      en: 'Talks to an AI model to decide what to do.',
+      pt: 'Conversa com um modelo de IA para decidir o que fazer.',
+    },
+    withSubject: {
+      en: 'Talks to an AI model to decide what to do about {s}.',
+      pt: 'Conversa com um modelo de IA para decidir o que fazer com {s}.',
+    },
+  },
+  jobs: {
+    plain: {
+      en: 'Does the slow work behind the scenes, so the person does not have to wait.',
+      pt: 'Faz os trabalhos demorados nos bastidores, sem a pessoa esperar.',
+    },
+    withSubject: {
+      en: 'Does the slow work on {s} behind the scenes, so the person does not have to wait.',
+      pt: 'Faz os trabalhos demorados sobre {s} nos bastidores, sem a pessoa esperar.',
+    },
+  },
+  data: {
+    plain: { en: "Keeps and finds the system's information.", pt: 'Guarda e encontra as informações do sistema.' },
+    withSubject: { en: 'Keeps and finds the information about {s}.', pt: 'Guarda e encontra as informações sobre {s}.' },
+  },
+  shared: { plain: { en: 'Support functions used in many parts.', pt: 'Funções de apoio usadas em várias partes.' } },
+  infra: { plain: { en: 'Sets up and publishes the system.', pt: 'Configura e publica o sistema.' } },
+  tests: { plain: { en: 'Tests that check the rest keeps working.', pt: 'Testes que garantem que o resto funciona.' } },
 }
 
 /** The components of a repo. Returns nothing for a repo without source files. */
@@ -320,8 +353,6 @@ export function buildComponents(input: ComponentInput): Component[] {
     const layer = layerOfComponent(layers)
     const tech = new Map<string, number>()
     for (const f of members) for (const t of techOf(f.packages)) tech.set(t, (tech.get(t) ?? 0) + 1)
-    const routes = [...new Set(members.flatMap((f) => f.routes))]
-    const providers = [...new Set(members.flatMap((f) => llmProviderOf(f.packages)?.provider ?? []))]
     const entry = members.some((f) => isEntry(f, entryFiles))
     const id = c.path + (c.direct ? '#direct' : '')
     out.push({
@@ -334,10 +365,10 @@ export function buildComponents(input: ComponentInput): Component[] {
       lines: members.reduce((sum, f) => sum + f.lines, 0),
       tech: [...tech].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 5).map(([t]) => t),
       entry,
-      summary: summaryFor(layer, routes, providers, input.databaseLabel),
+      summary: summaryFor(layer, subjectText(c.path)),
     })
   })
-  return out
+  return out.map((c) => ({ ...c, label: plainPartName(c, out) }))
 }
 
 const ENTRY_CONTENT =

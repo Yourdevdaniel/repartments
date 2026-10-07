@@ -4,15 +4,19 @@
  * two), requests to the API (at most three), a background job, and an overview only when nothing else
  * was found.
  *
- * Every step is a plain sentence in both languages, built from a template per kind of step. Nothing
- * here guesses at behaviour the code doesn't show: a step exists only because an import, a route or an
- * agent's tool says so. When the details of the code are given (the fields a form asks for, what a
- * request sends, the e-mail's subject), the sentences say those things too; without them the scenes
- * keep their shorter wording.
+ * Every step is a plain sentence in both languages, built from a template per kind of step. The people
+ * in a scene wear plain names ("Recepção de leads", "Banco de dados", "Buscar leads"); each actor also
+ * carries its technical name (`technical`), so the presentation can show either. Captions only ever
+ * name an actor with its plain name, so swapping plain for technical is a whole-word replace. Brands
+ * and model ids go to the note under each character. Nothing here guesses at behaviour the code doesn't
+ * show: a step exists only because an import, a route or an agent's tool says so. When the details of
+ * the code are given (the fields a form asks for, what a request sends, the e-mail's subject), the
+ * sentences say those things too; without them the scenes keep their shorter wording.
  */
 import type { Actor, ActorKind, Agent, Component, Dependency, Endpoint, External, ExternalKind, Flow, FlowStep, StepAction, Text } from '../shared/studio'
 import { clip, cap, firstSentence, joinList } from './text'
 import { fieldList, humanField, modelForResource, plainLabel, singularOf, taskPhraseOf, type DataModel, type FlowDetails, type Lang, type ScreenDetails } from './details'
+import { isPlural, nameWith, plainAgentName, plainExternalName, plainPartName, plainToolName, type Prep } from './plain'
 
 export type FlowInput = {
   components: Component[]
@@ -36,6 +40,9 @@ const CAPTION_LIMIT = 120
 
 /** Buttons that leave the screen rather than send the data, so a scene never says "clicks Cancel". */
 const CANCEL_BUTTON = /cancel|fechar|voltar|sair|close|back|exit/i
+
+/** A plain name in both languages, as it stands in a sentence (without article or preposition). */
+type Name = Text
 
 const PERSON: Actor = {
   id: 'person',
@@ -73,11 +80,18 @@ const EXTERNAL_KIND: Record<ExternalKind, ActorKind> = {
   http: 'external',
 }
 
-const EXTERNAL_NOTE: Partial<Record<ExternalKind, Text>> = {
-  database: { en: 'Where the data is kept.', pt: 'Onde os dados ficam guardados.' },
-  cache: { en: 'Keeps ready answers so things run faster.', pt: 'Guarda respostas prontas para ir mais rápido.' },
-  queue: { en: 'Holds tasks to be done later.', pt: 'Guarda tarefas para serem feitas depois.' },
-  llm: { en: 'Language model that answers and decides.', pt: 'Modelo de linguagem que responde e decide.' },
+/** What each kind of outside service does, written after its brand in the character's note. */
+const EXTERNAL_DOES: Record<ExternalKind, Text> = {
+  database: { en: "keeps the system's data.", pt: 'guarda os dados do sistema.' },
+  cache: { en: 'keeps ready answers so things run faster.', pt: 'guarda respostas prontas para ir mais rápido.' },
+  queue: { en: 'holds tasks to be done later.', pt: 'guarda tarefas para serem feitas depois.' },
+  llm: { en: 'answers and decides.', pt: 'responde e decide.' },
+  email: { en: 'sends the e-mails.', pt: 'envia os e-mails.' },
+  payment: { en: 'handles the payments.', pt: 'processa os pagamentos.' },
+  messaging: { en: 'sends the messages.', pt: 'envia as mensagens.' },
+  storage: { en: 'stores the files.', pt: 'guarda os arquivos.' },
+  auth: { en: 'checks who is signing in.', pt: 'confere quem está entrando.' },
+  http: { en: 'answers requests from outside.', pt: 'responde a pedidos de fora.' },
 }
 
 /** What the outside service does when a step sends something to it. */
@@ -100,11 +114,22 @@ type Ctx = {
   details: FlowDetails | null
 }
 
+/** The plain name of a part: its label when the model has one, otherwise worked out from the part itself. */
+function nameOf(c: Component): Name {
+  return c.label ?? plainPartName(c, [c])
+}
+
+/** The plain name of an outside service, from its kind; the brand goes to the note. */
+function serviceName(e: External): Name {
+  return plainExternalName(e.kind)
+}
+
 /** The actor for a component, with the layer's kind. */
 function componentActor(c: Component): Actor {
   return {
     id: `c:${c.id}`,
-    name: { en: c.name, pt: c.name },
+    name: nameOf(c),
+    technical: { pt: c.name, en: c.name },
     kind: COMPONENT_KIND[c.layer],
     component: c.id,
     external: null,
@@ -112,15 +137,20 @@ function componentActor(c: Component): Actor {
   }
 }
 
-/** The actor for an outside service. */
+/** The actor for an outside service: its kind's plain name, and the brand in the note. */
 function externalActor(e: External): Actor {
+  const does = EXTERNAL_DOES[e.kind]
   return {
     id: `e:${e.id}`,
-    name: { en: e.name, pt: e.name },
+    name: serviceName(e),
+    technical: { pt: e.name, en: e.name },
     kind: EXTERNAL_KIND[e.kind],
     component: null,
     external: e.id,
-    note: EXTERNAL_NOTE[e.kind] ?? { en: 'Outside service the system uses.', pt: 'Serviço externo usado pelo sistema.' },
+    note: {
+      en: e.name ? `${e.name} ${does.en}` : cap(does.en),
+      pt: e.name ? `${e.name} ${does.pt}` : cap(does.pt),
+    },
   }
 }
 
@@ -308,10 +338,29 @@ function pickButton(buttons: string[]): string | null {
   return buttons.find((b) => !CANCEL_BUTTON.test(b)) ?? null
 }
 
+/** A name in a sentence, with its article and preposition. */
+function at(prep: Prep, n: Name, lang: Lang, start = false): string {
+  return nameWith(prep, n[lang], lang, start)
+}
+
+/** The verb that follows a name as its subject: plural names take the plural form ("as telas mostram"). */
+function vb(n: Name, lang: Lang, sing: string, plur: string): string {
+  return isPlural(n[lang], lang) ? plur : sing
+}
+
 /** What the person does on the screen, in one language. */
-function personCaption(mode: Mode, screenTitle: string, fields: string[], button: string | null, res: string, lang: Lang): string {
+function personCaption(mode: Mode, screen: Name, screenTitle: string | null, fields: string[], button: string | null, res: string, lang: Lang): string {
   const sing = singularOf(res)
-  const open = lang === 'pt' ? `O usuário abre ${screenTitle}` : `The user opens ${screenTitle}`
+  // The screen's own title says which screen ("abre “Leads” nas páginas"), unless the part is already
+  // named after it ("abre a tela de leads"). The part is always named, so renaming it reaches the caption.
+  const titled = !!screenTitle && !screen[lang].toLowerCase().includes(screenTitle.toLowerCase())
+  const open = titled
+    ? lang === 'pt'
+      ? `O usuário abre “${screenTitle}” ${at('em', screen, 'pt')}`
+      : `The user opens “${screenTitle}” ${at('em', screen, 'en')}`
+    : lang === 'pt'
+      ? `O usuário abre ${at('none', screen, 'pt')}`
+      : `The user opens ${at('none', screen, 'en')}`
   const withButton = (text: string) => (button ? `${text}${lang === 'pt' ? ` e clica em “${button}”` : ` and clicks “${button}”`}` : text)
   switch (mode) {
     case 'list':
@@ -325,7 +374,7 @@ function personCaption(mode: Mode, screenTitle: string, fields: string[], button
       if (fields.length === 0) {
         return withButton(lang === 'pt' ? `${open} para ${verb[2]} ${oneOf(sing, 'pt')}` : `${open} to ${verb[3]} ${oneOf(sing, 'en')}`)
       }
-      // "abre Leads, preenche A, B e C e clica em…": a comma before the list keeps the "e"s apart.
+      // "abre a tela, preenche A, B e C e clica em…": a comma before the list keeps the "e"s apart.
       const glue = button ? ',' : lang === 'pt' ? ' e' : ' and'
       return fitList(fields, lang, (list) => withButton(`${open}${glue} ${verb[lang === 'pt' ? 0 : 1]} ${list}`))
     }
@@ -333,79 +382,90 @@ function personCaption(mode: Mode, screenTitle: string, fields: string[], button
 }
 
 /** What the screen sends to the API, in one language. */
-function screenToApiCaption(mode: Mode, sent: string[], res: string, api: string, lang: Lang): string {
+function screenToApiCaption(mode: Mode, sent: string[], res: string, screen: Name, api: Name, lang: Lang): string {
   const sing = singularOf(res)
   const items = sent.map((f) => humanField(f, lang))
   const sendLine = (head: string, tail: string) =>
     items.length ? fitList(items, lang, (list) => `${head} (${list}) ${tail}`) : `${head} ${tail}`
-  const to = lang === 'pt' ? `para ${api}` : `to ${api}`
+  const to = at('para', api, lang)
+  const who = at('none', api, lang)
+  const sc = at('none', screen, lang, true)
+  const pt = lang === 'pt'
   switch (mode) {
     case 'list':
-      return lang === 'pt' ? `A tela pede a lista de ${res} para ${api}` : `The screen asks ${api} for the list of ${res}`
+      return pt ? `${sc} ${vb(screen, 'pt', 'pede', 'pedem')} a lista de ${res} ${to}` : `${sc} ${vb(screen, 'en', 'asks', 'ask')} ${who} for the list of ${res}`
     case 'one':
-      return lang === 'pt' ? `A tela pede ${oneOf(sing, 'pt')} para ${api}` : `The screen asks ${api} for ${oneOf(sing, 'en')}`
+      return pt ? `${sc} ${vb(screen, 'pt', 'pede', 'pedem')} ${oneOf(sing, 'pt')} ${to}` : `${sc} ${vb(screen, 'en', 'asks', 'ask')} ${who} for ${oneOf(sing, 'en')}`
     case 'delete':
-      return lang === 'pt' ? `A tela pede para apagar ${oneOf(sing, 'pt')} em ${api}` : `The screen asks ${api} to delete ${oneOf(sing, 'en')}`
+      return pt
+        ? `${sc} ${vb(screen, 'pt', 'pede', 'pedem')} para apagar ${oneOf(sing, 'pt')} ${at('em', api, 'pt')}`
+        : `${sc} ${vb(screen, 'en', 'asks', 'ask')} ${who} to delete ${oneOf(sing, 'en')}`
     case 'update':
-      return sendLine(lang === 'pt' ? 'A tela envia as mudanças' : 'The screen sends the changes', to)
+      return sendLine(pt ? `${sc} ${vb(screen, 'pt', 'envia', 'enviam')} as mudanças` : `${sc} ${vb(screen, 'en', 'sends', 'send')} the changes`, to)
     default:
-      return sendLine(lang === 'pt' ? `A tela envia ${newOne(sing, 'pt')}` : `The screen sends ${newOne(sing, 'en')}`, to)
+      return sendLine(pt ? `${sc} ${vb(screen, 'pt', 'envia', 'enviam')} ${newOne(sing, 'pt')}` : `${sc} ${vb(screen, 'en', 'sends', 'send')} ${newOne(sing, 'en')}`, to)
   }
 }
 
 /** What the service does with the data, in the database, in one language. */
-function databaseCaption(mode: Mode, items: string[], res: string, src: string, db: string, lang: Lang): string {
+function databaseCaption(mode: Mode, items: string[], res: string, src: Name, db: Name, lang: Lang): string {
   const sing = singularOf(res)
+  const who = at('none', src, lang, true)
+  const where = at('em', db, lang)
   switch (mode) {
     case 'list':
-      return lang === 'pt' ? `${src} procura ${theAll(res, 'pt')} em ${db}` : `${src} looks up ${theAll(res, 'en')} in ${db}`
+      return lang === 'pt' ? `${who} ${vb(src, 'pt', 'procura', 'procuram')} ${theAll(res, 'pt')} ${where}` : `${who} ${vb(src, 'en', 'looks up', 'look up')} ${theAll(res, 'en')} ${where}`
     case 'one':
-      return lang === 'pt' ? `${src} procura ${theOne(sing, 'pt')} pedid${ending(sing)} em ${db}` : `${src} looks up the requested ${sing} in ${db}`
+      return lang === 'pt' ? `${who} ${vb(src, 'pt', 'procura', 'procuram')} ${theOne(sing, 'pt')} pedid${ending(sing)} ${where}` : `${who} ${vb(src, 'en', 'looks up', 'look up')} the requested ${sing} ${where}`
     case 'update':
-      return lang === 'pt' ? `${src} atualiza ${theOne(sing, 'pt')} em ${db}` : `${src} updates the ${sing} in ${db}`
+      return lang === 'pt' ? `${who} ${vb(src, 'pt', 'atualiza', 'atualizam')} ${theOne(sing, 'pt')} ${where}` : `${who} ${vb(src, 'en', 'updates', 'update')} the ${sing} ${where}`
     case 'delete':
-      return lang === 'pt' ? `${src} apaga ${theOne(sing, 'pt')} em ${db}` : `${src} deletes the ${sing} in ${db}`
+      return lang === 'pt' ? `${who} ${vb(src, 'pt', 'apaga', 'apagam')} ${theOne(sing, 'pt')} ${where}` : `${who} ${vb(src, 'en', 'deletes', 'delete')} the ${sing} ${where}`
     default: {
       const humanItems = items.map((f) => humanField(f, lang))
-      if (humanItems.length === 0) return lang === 'pt' ? `${src} guarda ${newOne(sing, 'pt')} em ${db}` : `${src} saves the new ${sing} in ${db}`
+      if (humanItems.length === 0) return lang === 'pt' ? `${who} ${vb(src, 'pt', 'guarda', 'guardam')} ${newOne(sing, 'pt')} ${where}` : `${who} ${vb(src, 'en', 'saves', 'save')} the new ${sing} ${where}`
       return fitList(humanItems, lang, (list) =>
-        lang === 'pt' ? `${src} guarda ${newOne(sing, 'pt')} em ${db}: ${list}` : `${src} saves the new ${sing} in ${db}: ${list}`,
+        lang === 'pt' ? `${who} ${vb(src, 'pt', 'guarda', 'guardam')} ${newOne(sing, 'pt')} ${where}: ${list}` : `${who} ${vb(src, 'en', 'saves', 'save')} the new ${sing} ${where}: ${list}`,
       )
     }
   }
 }
 
 /** What the database answers to the service, in one language. */
-function databaseReplyCaption(mode: Mode, res: string, db: string, lang: Lang): string {
+function databaseReplyCaption(mode: Mode, res: string, db: Name, src: Name, lang: Lang): string {
   const sing = singularOf(res)
+  const who = at('none', db, lang, true)
+  const back = at('para', src, lang)
+  const pt = lang === 'pt'
   switch (mode) {
     case 'list':
-      return lang === 'pt' ? `${db} devolve a lista de ${res}` : `${db} returns the list of ${res}`
+      return pt ? `${who} ${vb(db, 'pt', 'devolve', 'devolvem')} a lista de ${res} ${back}` : `${who} ${vb(db, 'en', 'returns', 'return')} the list of ${res} ${back}`
     case 'one':
-      return lang === 'pt' ? `${db} devolve ${theOne(sing, 'pt')} pedid${ending(sing)}` : `${db} returns the requested ${sing}`
+      return pt ? `${who} ${vb(db, 'pt', 'devolve', 'devolvem')} ${theOne(sing, 'pt')} pedid${ending(sing)} ${back}` : `${who} ${vb(db, 'en', 'returns', 'return')} the requested ${sing} ${back}`
     case 'update':
-      return lang === 'pt' ? `${db} confirma: ${theOne(sing, 'pt')} foi atualizad${ending(sing)}` : `${db} confirms: the ${sing} was updated`
+      return pt ? `${who} ${vb(db, 'pt', 'confirma', 'confirmam')} ${back}: ${theOne(sing, 'pt')} foi atualizad${ending(sing)}` : `${who} ${vb(db, 'en', 'confirms', 'confirm')} ${back}: the ${sing} was updated`
     case 'delete':
-      return lang === 'pt' ? `${db} confirma: ${theOne(sing, 'pt')} foi apagad${ending(sing)}` : `${db} confirms: the ${sing} was deleted`
+      return pt ? `${who} ${vb(db, 'pt', 'confirma', 'confirmam')} ${back}: ${theOne(sing, 'pt')} foi apagad${ending(sing)}` : `${who} ${vb(db, 'en', 'confirms', 'confirm')} ${back}: the ${sing} was deleted`
     default:
-      return lang === 'pt' ? `${db} confirma: ${theOne(sing, 'pt')} foi guardad${ending(sing)}` : `${db} confirms: the ${sing} was saved`
+      return pt ? `${who} ${vb(db, 'pt', 'confirma', 'confirmam')} ${back}: ${theOne(sing, 'pt')} foi guardad${ending(sing)}` : `${who} ${vb(db, 'en', 'confirms', 'confirm')} ${back}: the ${sing} was saved`
   }
 }
 
 /** What the screen shows once the answer is back, in one language. */
-function showCaption(mode: Mode, res: string, lang: Lang): string {
+function showCaption(mode: Mode, res: string, screen: Name, lang: Lang): string {
   const sing = singularOf(res)
+  const who = at('none', screen, lang, true)
   switch (mode) {
     case 'list':
-      return lang === 'pt' ? `A tela mostra a lista de ${res}` : `The screen shows the list of ${res}`
+      return lang === 'pt' ? `${who} ${vb(screen, 'pt', 'mostra', 'mostram')} a lista de ${res}` : `${who} ${vb(screen, 'en', 'shows', 'show')} the list of ${res}`
     case 'one':
-      return lang === 'pt' ? `A tela mostra ${theOne(sing, 'pt')}` : `The screen shows the ${sing}`
+      return lang === 'pt' ? `${who} ${vb(screen, 'pt', 'mostra', 'mostram')} ${theOne(sing, 'pt')}` : `${who} ${vb(screen, 'en', 'shows', 'show')} the ${sing}`
     case 'update':
-      return lang === 'pt' ? `A tela mostra que ${theOne(sing, 'pt')} foi atualizad${ending(sing)}` : `The screen shows that the ${sing} was updated`
+      return lang === 'pt' ? `${who} ${vb(screen, 'pt', 'mostra', 'mostram')} que ${theOne(sing, 'pt')} foi atualizad${ending(sing)}` : `${who} ${vb(screen, 'en', 'shows', 'show')} that the ${sing} was updated`
     case 'delete':
-      return lang === 'pt' ? `A tela mostra que ${theOne(sing, 'pt')} foi apagad${ending(sing)}` : `The screen shows that the ${sing} was deleted`
+      return lang === 'pt' ? `${who} ${vb(screen, 'pt', 'mostra', 'mostram')} que ${theOne(sing, 'pt')} foi apagad${ending(sing)}` : `${who} ${vb(screen, 'en', 'shows', 'show')} that the ${sing} was deleted`
     default:
-      return lang === 'pt' ? `A tela mostra que ${theOne(sing, 'pt')} foi salv${ending(sing)}` : `The screen shows that the ${sing} was saved`
+      return lang === 'pt' ? `${who} ${vb(screen, 'pt', 'mostra', 'mostram')} que ${theOne(sing, 'pt')} foi salv${ending(sing)}` : `${who} ${vb(screen, 'en', 'shows', 'show')} that the ${sing} was saved`
   }
 }
 
@@ -413,21 +473,24 @@ function showCaption(mode: Mode, res: string, lang: Lang): string {
 function requestFlow(plan: RequestPlan, use: { sec: boolean; send: boolean; queue: boolean }): Flow {
   const { endpoint: ep, api, screen, known } = plan
   const sec = use.sec ? plan.sec : null
-  const send = use.send ? plan.send : null
-  const queue = use.queue ? plan.queue : null
+  // Reading something rarely sends an e-mail or leaves a task behind, so only writes show them.
+  const writes = ep.method !== 'GET'
+  const send = use.send && writes ? plan.send : null
+  const queue = use.queue && writes ? plan.queue : null
   const svc = plan.svc
   const dbSvc = plan.db
   const verb = verbOf(ep.method, ep.path)
   const res = resourceOf(ep.path)
   const mode = modeOf(ep.method, ep.path)
-  const sn = screen?.name ?? ''
-  const an = api.name
-  const secn = sec?.name ?? ''
-  const svcn = svc?.name ?? ''
+  const an: Name = nameOf(api)
+  const sn: Name | null = screen ? nameOf(screen) : null
+  const secn: Name | null = sec ? nameOf(sec) : null
+  const svcn: Name | null = svc ? nameOf(svc) : null
   const src = svc ?? api
-  const dbn = dbSvc?.name ?? ''
-  const sendName = send?.name ?? ''
-  const queueName = queue?.name ?? ''
+  const srcn: Name = nameOf(src)
+  const dbn: Name | null = dbSvc ? serviceName(dbSvc) : null
+  const sendn: Name | null = send ? serviceName(send) : null
+  const queuen: Name | null = queue ? serviceName(queue) : null
   const ref = { file: ep.file, line: ep.line }
 
   const actors: Actor[] = [PERSON]
@@ -445,80 +508,93 @@ function requestFlow(plan: RequestPlan, use: { sec: boolean; send: boolean; queu
   const step = (from: string, to: string, action: StepAction, pt: string, en: string, say?: { pt: string; en: string }, at?: { file: string; line: number }) =>
     stepT(from, to, action, { pt, en }, say, at)
 
-  const screenTitle = known?.screen?.title ?? sn
   const screenFields = (known?.screen?.fields ?? []).map(plainLabel)
   const button = known && (mode === 'create' || mode === 'update') ? pickButton(known.screen?.buttons ?? []) : null
 
-  if (screen) {
-    if (known) stepT('person', `c:${screen.id}`, 'ask', both((l) => personCaption(mode, screenTitle, screenFields, button, res, l)), { pt: 'clique!', en: 'click!' })
-    else step('person', `c:${screen.id}`, 'ask', `O usuário usa a tela ${sn}`, `The user opens the ${sn} screen`, { pt: 'clique!', en: 'click!' })
-    if (known) stepT(`c:${screen.id}`, `c:${api.id}`, 'ask', both((l) => screenToApiCaption(mode, known.sent, res, an, l)), { pt: 'pedido!', en: 'request!' }, ref)
-    else step(`c:${screen.id}`, `c:${api.id}`, 'ask', `${sn} faz um pedido para ${an}: ${verb.pt} ${res}`, `${sn} sends a request to ${an}: ${verb.en} ${res}`, { pt: 'pedido!', en: 'request!' }, ref)
+  if (screen && sn) {
+    if (known) stepT('person', `c:${screen.id}`, 'ask', both((l) => personCaption(mode, sn, known.screen?.title ?? null, screenFields, button, res, l)), { pt: 'clique!', en: 'click!' })
+    else step('person', `c:${screen.id}`, 'ask', `O usuário usa ${at('none', sn, 'pt')}`, `The user opens ${at('none', sn, 'en')}`, { pt: 'clique!', en: 'click!' })
+    if (known) stepT(`c:${screen.id}`, `c:${api.id}`, 'ask', both((l) => screenToApiCaption(mode, known.sent, res, sn, an, l)), { pt: 'pedido!', en: 'request!' }, ref)
+    else
+      stepT(
+        `c:${screen.id}`,
+        `c:${api.id}`,
+        'ask',
+        both((l) => `${at('none', sn, l, true)} ${l === 'pt' ? `faz um pedido ${at('para', an, 'pt')}: ${verb.pt} ${res}` : `sends a request ${at('para', an, 'en')}: ${verb.en} ${res}`}`),
+        { pt: 'pedido!', en: 'request!' },
+        ref,
+      )
   } else {
-    step('person', `c:${api.id}`, 'ask', `O usuário faz um pedido para ${an}: ${verb.pt} ${res}`, `The user sends a request to ${an}: ${verb.en} ${res}`, { pt: 'pedido!', en: 'request!' }, ref)
+    stepT(
+      'person',
+      `c:${api.id}`,
+      'ask',
+      both((l) => (l === 'pt' ? `O usuário faz um pedido ${at('para', an, 'pt')}: ${verb.pt} ${res}` : `The user sends a request ${at('para', an, 'en')}: ${verb.en} ${res}`)),
+      { pt: 'pedido!', en: 'request!' },
+      ref,
+    )
   }
-  if (sec) {
-    step(`c:${api.id}`, `c:${sec.id}`, 'check', `${secn} confere se o usuário pode entrar`, `${secn} checks if the user can get in`, { pt: 'pode entrar?', en: 'allowed in?' })
-    step(`c:${sec.id}`, `c:${api.id}`, 'reply', `${secn} libera o pedido`, `${secn} lets the request through`, { pt: 'liberado', en: 'approved' })
+  if (sec && secn) {
+    stepT(`c:${api.id}`, `c:${sec.id}`, 'check', both((l) => (l === 'pt' ? `${at('none', secn, 'pt', true)} ${vb(secn, 'pt', 'confere', 'conferem')} se o usuário pode passar ${at('por', an, 'pt')}` : `${at('none', secn, 'en', true)} ${vb(secn, 'en', 'checks', 'check')} if the user can get in ${at('por', an, 'en')}`)), { pt: 'pode entrar?', en: 'allowed in?' })
+    stepT(`c:${sec.id}`, `c:${api.id}`, 'reply', both((l) => (l === 'pt' ? `${at('none', secn, 'pt', true)} ${vb(secn, 'pt', 'libera', 'liberam')} o pedido ${at('para', an, 'pt')}` : `${at('none', secn, 'en', true)} ${vb(secn, 'en', 'lets', 'let')} the request through ${at('para', an, 'en')}`)), { pt: 'liberado', en: 'approved' })
   }
-  if (svc) {
-    step(`c:${api.id}`, `c:${svc.id}`, 'call', `${an} passa o trabalho para ${svcn}`, `${an} hands the work to ${svcn}`, { pt: 'sua vez', en: 'your turn' })
+  if (svc && svcn) {
+    stepT(`c:${api.id}`, `c:${svc.id}`, 'call', both((l) => (l === 'pt' ? `${at('none', an, 'pt', true)} ${vb(an, 'pt', 'passa', 'passam')} o trabalho ${at('para', svcn, 'pt')}` : `${at('none', an, 'en', true)} ${vb(an, 'en', 'hands', 'hand')} the work ${at('para', svcn, 'en')}`)), { pt: 'sua vez', en: 'your turn' })
   }
-  if (dbSvc) {
+  if (dbSvc && dbn) {
     const srcId = svc ? `c:${svc.id}` : `c:${api.id}`
-    const srcName = svc ? svcn : an
     const dbId = `e:${dbSvc.id}`
     const fetching = ep.method === 'GET'
     const saysAction = fetching ? { pt: 'os dados?', en: 'the data?' } : { pt: 'guardar', en: 'save' }
     if (known) {
       const items = known.sent.length > 0 ? known.sent : (known.model?.fields ?? [])
-      stepT(srcId, dbId, fetching ? 'fetch' : 'save', both((l) => databaseCaption(mode, items, res, srcName, dbn, l)), saysAction)
+      stepT(srcId, dbId, fetching ? 'fetch' : 'save', both((l) => databaseCaption(mode, items, res, srcn, dbn, l)), saysAction)
     } else if (fetching) {
-      step(srcId, dbId, 'fetch', `${srcName} busca os dados em ${dbn}`, `${srcName} fetches the data from ${dbn}`, saysAction)
+      step(srcId, dbId, 'fetch', `${at('none', srcn, 'pt', true)} ${vb(srcn, 'pt', 'busca', 'buscam')} os dados ${at('em', dbn, 'pt')}`, `${at('none', srcn, 'en', true)} ${vb(srcn, 'en', 'fetches', 'fetch')} the data ${at('em', dbn, 'en')}`, saysAction)
     } else {
-      step(srcId, dbId, 'save', `${srcName} guarda as mudanças em ${dbn}`, `${srcName} saves the changes in ${dbn}`, saysAction)
+      step(srcId, dbId, 'save', `${at('none', srcn, 'pt', true)} ${vb(srcn, 'pt', 'guarda', 'guardam')} as mudanças ${at('em', dbn, 'pt')}`, `${at('none', srcn, 'en', true)} ${vb(srcn, 'en', 'saves', 'save')} the changes ${at('em', dbn, 'en')}`, saysAction)
     }
     if (known) {
-      stepT(dbId, srcId, 'reply', both((l) => databaseReplyCaption(mode, res, dbn, l)), fetching ? { pt: 'aqui está', en: 'here you go' } : { pt: 'guardado!', en: 'saved!' })
+      stepT(dbId, srcId, 'reply', both((l) => databaseReplyCaption(mode, res, dbn, srcn, l)), fetching ? { pt: 'aqui está', en: 'here you go' } : { pt: 'guardado!', en: 'saved!' })
     } else if (fetching) {
-      step(dbId, srcId, 'reply', `${dbn} entrega os dados`, `${dbn} hands over the data`, { pt: 'aqui está', en: 'here you go' })
+      step(dbId, srcId, 'reply', `${at('none', dbn, 'pt', true)} ${vb(dbn, 'pt', 'entrega', 'entregam')} os dados ${at('para', srcn, 'pt')}`, `${at('none', dbn, 'en', true)} ${vb(dbn, 'en', 'hands', 'hand')} over the data ${at('para', srcn, 'en')}`, { pt: 'aqui está', en: 'here you go' })
     } else {
-      step(dbId, srcId, 'reply', `${dbn} confirma que guardou`, `${dbn} confirms it's saved`, { pt: 'guardado!', en: 'saved!' })
+      step(dbId, srcId, 'reply', `${at('none', dbn, 'pt', true)} ${vb(dbn, 'pt', 'confirma', 'confirmam')} ${at('para', srcn, 'pt')} que guardou`, `${at('none', dbn, 'en', true)} ${vb(dbn, 'en', 'confirms', 'confirm')} ${at('para', srcn, 'en')} it's saved`, { pt: 'guardado!', en: 'saved!' })
     }
   }
   // E-mails, payments and queued jobs happen before the answer goes back.
-  if (send) {
+  if (send && sendn) {
     const what = SENT[send.kind] ?? { pt: 'os dados', en: 'the data' }
     const subject = known?.subject
     if (subject) {
-      stepT(`c:${src.id}`, `e:${send.id}`, 'send', both((l) => (l === 'pt' ? `${src.name} envia o e-mail “${subject}” por ${sendName}` : `${src.name} sends the e-mail “${subject}” through ${sendName}`)), {
+      stepT(`c:${src.id}`, `e:${send.id}`, 'send', both((l) => (l === 'pt' ? `${at('none', srcn, 'pt', true)} ${vb(srcn, 'pt', 'envia', 'enviam')} o e-mail “${subject}” usando ${at('none', sendn, 'pt')}` : `${at('none', srcn, 'en', true)} ${vb(srcn, 'en', 'sends', 'send')} the e-mail “${subject}” using ${at('none', sendn, 'en')}`)), {
         pt: 'enviado!',
         en: 'sent!',
       })
     } else {
-      step(`c:${src.id}`, `e:${send.id}`, 'send', `${src.name} envia ${what.pt} por ${sendName}`, `${src.name} sends ${what.en} through ${sendName}`, { pt: 'enviado!', en: 'sent!' })
+      step(`c:${src.id}`, `e:${send.id}`, 'send', `${at('none', srcn, 'pt', true)} ${vb(srcn, 'pt', 'envia', 'enviam')} ${what.pt} usando ${at('none', sendn, 'pt')}`, `${at('none', srcn, 'en', true)} ${vb(srcn, 'en', 'sends', 'send')} ${what.en} using ${at('none', sendn, 'en')}`, { pt: 'enviado!', en: 'sent!' })
     }
   }
-  if (queue) {
+  if (queue && queuen) {
     const task = known?.task
     if (task) {
-      stepT(`c:${src.id}`, `e:${queue.id}`, 'queue', both((l) => (l === 'pt' ? `${src.name} deixa uma tarefa ${task.pt} na fila ${queueName}` : `${src.name} leaves a task ${task.en} in the ${queueName} queue`)), {
+      stepT(`c:${src.id}`, `e:${queue.id}`, 'queue', both((l) => (l === 'pt' ? `${at('none', srcn, 'pt', true)} ${vb(srcn, 'pt', 'deixa', 'deixam')} uma tarefa ${task.pt} ${at('em', queuen, 'pt')}` : `${at('none', srcn, 'en', true)} ${vb(srcn, 'en', 'leaves', 'leave')} a task ${task.en} ${at('em', queuen, 'en')}`)), {
         pt: 'pra depois',
         en: 'for later',
       })
     } else {
-      step(`c:${src.id}`, `e:${queue.id}`, 'queue', `${src.name} deixa uma tarefa na fila ${queueName}`, `${src.name} leaves a task in the ${queueName} queue`, { pt: 'pra depois', en: 'for later' })
+      step(`c:${src.id}`, `e:${queue.id}`, 'queue', `${at('none', srcn, 'pt', true)} ${vb(srcn, 'pt', 'deixa', 'deixam')} uma tarefa ${at('em', queuen, 'pt')}`, `${at('none', srcn, 'en', true)} ${vb(srcn, 'en', 'leaves', 'leave')} a task ${at('em', queuen, 'en')}`, { pt: 'pra depois', en: 'for later' })
     }
   }
-  if (svc) {
-    step(`c:${svc.id}`, `c:${api.id}`, 'reply', `${svcn} devolve o resultado`, `${svcn} returns the result`, { pt: 'pronto', en: 'done' })
+  if (svc && svcn) {
+    step(`c:${svc.id}`, `c:${api.id}`, 'reply', `${at('none', svcn, 'pt', true)} ${vb(svcn, 'pt', 'devolve', 'devolvem')} o resultado ${at('para', an, 'pt')}`, `${at('none', svcn, 'en', true)} ${vb(svcn, 'en', 'returns', 'return')} the result ${at('para', an, 'en')}`, { pt: 'pronto', en: 'done' })
   }
-  if (screen) {
-    step(`c:${api.id}`, `c:${screen.id}`, 'reply', `${an} devolve a resposta`, `${an} sends back the answer`, { pt: 'resposta!', en: 'answer!' })
-    if (known) stepT(`c:${screen.id}`, `c:${screen.id}`, 'show', both((l) => showCaption(mode, res, l)), { pt: 'na tela!', en: 'on screen!' })
-    else step(`c:${screen.id}`, `c:${screen.id}`, 'show', `${sn} mostra o resultado na tela`, `${sn} shows the result on the screen`, { pt: 'na tela!', en: 'on screen!' })
+  if (screen && sn) {
+    step(`c:${api.id}`, `c:${screen.id}`, 'reply', `${at('none', an, 'pt', true)} ${vb(an, 'pt', 'devolve', 'devolvem')} a resposta ${at('para', sn, 'pt')}`, `${at('none', an, 'en', true)} ${vb(an, 'en', 'sends', 'send')} back the answer ${at('para', sn, 'en')}`, { pt: 'resposta!', en: 'answer!' })
+    if (known) stepT(`c:${screen.id}`, `c:${screen.id}`, 'show', both((l) => showCaption(mode, res, sn, l)), { pt: 'na tela!', en: 'on screen!' })
+    else step(`c:${screen.id}`, `c:${screen.id}`, 'show', `${at('none', sn, 'pt', true)} ${vb(sn, 'pt', 'mostra', 'mostram')} o resultado na tela`, `${at('none', sn, 'en', true)} ${vb(sn, 'en', 'shows', 'show')} the result on the screen`, { pt: 'na tela!', en: 'on screen!' })
   } else {
-    step(`c:${api.id}`, 'person', 'reply', `${an} devolve a resposta`, `${an} sends back the answer`, { pt: 'resposta!', en: 'answer!' })
+    step(`c:${api.id}`, 'person', 'reply', `${at('none', an, 'pt', true)} ${vb(an, 'pt', 'devolve', 'devolvem')} a resposta`, `${at('none', an, 'en', true)} ${vb(an, 'en', 'sends', 'send')} back the answer`, { pt: 'resposta!', en: 'answer!' })
   }
 
   const title = { pt: `${cap(verb.pt)} ${res}`, en: `${cap(verb.en)} ${res}` }
@@ -528,8 +604,14 @@ function requestFlow(plan: RequestPlan, use: { sec: boolean; send: boolean; queu
     title,
     // In words, not HTTP: what the person wants done, and who it passes through.
     summary: {
-      pt: clip(`O caminho de um pedido para ${verb.pt} ${res}: ${screen ? `da tela ${sn} ` : ''}até ${an}${svc ? `, ${svcn}` : ''}${dbSvc ? ` e ${dbn}` : ''}, e de volta.`, 400),
-      en: clip(`How a request to ${verb.en} ${res} travels: ${screen ? `from the ${sn} screen ` : ''}to ${an}${svc ? `, ${svcn}` : ''}${dbSvc ? ` and ${dbn}` : ''}, and back.`, 400),
+      pt: clip(
+        `O caminho de um pedido para ${verb.pt} ${res}: ${sn ? `${at('de', sn, 'pt')} ` : ''}até ${at('none', an, 'pt')}${svcn ? `, ${at('none', svcn, 'pt')}` : ''}${dbn ? ` e ${at('none', dbn, 'pt')}` : ''}, e de volta.`,
+        400,
+      ),
+      en: clip(
+        `How a request to ${verb.en} ${res} travels: ${sn ? `from ${at('none', sn, 'en')} ` : ''}to ${at('none', an, 'en')}${svcn ? `, ${at('none', svcn, 'en')}` : ''}${dbn ? ` and ${at('none', dbn, 'en')}` : ''}, and back.`,
+        400,
+      ),
     },
     actors,
     steps,
@@ -553,28 +635,29 @@ function fitRequest(plan: RequestPlan): Flow {
 }
 
 /** The name of a node in an agent's graph, as a reader sees it. */
-function nodeLabel(agent: Agent, id: string): string {
-  return agent.graph.nodes.find((n) => n.id === id)?.label ?? id
+function nodeLabel(agent: Agent, id: string, lang: Lang): string {
+  const label = agent.graph.nodes.find((n) => n.id === id)?.label ?? id
+  return plainToolName(label)[lang]
 }
 
 /** Plain text for the decision an agent makes: its explicit graph's branches, or the tools it can pick from. */
-function decisionText(agent: Agent, name: string): { pt: string; en: string } {
+function decisionText(agent: Agent, name: Name): { pt: string; en: string } {
   if (agent.graph.explicit) {
     const from = agent.graph.nodes.find((n) => agent.graph.links.filter((l) => l.from === n.id && l.condition).length >= 2)
     if (from) {
       const branches = agent.graph.links.filter((l) => l.from === from.id && l.condition).slice(0, 3)
       return {
-        pt: `${name} escolhe o caminho: ${branches.map((l) => `se ${l.condition}, vai para ${nodeLabel(agent, l.to)}`).join('; ')}`,
-        en: `${name} picks a path: ${branches.map((l) => `if ${l.condition}, goes to ${nodeLabel(agent, l.to)}`).join('; ')}`,
+        pt: `${at('none', name, 'pt', true)} ${vb(name, 'pt', 'escolhe', 'escolhem')} o caminho: ${branches.map((l) => `se ${l.condition}, vai para ${nodeLabel(agent, l.to, 'pt')}`).join('; ')}`,
+        en: `${at('none', name, 'en', true)} ${vb(name, 'en', 'picks', 'pick')} a path: ${branches.map((l) => `if ${l.condition}, goes to ${nodeLabel(agent, l.to, 'en')}`).join('; ')}`,
       }
     }
   }
   const n = agent.tools.length
-  const names = joinList(agent.tools.slice(0, 3).map((t) => t.name), 'pt')
-  const namesEn = joinList(agent.tools.slice(0, 3).map((t) => t.name), 'en')
+  const names = joinList(agent.tools.slice(0, 3).map((t) => plainToolName(t.name).pt), 'pt')
+  const namesEn = joinList(agent.tools.slice(0, 3).map((t) => plainToolName(t.name).en), 'en')
   return {
-    pt: `${name} escolhe ${n === 1 ? 'a ferramenta' : `entre ${n} ferramentas`}: ${names}`,
-    en: `${name} chooses ${n === 1 ? 'the tool' : `between ${n} tools`}: ${namesEn}`,
+    pt: `${at('none', name, 'pt', true)} ${vb(name, 'pt', 'escolhe', 'escolhem')} ${n === 1 ? 'a ferramenta' : `entre ${n} ferramentas`}: ${names}`,
+    en: `${at('none', name, 'en', true)} ${vb(name, 'en', 'chooses', 'choose')} ${n === 1 ? 'the tool' : `between ${n} tools`}: ${namesEn}`,
   }
 }
 
@@ -587,40 +670,55 @@ function agentFlow(ctx: Ctx, agent: Agent, nTools: number): Flow {
     ctx.externals.find((e) => e.kind === 'llm' && e.name === agent.provider && (!comp || e.usedBy.includes(comp.id))) ??
     ctx.externals.find((e) => e.kind === 'llm' && !!comp && e.usedBy.includes(comp.id)) ??
     null
-  const S = agent.name
+  const S: Name = plainAgentName(comp ?? null, agent.name)
+  const llmName: Name = plainExternalName('llm')
   const M = agent.model ?? agent.provider
+  const modelNote = agent.model && agent.provider ? { pt: `, de ${agent.provider},`, en: `, from ${agent.provider},` } : { pt: '', en: '' }
   const tools = agent.tools.slice(0, nTools)
   const agentActorId = `a:${agent.id}`
   const llmActorId = 'm'
+  const callerName: Name | null = caller ? nameOf(caller) : null
+  const toolName = (t: { name: string }): Name => plainToolName(t.name)
 
   const actors: Actor[] = [PERSON]
   if (caller) actors.push(componentActor(caller))
+  const codeName = ` (no código: ${agent.name})`
   actors.push({
     id: agentActorId,
-    name: { en: S, pt: S },
+    name: S,
+    technical: { pt: comp ? comp.name : agent.name, en: comp ? comp.name : agent.name },
     kind: 'agent',
     component: comp?.id ?? null,
     external: null,
     note: agent.instructions
-      ? { en: clip(agent.instructions, 140), pt: clip(agent.instructions, 140) }
-      : { en: 'Decides what to do with the message.', pt: 'Decide o que fazer com a mensagem.' },
+      ? { en: clip(`${agent.instructions}${codeName}`, 200), pt: clip(`${agent.instructions}${codeName}`, 200) }
+      : { en: `Decides what to do with the message${codeName}.`, pt: `Decide o que fazer com a mensagem${codeName}.` },
   })
+  const modelId = agent.model ?? agent.provider
   actors.push({
     id: llmActorId,
-    name: { en: `AI model (${M})`, pt: `Modelo de IA (${M})` },
+    name: llmName,
+    technical: { pt: modelId, en: modelId },
     kind: 'llm',
     component: null,
     external: llm?.id ?? null,
-    note: { en: 'Language model that answers and decides.', pt: 'Modelo de linguagem que responde e decide.' },
+    note: {
+      pt: `${M}${modelNote.pt} responde e decide.`,
+      en: `${M}${modelNote.en} answers and decides.`,
+    },
   })
   for (const t of tools) {
     actors.push({
       id: `t:${t.name}`,
-      name: { en: t.name, pt: t.name },
+      name: toolName(t),
+      technical: { pt: t.name, en: t.name },
       kind: 'tool',
       component: null,
       external: null,
-      note: { en: t.description ?? t.name, pt: t.description ?? t.name },
+      note: {
+        en: t.description ?? 'A tool the assistant can use.',
+        pt: t.description ?? 'Uma ferramenta que o assistente pode usar.',
+      },
     })
   }
 
@@ -628,55 +726,86 @@ function agentFlow(ctx: Ctx, agent: Agent, nTools: number): Flow {
   const step = (from: string, to: string, action: StepAction, pt: string, en: string, say?: { pt: string; en: string }, at?: { file: string; line: number }) =>
     steps.push({ from, to, action, text: { pt, en }, ...(say ? { say } : {}), ...(at ? { ref: at } : {}) })
   const agentRef = { file: agent.file, line: agent.graph.nodes.find((n) => n.kind === 'llm')?.line ?? 1 }
+  const sAgent = at('none', S, 'pt', true)
+  const sAgentEn = at('none', S, 'en', true)
+  const toAgent = at('para', S, 'pt')
+  const toAgentEn = at('para', S, 'en')
+  const askModelPt = at('a', llmName, 'pt')
+  const askModelEn = at('a', llmName, 'en')
+  const sLlm = at('none', llmName, 'pt', true)
+  const sLlmEn = at('none', llmName, 'en', true)
 
-  if (caller) {
-    step('person', `c:${caller.id}`, 'ask', 'O usuário manda uma mensagem', 'The user sends a message', { pt: 'oi!', en: 'hi!' })
-    step(`c:${caller.id}`, agentActorId, 'call', `${caller.name} entrega a mensagem para ${S}`, `${caller.name} hands the message to ${S}`, { pt: 'a mensagem', en: 'the message' })
+  if (caller && callerName) {
+    step('person', `c:${caller.id}`, 'ask', `O usuário manda uma mensagem ${at('para', callerName, 'pt')}`, `The user sends a message ${at('para', callerName, 'en')}`, { pt: 'oi!', en: 'hi!' })
+    step(
+      `c:${caller.id}`,
+      agentActorId,
+      'call',
+      `${at('none', callerName, 'pt', true)} ${vb(callerName, 'pt', 'entrega', 'entregam')} a mensagem ${toAgent}`,
+      `${at('none', callerName, 'en', true)} ${vb(callerName, 'en', 'hands', 'hand')} the message ${toAgentEn}`,
+      { pt: 'a mensagem', en: 'the message' },
+    )
   } else {
-    step('person', agentActorId, 'ask', `O usuário manda uma mensagem para ${S}`, `The user sends a message to ${S}`, { pt: 'oi!', en: 'hi!' })
+    step('person', agentActorId, 'ask', `O usuário manda uma mensagem ${toAgent}`, `The user sends a message ${toAgentEn}`, { pt: 'oi!', en: 'hi!' })
   }
   const firstSaid = agent.instructions ? firstSentence(agent.instructions, 90) : ''
   if (firstSaid) {
-    step(agentActorId, agentActorId, 'think', `${S} lê as instruções: “${firstSaid}”`, `${S} reads its instructions: “${firstSaid}”`, { pt: 'instruções', en: 'instructions' })
+    step(agentActorId, agentActorId, 'think', `${sAgent} ${vb(S, 'pt', 'lê', 'leem')} as instruções: “${firstSaid}”`, `${sAgentEn} ${vb(S, 'en', 'reads', 'read')} its instructions: “${firstSaid}”`, { pt: 'instruções', en: 'instructions' })
   } else {
-    step(agentActorId, agentActorId, 'think', `${S} lê a conversa`, `${S} reads the conversation`, { pt: 'a conversa', en: 'the chat' })
+    step(agentActorId, agentActorId, 'think', `${sAgent} ${vb(S, 'pt', 'lê', 'leem')} a conversa`, `${sAgentEn} ${vb(S, 'en', 'reads', 'read')} the conversation`, { pt: 'a conversa', en: 'the chat' })
   }
-  step(agentActorId, llmActorId, 'ask', `${S} pergunta ao ${M} o que fazer`, `${S} asks ${M} what to do`, { pt: 'e agora?', en: 'now what?' })
-  const firstTool = agent.tools[0]?.name
-  step(llmActorId, agentActorId, 'reply', 'O modelo sugere usar uma ferramenta ou responder direto', 'The model suggests using a tool or answering directly', {
-    pt: firstTool ? `use ${firstTool}` : 'responder',
-    en: firstTool ? `use ${firstTool}` : 'answer',
+  step(agentActorId, llmActorId, 'ask', `${sAgent} ${vb(S, 'pt', 'pergunta', 'perguntam')} ${askModelPt} o que fazer`, `${sAgentEn} ${vb(S, 'en', 'asks', 'ask')} ${askModelEn} what to do`, { pt: 'e agora?', en: 'now what?' })
+  const firstTool = agent.tools[0] ? toolName(agent.tools[0]) : null
+  step(llmActorId, agentActorId, 'reply', `${sLlm} ${vb(llmName, 'pt', 'sugere', 'sugerem')} ${at('a', S, 'pt')} usar uma ferramenta ou responder direto`, `${sLlmEn} ${vb(llmName, 'en', 'suggests', 'suggest')} ${at('none', S, 'en')} using a tool or answering directly`, {
+    pt: firstTool ? `${firstTool.pt}?` : 'responder',
+    en: firstTool ? `${firstTool.en}?` : 'answer',
   })
   if (agent.tools.length) {
     const d = decisionText(agent, S)
     step(agentActorId, agentActorId, 'decide', d.pt, d.en, { pt: 'qual delas?', en: 'which one?' })
     for (const t of tools) {
-      const desc = t.description ? `: ${clip(t.description, 110)}` : ''
-      step(agentActorId, `t:${t.name}`, 'use-tool', `Se precisar, usa ${t.name}${desc}`, `If needed, it uses ${t.name}${desc}`, { pt: t.name, en: t.name }, { file: t.file, line: t.line })
-      step(`t:${t.name}`, agentActorId, 'reply', `${t.name} devolve o resultado`, `${t.name} returns the result`, { pt: 'pronto', en: 'done' }, { file: t.file, line: t.line })
+      const tn = toolName(t)
+      step(
+        agentActorId,
+        `t:${t.name}`,
+        'use-tool',
+        `Se precisar, ${sAgent.charAt(0).toLowerCase() + sAgent.slice(1)} ${vb(S, 'pt', 'usa', 'usam')} a ferramenta “${tn.pt}”`,
+        `If needed, ${sAgentEn.charAt(0).toLowerCase() + sAgentEn.slice(1)} ${vb(S, 'en', 'uses', 'use')} the “${tn.en}” tool`,
+        { pt: tn.pt, en: tn.en },
+        { file: t.file, line: t.line },
+      )
+      step(`t:${t.name}`, agentActorId, 'reply', `A ferramenta “${tn.pt}” devolve o resultado ${toAgent}`, `The “${tn.en}” tool returns the result ${toAgentEn}`, { pt: 'pronto', en: 'done' }, { file: t.file, line: t.line })
     }
   }
   if (agent.loop) {
-    step(agentActorId, llmActorId, 'ask', 'Com o resultado, pergunta de novo ao modelo; repete até não precisar mais de ferramentas', 'With the result, it asks the model again; it repeats until no tool is needed', { pt: 'de novo!', en: 'again!' })
-    step(llmActorId, agentActorId, 'reply', 'O modelo escreve a resposta final', 'The model writes the final answer', { pt: 'resposta', en: 'answer' })
+    step(agentActorId, llmActorId, 'ask', `${sAgent} ${vb(S, 'pt', 'pergunta', 'perguntam')} de novo ${askModelPt}, com o resultado`, `${sAgentEn} ${vb(S, 'en', 'asks', 'ask')} ${askModelEn} again, with the result`, { pt: 'de novo!', en: 'again!' })
+    step(llmActorId, agentActorId, 'reply', `${sLlm} ${vb(llmName, 'pt', 'escreve', 'escrevem')} a resposta final ${toAgent}`, `${sLlmEn} ${vb(llmName, 'en', 'writes', 'write')} the final answer ${toAgentEn}`, { pt: 'resposta', en: 'answer' })
   }
-  if (callerIsScreen && caller) {
-    step(agentActorId, `c:${caller.id}`, 'reply', `${S} responde ao usuário`, `${S} answers the user`, { pt: 'resposta!', en: 'answer!' }, agentRef)
-    step(`c:${caller.id}`, `c:${caller.id}`, 'show', `${caller.name} mostra a resposta na tela`, `${caller.name} shows the answer on the screen`, { pt: 'na tela!', en: 'on screen!' })
-  } else if (caller) {
-    step(agentActorId, `c:${caller.id}`, 'reply', `${S} devolve a resposta para ${caller.name}`, `${S} sends the answer back to ${caller.name}`, { pt: 'resposta!', en: 'answer!' }, agentRef)
-    step(`c:${caller.id}`, 'person', 'reply', `${caller.name} responde ao usuário`, `${caller.name} answers the user`, { pt: 'resposta!', en: 'answer!' })
+  if (callerIsScreen && caller && callerName) {
+    step(agentActorId, `c:${caller.id}`, 'reply', `${sAgent} ${vb(S, 'pt', 'responde', 'respondem')} ao usuário`, `${sAgentEn} ${vb(S, 'en', 'answers', 'answer')} the user`, { pt: 'resposta!', en: 'answer!' }, agentRef)
+    step(
+      `c:${caller.id}`,
+      `c:${caller.id}`,
+      'show',
+      `${at('none', callerName, 'pt', true)} ${vb(callerName, 'pt', 'mostra', 'mostram')} a resposta na tela`,
+      `${at('none', callerName, 'en', true)} ${vb(callerName, 'en', 'shows', 'show')} the answer on the screen`,
+      { pt: 'na tela!', en: 'on screen!' },
+    )
+  } else if (caller && callerName) {
+    step(agentActorId, `c:${caller.id}`, 'reply', `${sAgent} ${vb(S, 'pt', 'devolve', 'devolvem')} a resposta ${at('para', callerName, 'pt')}`, `${sAgentEn} ${vb(S, 'en', 'sends', 'send')} the answer back ${at('para', callerName, 'en')}`, { pt: 'resposta!', en: 'answer!' }, agentRef)
+    step(`c:${caller.id}`, 'person', 'reply', `${at('none', callerName, 'pt', true)} ${vb(callerName, 'pt', 'responde', 'respondem')} ao usuário`, `${at('none', callerName, 'en', true)} ${vb(callerName, 'en', 'answers', 'answer')} the user`, { pt: 'resposta!', en: 'answer!' })
   } else {
-    step(agentActorId, 'person', 'reply', `${S} responde ao usuário`, `${S} answers the user`, { pt: 'resposta!', en: 'answer!' }, agentRef)
+    step(agentActorId, 'person', 'reply', `${sAgent} ${vb(S, 'pt', 'responde', 'respondem')} ao usuário`, `${sAgentEn} ${vb(S, 'en', 'answers', 'answer')} the user`, { pt: 'resposta!', en: 'answer!' }, agentRef)
   }
 
+  const n = agent.tools.length
   return {
     id: `agent:${agent.id}`,
     kind: 'agent',
-    title: { pt: `Como o ${S} decide`, en: `How ${S} decides` },
+    title: { pt: `Como ${at('none', S, 'pt')} decide`, en: `How ${at('none', S, 'en')} decides` },
     summary: {
-      pt: clip(`${S} lê o pedido, pergunta ao ${M} e decide se precisa usar uma ferramenta${agent.tools.length ? ` entre ${agent.tools.length}` : ''}.`, 400),
-      en: clip(`${S} reads the request, asks ${M} and decides whether it needs a tool${agent.tools.length ? ` out of ${agent.tools.length}` : ''}.`, 400),
+      pt: clip(`${sAgent} ${vb(S, 'pt', 'lê', 'leem')} o pedido, ${vb(S, 'pt', 'pergunta', 'perguntam')} ${askModelPt} e decide se precisa usar uma ferramenta${n ? ` entre ${n}` : ''}.`, 400),
+      en: clip(`${sAgentEn} ${vb(S, 'en', 'reads', 'read')} the request, ${vb(S, 'en', 'asks', 'ask')} ${askModelEn} and decides whether it needs a tool${n ? ` out of ${n}` : ''}.`, 400),
     },
     actors,
     steps,
@@ -719,16 +848,17 @@ function jobFlow(ctx: Ctx): Flow | null {
   if (send) actors.push(externalActor(send))
 
   const steps: FlowStep[] = []
-  const p = producer.name
-  const w = worker.name
-  if (queue) {
+  const p = nameOf(producer)
+  const w = nameOf(worker)
+  const q = queue ? serviceName(queue) : null
+  if (queue && q) {
     steps.push({
       from: `c:${producer.id}`,
       to: `e:${queue.id}`,
       action: 'queue',
       text: task
-        ? both((l) => (l === 'pt' ? `${p} deixa uma tarefa ${task.pt} na fila ${queue.name}` : `${p} leaves a task ${task.en} in the ${queue.name} queue`))
-        : { pt: `${p} deixa uma tarefa na fila ${queue.name}`, en: `${p} leaves a task in the ${queue.name} queue` },
+        ? both((l) => `${at('none', p, l, true)} ${vb(p, l, l === 'pt' ? 'deixa' : 'leaves', l === 'pt' ? 'deixam' : 'leave')} uma tarefa ${task[l]} ${at('em', q, l)}`)
+        : both((l) => `${at('none', p, l, true)} ${vb(p, l, l === 'pt' ? 'deixa' : 'leaves', l === 'pt' ? 'deixam' : 'leave')} uma tarefa ${at('em', q, l)}`),
       say: { pt: 'pra depois', en: 'for later' },
     })
     steps.push({
@@ -736,8 +866,8 @@ function jobFlow(ctx: Ctx): Flow | null {
       to: `c:${worker.id}`,
       action: 'call',
       text: task
-        ? both((l) => (l === 'pt' ? `${w} pega a tarefa ${task.pt} da fila` : `${w} takes the task ${task.en} from the queue`))
-        : { pt: `${w} pega a tarefa da fila`, en: `${w} takes the task from the queue` },
+        ? both((l) => (l === 'pt' ? `A tarefa ${task.pt} é pega ${at('por', w, 'pt')} ${at('em', q, 'pt')}` : `The task ${task.en} is taken by ${at('por', w, 'en')} ${at('em', q, 'en')}`))
+        : both((l) => (l === 'pt' ? `A tarefa é pega ${at('por', w, 'pt')} ${at('em', q, 'pt')}` : `The task is taken by ${at('por', w, 'en')} ${at('em', q, 'en')}`)),
       say: { pt: 'tarefa!', en: 'task!' },
     })
   } else {
@@ -745,28 +875,30 @@ function jobFlow(ctx: Ctx): Flow | null {
       from: `c:${producer.id}`,
       to: `c:${worker.id}`,
       action: 'call',
-      text: { pt: `${p} pede uma tarefa para ${w}`, en: `${p} asks ${w} for a task` },
+      text: both((l) => (l === 'pt' ? `${at('none', p, 'pt', true)} ${vb(p, 'pt', 'pede', 'pedem')} uma tarefa ${at('para', w, 'pt')}` : `${at('none', p, 'en', true)} ${vb(p, 'en', 'asks', 'ask')} ${at('none', w, 'en')} for a task`)),
       say: { pt: 'tarefa!', en: 'task!' },
     })
   }
   if (db) {
+    const dbn = serviceName(db)
     steps.push({
       from: `c:${worker.id}`,
       to: `e:${db.id}`,
       action: 'save',
-      text: { pt: `${w} guarda o resultado em ${db.name}`, en: `${w} saves the result in ${db.name}` },
+      text: both((l) => `O resultado é guardado ${at('em', dbn, l)}`),
       say: { pt: 'guardar', en: 'save' },
     })
   }
   if (send) {
+    const sendn = serviceName(send)
     const what = SENT[send.kind] ?? { pt: 'os dados', en: 'the data' }
     steps.push({
       from: `c:${worker.id}`,
       to: `e:${send.id}`,
       action: 'send',
       text: subject
-        ? both((l) => (l === 'pt' ? `${w} envia o e-mail “${subject}” por ${send.name}` : `${w} sends the e-mail “${subject}” through ${send.name}`))
-        : { pt: `${w} envia ${what.pt} por ${send.name}`, en: `${w} sends ${what.en} through ${send.name}` },
+        ? both((l) => (l === 'pt' ? `O e-mail “${subject}” é enviado ${at('por', sendn, 'pt')}` : `The e-mail “${subject}” is sent ${at('por', sendn, 'en')}`))
+        : both((l) => (l === 'pt' ? `${cap(what.pt)} é enviado ${at('por', sendn, 'pt')}` : `${cap(what.en)} is sent ${at('por', sendn, 'en')}`)),
       say: { pt: 'enviado!', en: 'sent!' },
     })
   }
@@ -774,7 +906,7 @@ function jobFlow(ctx: Ctx): Flow | null {
     from: `c:${worker.id}`,
     to: `c:${worker.id}`,
     action: 'reply',
-    text: { pt: 'Tarefa concluída', en: 'Task done' },
+    text: both((l) => `A tarefa é concluída ${at('por', w, l)}`),
     say: { pt: 'pronto!', en: 'done!' },
   })
 
@@ -803,21 +935,25 @@ function overviewFlow(ctx: Ctx): Flow | null {
     .filter((c): c is Component => !!c && c.id !== start.id)
     .slice(0, 5)
   if (targets.length === 0) return null
-  const steps: FlowStep[] = targets.map((t) => ({
-    from: `c:${start.id}`,
-    to: `c:${t.id}`,
-    action: 'call',
-    text: { pt: `${start.name} passa o trabalho para ${t.name}`, en: `${start.name} hands the work to ${t.name}` },
-    say: { pt: 'sua vez', en: 'your turn' },
-  }))
+  const startName = nameOf(start)
+  const steps: FlowStep[] = targets.map((t) => {
+    const tn = nameOf(t)
+    return {
+      from: `c:${start.id}`,
+      to: `c:${t.id}`,
+      action: 'call',
+      text: both((l) => `${at('none', startName, l, true)} ${vb(startName, l, l === 'pt' ? 'passa' : 'hands', l === 'pt' ? 'passam' : 'hand')} ${l === 'pt' ? 'o trabalho' : 'the work'} ${at('para', tn, l)}`),
+      say: { pt: 'sua vez', en: 'your turn' },
+    }
+  })
   const actors = [componentActor(start), ...targets.map(componentActor)]
   return {
     id: 'overview',
     kind: 'overview',
     title: { pt: 'Visão geral', en: 'Overview' },
     summary: {
-      pt: `Mostra como ${start.name} conversa com as outras partes do sistema.`,
-      en: `Shows how ${start.name} works with the other parts of the system.`,
+      pt: `Mostra como ${at('none', startName, 'pt')} ${vb(startName, 'pt', 'conversa', 'conversam')} com as outras partes do sistema.`,
+      en: `Shows how ${at('none', startName, 'en')} ${vb(startName, 'en', 'works', 'work')} with the other parts of the system.`,
     },
     actors,
     steps,
@@ -826,9 +962,11 @@ function overviewFlow(ctx: Ctx): Flow | null {
 
 /** The scenes of a repo, most telling first, within the limits. */
 export function buildFlows(input: FlowInput): Flow[] {
+  // Names are worked out among all the parts, so two parts that would share a plain name get told apart.
+  const components = input.components.map((c) => (c.label ? c : { ...c, label: plainPartName(c, input.components) }))
   const ctx: Ctx = {
-    components: input.components,
-    byId: new Map(input.components.map((c) => [c.id, c])),
+    components,
+    byId: new Map(components.map((c) => [c.id, c])),
     deps: input.dependencies,
     externals: input.externals,
     fileDeps: input.fileDeps ?? new Map(),

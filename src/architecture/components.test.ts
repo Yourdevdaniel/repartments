@@ -11,7 +11,7 @@ function many(folder: string, n: number): ComponentFile[] {
   return Array.from({ length: n }, (_, i) => file(`${folder}/f${i}.ts`))
 }
 
-const build = (files: ComponentFile[], repoName = 'demo') => buildComponents({ files, repoName, databaseLabel: null })
+const build = (files: ComponentFile[], repoName = 'demo') => buildComponents({ files, repoName })
 
 describe('buildComponents: splitting', () => {
   it('keeps a small top-level folder as one component named after it', () => {
@@ -85,7 +85,6 @@ describe('buildComponents: names, entries and facts', () => {
     const comps = buildComponents({
       files: [file('bin/cli.js'), file('lib/tool.js')],
       repoName: 'tool',
-      databaseLabel: null,
       entryFiles: ['bin/cli.js'],
     })
     expect(comps.find((c) => c.path === 'bin')?.entry).toBe(true)
@@ -102,28 +101,45 @@ describe('buildComponents: names, entries and facts', () => {
     expect(comps.find((c) => c.path === 'ai')?.tech).toEqual(['OpenAI'])
   })
 
-  it('writes one plain sentence per layer, mentioning the routes it found', () => {
+  it('writes one plain sentence per layer, with no routes or brands in it', () => {
     const comps = build([
       file('api/leads.py', '@app.get("/leads")', [], ['GET /leads', 'POST /leads']),
       ...many('api/more', 1),
     ])
     const api = comps.find((c) => c.path === 'api')
     expect(api?.layer).toBe('api')
-    expect(api?.summary.pt).toBe('Recebe os pedidos do sistema, como GET /leads e POST /leads.')
-    expect(api?.summary.en).toBe("Takes the system's requests, such as GET /leads and POST /leads.")
+    expect(api?.summary.pt).toBe('Recebe os pedidos das telas e encaminha cada um para quem resolve.')
+    expect(api?.summary.en).toBe('Takes the requests from the screens and passes each one to whoever handles it.')
     for (const c of comps) {
       expect(c.summary.pt.length).toBeLessThanOrEqual(140)
       expect(c.summary.en.length).toBeLessThanOrEqual(140)
+      expect(c.summary.pt).not.toContain('/')
+      expect(c.summary.pt).not.toMatch(/GET|POST/)
     }
   })
 
-  it('names the database in the data summary', () => {
+  it('uses the folder subject in the summary when there is one', () => {
+    const comps = buildComponents({
+      files: [file('leads/views.py', '@app.get("/leads")', [], ['GET /leads'])],
+      repoName: 'x',
+    })
+    const api = comps.find((c) => c.layer === 'api')
+    expect(api?.summary.pt).toBe('Recebe os pedidos sobre leads e encaminha para quem resolve.')
+    expect(api?.summary.en).toBe('Takes the requests about leads and passes each one to whoever handles it.')
+  })
+
+  it('describes the data layer without naming the database', () => {
     const comps = buildComponents({
       files: [file('db/models.py', 'class Lead(models.Model): pass')],
       repoName: 'x',
-      databaseLabel: 'PostgreSQL',
     })
-    expect(comps[0].summary.pt).toBe('Guarda e busca os dados (PostgreSQL).')
+    expect(comps[0].summary.pt).toBe('Guarda e encontra as informações do sistema.')
+  })
+
+  it('gives every part a plain label', () => {
+    const comps = build([file('web/a.tsx', ''), file('admin/a.tsx', '')])
+    expect(comps.map((c) => c.label?.pt)).toEqual(['Site', 'Tela de admin'])
+    expect(comps.map((c) => c.name).every((n) => n.length > 0)).toBe(true)
   })
 })
 
