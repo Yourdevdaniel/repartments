@@ -29,6 +29,11 @@ export const t = {
     en: 'You sign in on GitHub itself. The key is locked away from this page’s scripts, only reads, and goes straight to GitHub: this site stores nothing. It lasts 8 hours at most; closing the site or signing out forgets it.',
     pt: 'O login é feito no próprio GitHub. A chave fica trancada longe dos scripts desta página, só faz leituras e vai direto para o GitHub: este site não guarda nada. Ela dura no máximo 8 horas; fechar o site ou sair apaga tudo.',
   },
+  consent: {
+    en: 'By continuing, you let Repartments read (only read) the repositories you choose on GitHub. You can cancel it any time in GitHub → Settings → Applications.',
+    pt: 'Ao continuar, você autoriza o Repartments a ler (só ler) os repositórios que escolher no GitHub. Dá para cancelar quando quiser em GitHub → Settings → Applications.',
+  },
+  privacyPolicy: { en: 'Privacy policy', pt: 'Política de privacidade' },
   privacy: {
     en: "Sign-in is GitHub's own, with a code like the GitHub CLI's. The key is locked away from this page's scripts, only reads, and goes straight to GitHub: this site stores nothing. It lasts 8 hours at most; closing the site or signing out forgets it.",
     pt: 'O login é o do próprio GitHub, com um código como o do GitHub CLI. A chave fica trancada longe dos scripts desta página, só faz leituras e vai direto para o GitHub: este site não guarda nada. Ela dura no máximo 8 horas; fechar o site ou sair apaga tudo.',
@@ -66,9 +71,15 @@ export const t = {
   savedFile: { en: 'Saved presentation', pt: 'Apresentação salva' },
   save: { en: 'Save presentation', pt: 'Salvar apresentação' },
   saveHint: {
-    en: 'Everything here lasts only while this tab is open. Save it to present later, even without signing in. The file has the script, part names and file names (never code).',
-    pt: 'Tudo aqui dura só enquanto esta aba estiver aberta. Salve para apresentar depois, até sem entrar. O arquivo leva o roteiro, os nomes das partes e dos arquivos (nunca o código).',
+    en: 'Everything here lasts only while this tab is open. Save it to present later, even without signing in. The file has the script, part names and file names (never code) and, with commits on screen, the names of who made them.',
+    pt: 'Tudo aqui dura só enquanto esta aba estiver aberta. Salve para apresentar depois, até sem entrar. O arquivo leva o roteiro, os nomes das partes e dos arquivos (nunca o código) e, se houver commits na tela, os nomes de quem os fez.',
   },
+  saveNames: {
+    en: 'The file also carries the commits on screen, with the names and GitHub accounts of who made them. Leave them out if the file will be shared.',
+    pt: 'O arquivo também leva os commits da tela, com os nomes e as contas do GitHub de quem os fez. Tire os nomes se o arquivo for compartilhado.',
+  },
+  saveWithNames: { en: 'Save with the authors’ names', pt: 'Salvar com os nomes dos autores' },
+  saveWithoutNames: { en: 'Save without names (Author 1, 2…)', pt: 'Salvar sem os nomes (Autor 1, 2…)' },
   example: { en: 'See an example', pt: 'Ver um exemplo' },
   exampleLead: { en: 'A made-up CRM with an AI sales assistant, no sign-in needed.', pt: 'Um CRM de exemplo com assistente de vendas de IA, sem precisar entrar.' },
   offline: {

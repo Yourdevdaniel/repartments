@@ -24,8 +24,8 @@ const w = {
   copied: { en: 'Copied!', pt: 'Copiado!' },
   savedAsFile: { en: "Couldn't copy: saved as a file", pt: 'Não deu para copiar: salvo como arquivo' },
   copyHint: {
-    en: 'Paste it into the AI you use (ideally one that can see the repo). It sends back a repartments.json file, which you import here. The studio sends nothing.',
-    pt: 'Cole na IA que você usa (de preferência uma que acesse o repositório). Ela devolve um arquivo repartments.json, que você importa aqui. O estúdio não envia nada.',
+    en: "Paste it into the AI you use (ideally one that can see the repo). It sends back a repartments.json file, which you import here. The studio sends nothing; the text has file names, names from the code and descriptions, not the files' contents, and that AI's own terms apply to what you give it.",
+    pt: 'Cole na IA que você usa (de preferência uma que acesse o repositório). Ela devolve um arquivo repartments.json, que você importa aqui. O estúdio não envia nada; o texto leva nomes de arquivos, nomes tirados do código e descrições, não o conteúdo dos arquivos, e o que você entregar à IA segue os termos dela.',
   },
   import: { en: 'Import script from a file…', pt: 'Importar roteiro de um arquivo…' },
   paste: { en: "Paste the AI's answer…", pt: 'Colar a resposta da IA…' },

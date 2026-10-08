@@ -210,16 +210,41 @@ export function Workspace({ source, lang }: { source: Source; lang: Lang }) {
               onRemoveImport={imported !== null && source.kind === 'repo' ? removeImport : null}
             />
           )}
-          {model && (
-            <button
-              type="button"
-              onClick={() => download(`${model.repo.name}-apresentacao.json`, presentationFile(model, edits, loaded))}
-              title={t.saveHint[lang]}
-              className="h-9 rounded-full bg-white/80 px-3.5 text-xs font-extrabold text-ink transition-colors hover:bg-white"
-            >
-              ⬇ {t.save[lang]}
-            </button>
-          )}
+          {model &&
+            (loaded.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => download(`${model.repo.name}-apresentacao.json`, presentationFile(model, edits, loaded))}
+                title={t.saveHint[lang]}
+                className="h-9 rounded-full bg-white/80 px-3.5 text-xs font-extrabold text-ink transition-colors hover:bg-white"
+              >
+                ⬇ {t.save[lang]}
+              </button>
+            ) : (
+              // With commits on screen the file carries their authors' names: offer it without them too.
+              <details className="relative">
+                <summary className="flex h-9 cursor-pointer list-none items-center rounded-full bg-white/80 px-3.5 text-xs font-extrabold text-ink transition-colors hover:bg-white">
+                  ⬇ {t.save[lang]}
+                </summary>
+                <div className="absolute right-0 z-30 mt-2 w-72 rounded-[22px] border border-white/80 bg-white p-2 shadow-[0_18px_50px_-22px_rgba(40,52,110,0.45)]">
+                  <p className="px-3 pt-1 pb-2 text-[11px] leading-snug text-ink-soft">{t.saveNames[lang]}</p>
+                  <button
+                    type="button"
+                    onClick={() => download(`${model.repo.name}-apresentacao.json`, presentationFile(model, edits, loaded))}
+                    className="block w-full rounded-xl px-3 py-2 text-left text-xs font-extrabold text-ink hover:bg-ink/[0.06]"
+                  >
+                    {t.saveWithNames[lang]}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => download(`${model.repo.name}-apresentacao.json`, presentationFile(model, edits, loaded, { lang }))}
+                    className="block w-full rounded-xl px-3 py-2 text-left text-xs font-extrabold text-ink hover:bg-ink/[0.06]"
+                  >
+                    {t.saveWithoutNames[lang]}
+                  </button>
+                </div>
+              </details>
+            ))}
         </div>
       </div>
 

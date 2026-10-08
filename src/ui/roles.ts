@@ -109,6 +109,7 @@ export const copy = {
   },
   credits: { en: 'Characters and furniture: Kenney (CC0)', pt: 'Personagens e móveis: Kenney (CC0)' },
   madeBy: { en: 'Made by', pt: 'Feito por' },
+  privacy: { en: 'Privacy', pt: 'Privacidade' },
   residents: (n: number): L => ({
     en: n === 1 ? '1 apartment' : `${n} apartments`,
     pt: n === 1 ? '1 apartamento' : `${n} apartamentos`,

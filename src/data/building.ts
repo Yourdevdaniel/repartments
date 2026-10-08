@@ -27,7 +27,7 @@ export type BuildingState =
  * `/` is the landing page, `/demo` the hand-made demo building, `/<login>` someone's building, and
  * `/studio[/<owner>/<repo>]` the signed-in studio (its repo picker, or one repo's workspace).
  */
-export type Route = { login: string | null; demo: boolean; studio?: { owner: string | null; repo: string | null } }
+export type Route = { login: string | null; demo: boolean; studio?: { owner: string | null; repo: string | null }; privacy?: true }
 
 export function parseRoute(path: string): Route {
   const segs = path
@@ -44,6 +44,8 @@ export function parseRoute(path: string): Route {
   const seg = segs[0]
   if (!seg) return { login: null, demo: false }
   if (seg === 'demo') return { login: null, demo: true }
+  // The privacy policy, in either language's address.
+  if (seg === 'privacidade' || seg === 'privacy') return { login: null, demo: false, privacy: true }
   if (seg === 'studio') return { login: null, demo: false, studio: { owner: segs[1] || null, repo: (segs[1] && segs[2]) || null } }
   return { login: seg, demo: false }
 }

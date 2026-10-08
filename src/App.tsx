@@ -49,6 +49,7 @@ const DEMO: BuildingState = {
 
 /** The studio (sign-in, analysis, commits) only downloads for people who open it. */
 const Studio = lazy(() => import('./studio/Studio').then((m) => ({ default: m.Studio })))
+const PrivacyPage = lazy(() => import('./privacy/PrivacyPage').then((m) => ({ default: m.PrivacyPage })))
 
 export default function App() {
   const [lang, setLangState] = useState<Lang>(initialLang)
@@ -184,6 +185,13 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [back, view.mode])
+
+  if (route.privacy)
+    return (
+      <Suspense fallback={<div className="h-dvh w-full" style={{ background: SKY.sun }} />}>
+        <PrivacyPage lang={lang} setLang={setLang} onGo={go} />
+      </Suspense>
+    )
 
   if (route.studio)
     return (
@@ -635,6 +643,10 @@ function Credits({ lang }: { lang: Lang }) {
       <span aria-hidden="true">·</span>
       <a href={AUTHOR.site} target="_blank" rel="noreferrer" className={link}>
         bernardes.dev
+      </a>
+      <span aria-hidden="true">·</span>
+      <a href={lang === 'pt' ? '/privacidade' : '/privacy'} className={link}>
+        {copy.privacy[lang]}
       </a>
       <span aria-hidden="true">·</span>
       <span>{copy.credits[lang]}</span>

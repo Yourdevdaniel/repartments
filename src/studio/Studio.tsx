@@ -84,6 +84,14 @@ export function Studio({ owner, repo, lang, setLang, onGo, onTown }: Props) {
             <p className="mt-5 rounded-2xl bg-ink/5 px-4 py-3 text-sm font-semibold text-ink-soft">{t.signInOff[lang]}</p>
           )}
           <p className="mt-4 text-xs leading-snug text-ink-soft">{(state.web ? t.privacyWeb : t.privacy)[lang]}</p>
+          {(state.enabled || state.devLogin) && (
+            <p className="mt-2 text-xs leading-snug text-ink-soft">
+              {t.consent[lang]}{' '}
+              <a href={lang === 'pt' ? '/privacidade' : '/privacy'} className="font-extrabold text-ink underline underline-offset-2">
+                {t.privacyPolicy[lang]}
+              </a>
+            </p>
+          )}
           <OpenFile lang={lang} onOpen={open} error={fileError} onExample={() => setFile(examplePresentation())} />
         </div>
       </Centered>

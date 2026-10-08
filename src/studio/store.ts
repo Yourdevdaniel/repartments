@@ -65,9 +65,39 @@ export const store = {
  */
 export type PresentationFile = { kind: 'repartments-presentation'; version: 1; model: ArchitectureModel; edits: ScriptEdits; commits: CommitDetail[] }
 
-export function presentationFile(model: ArchitectureModel, edits: ScriptEdits, commits: CommitDetail[]): PresentationFile {
+export function presentationFile(
+  model: ArchitectureModel,
+  edits: ScriptEdits,
+  commits: CommitDetail[],
+  /** Saves the commits' authors as "Author 1, 2…" instead of their names, logins and pictures. */
+  withoutNames: { lang: 'pt' | 'en' } | null = null,
+): PresentationFile {
   // Diffs stay out: the scenes only need which files changed and by how much.
-  return { kind: 'repartments-presentation', version: 1, model, edits, commits: commits.map((c) => ({ ...c, files: c.files.map((f) => ({ ...f, patch: null })) })) }
+  const kept = commits.map((c) => ({ ...c, files: c.files.map((f) => ({ ...f, patch: null })) }))
+  return { kind: 'repartments-presentation', version: 1, model, edits, commits: withoutNames ? withoutAuthors(kept, withoutNames.lang) : kept }
+}
+
+/** An e-mail in angle brackets, as commit trailers carry them ("Co-authored-by: Ana <ana@x.com>"). */
+const EMAIL_LINE = /^.*<[^<>\s]+@[^<>\s]+>.*$/gm
+
+/**
+ * The commits with their authors replaced by numbered stand-ins (the same person keeps the same
+ * number) and no lines with e-mail addresses in their messages: a file to share without people's
+ * names. What the messages themselves say about people stays as written.
+ */
+export function withoutAuthors(commits: CommitDetail[], lang: 'pt' | 'en'): CommitDetail[] {
+  const numbers = new Map<string, number>()
+  const word = lang === 'pt' ? 'Autor' : 'Author'
+  return commits.map((c) => {
+    const who = (c.author.login ?? c.author.name).toLowerCase()
+    if (!numbers.has(who)) numbers.set(who, numbers.size + 1)
+    return {
+      ...c,
+      author: { name: `${word} ${numbers.get(who)}`, login: null, avatarUrl: null },
+      headline: c.headline.replace(EMAIL_LINE, '').trim(),
+      body: c.body.replace(EMAIL_LINE, '').replace(/\n{3,}/g, '\n\n').trim(),
+    }
+  })
 }
 
 const STATUSES: FileStatus[] = ['added', 'removed', 'modified', 'renamed', 'copied', 'changed', 'unchanged']
