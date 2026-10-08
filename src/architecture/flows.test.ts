@@ -496,3 +496,22 @@ describe('buildFlows: what you can do', () => {
     expectWellFormed(flow)
   })
 })
+
+describe('buildFlows: who answers a feature', () => {
+  it('lets the screens answer a feature whose file is a README or a page, not the part that holds that file', () => {
+    const parts = [component('', 'infra', { name: 'Root', direct: true }), component('src', 'interface', { name: 'Src' })]
+    const [flow] = buildFlows({
+      components: parts,
+      dependencies: [],
+      externals: [],
+      endpoints: [],
+      agents: [],
+      features: [
+        { label: 'Editor', detail: 'Escreve o código.', via: 'readme', ref: { file: 'README.md', line: 1 } },
+        { label: 'Passo a passo', detail: 'Roda linha por linha.', via: 'button', ref: { file: 'src/main.jsx', line: 320 } },
+      ],
+    })
+    expect(flow.kind).toBe('features')
+    expect(flow.actors.map((a) => a.component)).toEqual([null, 'src'])
+  })
+})

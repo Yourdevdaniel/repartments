@@ -14,7 +14,7 @@
  * sentences say those things too; without them the scenes keep their shorter wording.
  */
 import type { Actor, ActorKind, Agent, Component, Dependency, Endpoint, External, ExternalKind, Flow, FlowStep, StepAction, Text } from '../shared/studio'
-import { clip, cap, firstSentence, joinList } from './text'
+import { clip, cap, firstSentence, joinList, langOf } from './text'
 import { fieldList, humanField, modelForResource, plainLabel, singularOf, taskPhraseOf, type DataModel, type FlowDetails, type Lang, type ScreenDetails } from './details'
 import { isPlural, nameWith, plainAgentName, plainExternalName, plainPartName, plainToolName, type Prep } from './plain'
 import type { Feature } from './features'
@@ -994,7 +994,8 @@ function featuresFlow(ctx: Ctx, features: Feature[], min = 2): Flow | null {
   const main = [...visible].filter((c) => c.layer === 'interface').sort((a, b) => b.files - a.files)[0] ?? null
   const actors: Actor[] = [PERSON]
   const actorOf = (f: Feature): Actor => {
-    const owner = f.ref ? componentOf(f.ref.file, ctx.components) : null
+    // Only a code file belongs to a part: a README or a page at the root says nothing about who answers.
+    const owner = f.ref && langOf(f.ref.file) ? componentOf(f.ref.file, ctx.components) : null
     const comp = owner && owner.layer !== 'tests' ? owner : main
     const actor = comp ? componentActor(comp) : SYSTEM
     const known = actors.find((a) => a.id === actor.id)

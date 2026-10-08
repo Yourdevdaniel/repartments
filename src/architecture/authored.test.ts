@@ -210,6 +210,13 @@ describe('parseAuthored', () => {
   })
 })
 
+describe('parseAuthored: feature names', () => {
+  it('drops the emoji and arrows in front of a feature name, as the features read from the code do', () => {
+    const r = parseAuthored(JSON.stringify({ version: 1, features: [{ name: { pt: '▶ Passo a passo', en: '▶ Step by step' }, does: 'Roda.', how: 'button' }] }), null)
+    expect(r.script?.features[0].text?.label).toEqual({ pt: 'Passo a passo', en: 'Step by step' })
+  })
+})
+
 describe('applyAuthored', () => {
   const model = buildModel(crmFixture)
   const parts = [

@@ -12,7 +12,7 @@
  */
 import type { Actor, ActorKind, ArchitectureModel, AuthoredInfo, AuthoredProblem, Component, Flow, FlowStep, StepAction, Text } from '../shared/studio'
 import { componentOf } from '../shared/components'
-import type { Feature } from './features'
+import { cleanLabel, type Feature } from './features'
 import { COMPONENT_KIND, featuresScene, MAX_ACTORS, MAX_FLOWS, MAX_STEPS } from './flows'
 import { clip } from './text'
 
@@ -178,7 +178,9 @@ export function parseAuthored(text: string, paths: ReadonlySet<string> | null): 
   list(root.features, 'features', MAX_FEATURES).forEach((raw, i) => {
     const where = `features[${i}]`
     if (!isObj(raw)) return warn(where, say('Funcionalidade ignorada: formato inválido.', 'Feature left out: invalid format.'))
-    const label = textOf(raw.name, LIMIT.feature)
+    // Named like the button, without its emoji or arrow, as the features read from the code are.
+    const named = textOf(raw.name, LIMIT.feature)
+    const label = named && cleanLabel(named.pt) ? { pt: cleanLabel(named.pt), en: cleanLabel(named.en) || cleanLabel(named.pt) } : named
     const detail = textOf(raw.does, LIMIT.does)
     if (!label && !detail) return warn(where, say('Funcionalidade ignorada: precisa de "name" ou "does".', 'Feature left out: it needs a "name" or "does".'))
     const via = HOW.includes(raw.how as Feature['via']) ? (raw.how as Feature['via']) : 'readme'
