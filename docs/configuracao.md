@@ -68,10 +68,22 @@ npm run build
 
 ## 5. Checklist de segurança antes de publicar
 
+Três verificações automáticas cuidam de que o segredo não vaze:
+
+- **No build:** `npm run build` (o que a Vercel roda, fixado no `buildCommand` do `vercel.json`) termina com `scripts/check-dist.mjs`, que lê todos os arquivos que vão ser publicados e **interrompe o deploy** se algum tiver o valor de `GITHUB_CLIENT_SECRET` ou `GITHUB_TOKEN` (na Vercel, os valores reais; localmente, os do `.env.local`) ou qualquer coisa com cara de token ou chave. Ele nunca imprime o valor.
+- **Nos testes:** `server/auth.test.ts` passa por todas as rotas de login com um segredo de teste e confere que ele não sai em nenhuma resposta, redirecionamento ou cookie, e que só vai para o GitHub; `server/logs.test.ts` confere que nenhum log do servidor imprime segredo, token, cookie ou pedido.
+- **No site publicado:** `npm run check:site -- https://seu-site` olha o site de fora, como qualquer pessoa: os scripts que a página carrega (com os valores reais do `.env.local`, se houver), se há mapas de código publicados, se `.env*`, `.git/`, o código do servidor e o projeto da Vercel respondem como arquivo, se as rotas de login dizem só o que devem e se os cabeçalhos de segurança estão lá. Rode depois de cada deploy.
+
+E, na configuração:
+
 - [ ] `.env.local` não está no git (`git status` não mostra; o `.gitignore` cobre `.env*`).
 - [ ] O app do GitHub pede só leitura (GitHub App) ou `public_repo` se privados não forem necessários.
 - [ ] `GITHUB_CLIENT_SECRET` só no ambiente do servidor (`.env.local` ignorado pelo git, ou variável *Sensitive* na Vercel). Nunca no código, no repositório ou no navegador.
 - [ ] A Callback URL do app é exatamente `https://<seu site>/api/auth/callback`, sem outra origem, para que o GitHub só devolva o login a este site.
+- [ ] Na Vercel, `GITHUB_CLIENT_SECRET` como *Sensitive* e só no ambiente **Production** (sem *Preview* nem *Development*), e só quem precisa com acesso ao projeto: quem publica código pode publicar algo que leia o segredo.
+- [ ] No GitHub, **Settings → Code security → Secret scanning** e **Push protection** ligados no repositório: o GitHub recusa um push que traga um token ou chave conhecidos.
+- [ ] GitHub App com **Expire user authorization tokens** ligado (o padrão): os tokens das pessoas morrem em 8 horas mesmo se a aba for fechada sem sair.
+- [ ] Depois do deploy, `npm run check:site -- https://seu-site` sem problemas.
 - [ ] Se o segredo vazou, gere um novo na página do app no GitHub (o antigo deixa de valer) e atualize a variável na Vercel.
 - [ ] *Enable Device Flow* marcado no app, se o login for pelo código (sem o segredo; sem ele o login responde `login-disabled`). Se o login responder "indisponível", o log do servidor diz o motivo que o GitHub deu (`GitHub refused the device code: …`): `Not Found` é um Client ID errado.
 - [ ] A CSP de `vercel.json` continua com `script-src 'self'`, `connect-src 'self' https://api.github.com` e `require-trusted-types-for 'script'`: o token fica trancado no cofre do navegador, e a CSP é o que impede scripts de fora de rodar na página ([ADR 0002](adr/0002-token-so-no-navegador.md)).

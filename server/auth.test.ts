@@ -171,9 +171,10 @@ describe('the client secret', () => {
   const env2 = { GITHUB_CLIENT_ID: 'Iv1.public', GITHUB_CLIENT_SECRET: SECRET }
 
   it('never leaves in an answer, a redirect or a cookie, and goes only to GitHub’s token endpoint', async () => {
-    const sent: { url: string; body: string }[] = []
+    const sent: { url: string; body: string; auth: string }[] = []
     const fetcher = async (url: string, init: RequestInit) => {
-      sent.push({ url, body: String(init.body) })
+      const auth = new Headers(init.headers).get('authorization') ?? ''
+      sent.push({ url, body: String(init.body), auth: auth.startsWith('Basic ') ? atob(auth.slice(6)) : auth })
       return new Response(JSON.stringify(url.includes('access_token') ? { error: 'bad_verification_code' } : {}), { status: 200 })
     }
     const login = await handleAuth(new Request(`${BASE}/api/auth/login`), { env: env2, fetcher })
@@ -187,14 +188,39 @@ describe('the client secret', () => {
       await handleAuth(post('/api/auth/claim'), { env: env2, fetcher }),
       await handleAuth(post('/api/auth/device'), { env: env2, fetcher }),
       await handleAuth(post('/api/auth/token', { device_code: 'dc_123456789' }), { env: env2, fetcher }),
+      await handleAuth(post('/api/auth/revoke', { access_token: 'ghu_abcdefgh1234' }), { env: env2, fetcher }),
       await handleAuth(new Request(`${BASE}/api/auth/nowhere`), { env: env2, fetcher }),
     ]
     for (const res of answers) {
       const everything = `${res.status} ${[...res.headers].join(' ')} ${res.headers.getSetCookie().join(' ')} ${await res.text()}`
       expect(everything).not.toContain(SECRET)
     }
-    const carrying = sent.filter((s) => s.body.includes(SECRET))
-    expect(carrying.length).toBe(1)
-    expect(carrying[0].url).toBe('https://github.com/login/oauth/access_token')
+    const carrying = sent.filter((s) => s.body.includes(SECRET) || s.auth.includes(SECRET))
+    expect(carrying.map((s) => s.url)).toEqual(['https://github.com/login/oauth/access_token', 'https://api.github.com/applications/Iv1.public/token'])
+  })
+})
+
+describe('/api/auth/revoke', () => {
+  const web = { GITHUB_CLIENT_ID: 'Iv1.public', GITHUB_CLIENT_SECRET: 'shh' }
+
+  it('asks GitHub to end the token, with the app’s ID and secret, from the site’s own pages only', async () => {
+    const calls: { url: string; init: RequestInit }[] = []
+    const fetcher = async (url: string, init: RequestInit) => {
+      calls.push({ url, init })
+      return new Response(null, { status: 204 })
+    }
+    const res = await handleAuth(post('/api/auth/revoke', { access_token: 'ghu_abcdefgh1234' }), { env: web, fetcher })
+    expect(await res.json()).toEqual({ revoked: true })
+    expect(calls[0].url).toBe('https://api.github.com/applications/Iv1.public/token')
+    expect(calls[0].init.method).toBe('DELETE')
+    expect(new Headers(calls[0].init.headers).get('authorization')).toBe(`Basic ${btoa('Iv1.public:shh')}`)
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ access_token: 'ghu_abcdefgh1234' })
+    expect((await handleAuth(post('/api/auth/revoke', { access_token: 'ghu_abcdefgh1234' }, {}), { env: web, fetcher })).status).toBe(403)
+    expect((await handleAuth(post('/api/auth/revoke', { access_token: '../x' }), { env: web, fetcher })).status).toBe(400)
+  })
+
+  it('does nothing without the secret (the device flow can’t revoke)', async () => {
+    const res = await handleAuth(post('/api/auth/revoke', { access_token: 'ghu_abcdefgh1234' }), { env })
+    expect(await res.json()).toEqual({ revoked: false })
   })
 })

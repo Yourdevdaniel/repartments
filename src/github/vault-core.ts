@@ -7,8 +7,10 @@
  * needs (`allow.ts`).
  *
  * A sign-in lasts 8 hours at most (a GitHub App's own tokens expire then too); after that the vault
- * forgets the token and tells every page. Closing every tab of the site ends the worker, and the
- * token with it.
+ * forgets the token and tells every page. Whenever the vault lets go of a token (signing out, the 8
+ * hours ending), it also asks the server to revoke it at GitHub, so a copy of it, wherever it might
+ * be, stops working too (with "Continue with GitHub"; the device flow has no secret to do that).
+ * Closing every tab of the site ends the worker, and the token with it.
  *
  * This file is the vault's logic with its surroundings passed in (fetch, clock, timers), so it can
  * be tested; `vault.worker.ts` plugs it into a real worker.
@@ -73,7 +75,13 @@ export class Vault {
     this.broadcast({ type: 'state', state })
   }
 
+  /** Asks the server to end a token at GitHub; best effort, nothing waits for it. */
+  private revoke(token: string) {
+    this.relay('/api/auth/revoke', { access_token: token }).catch(() => undefined)
+  }
+
   private forget(reason?: Extract<VaultState, { status: 'signed-out' }>['reason']) {
+    if (this.token) this.revoke(this.token)
     this.token = null
     if (this.flow) this.flow.cancelled = true
     this.flow = null
@@ -94,10 +102,14 @@ export class Vault {
     let user: VaultUser
     try {
       const res = await this.deps.fetch('https://api.github.com/user', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } })
-      if (!res.ok) return this.forget(res.status === 401 ? 'expired' : 'unavailable')
+      if (!res.ok) {
+        this.revoke(token)
+        return this.forget(res.status === 401 ? 'expired' : 'unavailable')
+      }
       const u = (await res.json()) as { login: string; name: string | null; avatar_url: string }
       user = { login: u.login, name: u.name ?? null, avatarUrl: u.avatar_url ?? '' }
     } catch {
+      this.revoke(token)
       return this.forget('unavailable')
     }
     const lasts = Math.min(MAX_SESSION_MS, expiresIn ? expiresIn * 1000 : MAX_SESSION_MS)

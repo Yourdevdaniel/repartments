@@ -35,6 +35,8 @@ Opção 3. O estúdio mostra **Continuar com GitHub** quando o servidor tem `GIT
 - O `state` e o PKCE impedem que um retorno forjado ou repetido vire login. Os cookies são `Secure`, `HttpOnly` e com `Path` restrito.
 - A Callback URL do app tem de ser registrada exatamente como `https://<site>/api/auth/callback` (e `http://localhost:5173/api/auth/callback` para desenvolvimento, em outro OAuth App, se o app for OAuth).
 - O segredo só é lido em `server/auth.ts` e só viaja no corpo do pedido a `https://github.com/login/oauth/access_token`. Um teste passa por todas as rotas e confere que ele não aparece em nenhuma resposta, endereço ou cookie; e, como o Vite só põe no código do navegador variáveis que começam com `VITE_`, ele também não entra no site publicado (conferido com um build de teste).
+- O build falha se o que vai ser publicado tiver o valor do segredo ou algo com cara de chave (`scripts/check-dist.mjs`, com os valores reais na Vercel), um teste confere que nenhum log do servidor imprime segredo, token ou cookie, e `npm run check:site` verifica o site publicado de fora.
+- Sair encerra o token no GitHub (`/api/auth/revoke`), e não só no navegador; o mesmo acontece quando as 8 horas acabam. Com o device flow, sem segredo, isso não é possível: lá vale o prazo do próprio GitHub.
 - Se o segredo vazar, ele deve ser trocado: a página do app no GitHub gera um novo, e o antigo deixa de valer. A variável na Vercel é atualizada e o site é reimplantado.
 - Sem o segredo, o estúdio continua funcionando pelo código, então a mudança é aditiva: nenhuma instalação atual quebra.
 - Quando o GitHub aceitar clientes públicos no fluxo web, a troca no servidor pode sair e o segredo deixa de ser necessário. Este ADR seria então substituído.

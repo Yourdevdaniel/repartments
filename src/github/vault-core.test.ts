@@ -144,3 +144,24 @@ describe('Vault, after "Continue with GitHub"', () => {
     expect(w.states()).toEqual([])
   })
 })
+
+describe('Vault, letting go of a token', () => {
+  const revokes = (w: ReturnType<typeof world>) => w.calls.filter((c) => c.url === 'https://site.example/api/auth/revoke').map((c) => JSON.parse(String(c.init.body)))
+
+  it('asks the server to end the token at GitHub when the person signs out', async () => {
+    const w = signIn([{ access_token: 'ghu_secret' }])
+    void w.vault.handle({ type: 'start' }, () => undefined)
+    await w.pass(6_000)
+    expect(revokes(w)).toEqual([])
+    await w.vault.handle({ type: 'sign-out' }, () => undefined)
+    expect(revokes(w)).toEqual([{ access_token: 'ghu_secret' }])
+    expect(JSON.stringify(w.messages)).not.toContain('ghu_secret')
+  })
+
+  it('and when the 8 hours end', async () => {
+    const w = signIn([{ access_token: 'ghu_secret' }])
+    void w.vault.handle({ type: 'start' }, () => undefined)
+    await w.pass(6_000 + MAX_SESSION_MS)
+    expect(revokes(w)).toEqual([{ access_token: 'ghu_secret' }])
+  })
+})

@@ -19,6 +19,7 @@
  *   GET  /api/auth/login     ?next=/studio/…  → 302 to GitHub
  *   GET  /api/auth/callback  ?code&state      → 302 back to the studio, token in a short cookie
  *   POST /api/auth/claim     → { access_token, expires_in? }  once; the vault calls it
+ *   POST /api/auth/revoke    { access_token } → { revoked }   signing out ends the token at GitHub too
  *   POST /api/auth/device    → { user_code, verification_uri, device_code, interval, expires_in }
  *   POST /api/auth/token     { device_code } → { access_token, expires_in? } or { error, interval? }
  *   GET  /api/auth/dev       → { access_token }   development only: the GitHub CLI's token
@@ -192,6 +193,33 @@ export async function handleAuth(request: Request, { env, fetcher = fetch, devTo
     }
     const expires = typeof answer.expires_in === 'number' ? `.${Math.round(answer.expires_in)}` : ''
     return back('1', [clear, cookie(HANDOFF_COOKIE, `${answer.access_token}${expires}`, '/api/auth/claim', 120, 'Strict')])
+  }
+
+  // Signing out (or the 8 hours ending): the token stops working at GitHub too, not only in this
+  // browser. Only GitHub's API can do it, with the app's client ID and secret, so it happens here.
+  if (route === '/api/auth/revoke' && method === 'POST') {
+    if (!fromSite(request)) return json({ error: 'forbidden' }, 403)
+    if (!clientId || !secret) return json({ revoked: false })
+    if (!pollBrake(clientKey(request.headers))) return json({ error: 'rate-limited' }, 429)
+    const body = (await request.json().catch(() => null)) as { access_token?: unknown } | null
+    const token = typeof body?.access_token === 'string' ? body.access_token : ''
+    if (!OPAQUE.test(token)) return json({ error: 'invalid' }, 400)
+    try {
+      const res = await fetcher(`https://api.github.com/applications/${encodeURIComponent(clientId)}/token`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Basic ${btoa(`${clientId}:${secret}`)}`,
+          Accept: 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'repartments',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        body: JSON.stringify({ access_token: token }),
+      })
+      return json({ revoked: res.status === 204 })
+    } catch {
+      return json({ revoked: false })
+    }
   }
 
   // The vault picks the token up, once.
