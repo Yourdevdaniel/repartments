@@ -57,6 +57,11 @@ describe('plainPartName', () => {
     expect(plainPartName(part('app', 'shared'), [])).toEqual({ pt: 'Aplicativo', en: 'App' })
   })
 
+  it('names loose setup files at the root as the setup, and an app folder as the app', () => {
+    expect(plainPartName(part('', 'infra'), [])).toEqual({ pt: 'Configuração', en: 'Setup' })
+    expect(plainPartName(part('app', 'infra'), [])).toEqual({ pt: 'Aplicativo', en: 'App' })
+  })
+
   it('adds the subject of the folder, when there is one', () => {
     expect(plainPartName(part('apps/leads/routes', 'api'), [])).toEqual({ pt: 'Recepção de leads', en: 'Leads desk' })
     expect(plainPartName(part('apps/orders', 'logic'), [])).toEqual({ pt: 'Regras de pedidos', en: 'Orders rules' })

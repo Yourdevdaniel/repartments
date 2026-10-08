@@ -163,7 +163,7 @@ const EXTERNAL_NAMES: Record<ExternalKind, Pair> = {
 
 /** The gender of the Portuguese words that name a part, so articles agree ("a Recepção", "o Porteiro"). */
 const PT_GENDER = new Map<string, 'o' | 'a' | 'os' | 'as'>([
-  ['recepção', 'a'], ['porteiro', 'o'], ['regras', 'as'], ['telas', 'as'], ['tela', 'a'],
+  ['recepção', 'a'], ['sistema', 'o'], ['porteiro', 'o'], ['regras', 'as'], ['telas', 'as'], ['tela', 'a'],
   ['assistente', 'o'], ['bastidores', 'os'], ['arquivo', 'o'], ['arquivos', 'os'], ['banco', 'o'],
   ['fila', 'a'], ['serviço', 'o'], ['modelo', 'o'], ['memória', 'a'], ['configuração', 'a'],
   ['configurações', 'as'], ['ajudantes', 'os'], ['inspetor', 'o'], ['usuário', 'o'], ['conversa', 'a'],
@@ -331,7 +331,8 @@ function nounOf(c: Named): Text {
     if (noun) return { pt: noun.pt, en: noun.en }
   }
   const last = (segments[segments.length - 1] ?? '').toLowerCase()
-  if (APP_ROOTS.has(last)) {
+  // Loose files at the repo's root that only set the project up (vite.config.js) are its setup, not the app.
+  if (APP_ROOTS.has(last) && !(segments.length === 0 && c.layer === 'infra')) {
     const head = (segments[0] ?? '').toLowerCase()
     if (/front|web|client/.test(head) || last === 'web' || last === 'client') return { pt: 'Site', en: 'Website' }
     if (/back|server/.test(head) || last === 'server' || last === 'backend') return { pt: 'Servidor', en: 'Server' }

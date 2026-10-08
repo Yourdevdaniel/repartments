@@ -162,6 +162,10 @@ describe('layerOf', () => {
     expect(layerOf('pkg/leads_test.go', '', [])).toBe('tests')
   })
 
+  it('reads build and tool settings such as vite.config.js as setup', () => {
+    expect(layerOf('vite.config.js', '', [])).toBe('infra')
+  })
+
   it('reads Next.js route handlers as API code', () => {
     expect(layerOf('app/api/leads/route.ts', 'export async function POST(req: Request) {}', [])).toBe('api')
   })

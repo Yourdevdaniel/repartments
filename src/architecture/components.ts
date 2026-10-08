@@ -40,6 +40,9 @@ const WORDS: Partial<Record<Layer, string[]>> = {
   infra: 'config settings infra deploy scripts'.split(' '),
 }
 
+/** A tool's settings file, by its name. */
+const CONFIG_FILE = /(^|\/)([\w-]+\.config|\.?eslintrc|\.?prettierrc|gulpfile|gruntfile|karma\.conf|protractor\.conf)\.[cm]?[jt]s$/i
+
 /** Source patterns that point at a layer, each adds 3 to it. */
 const CONTENT: { layer: Layer; re: RegExp; weight?: number }[] = [
   {
@@ -73,6 +76,8 @@ export function layerOf(path: string, text: string, packages: string[]): Layer {
   if (/(^|\/)urls\.py$/.test(path)) add('api', 3)
   if (/(^|\/)views\.py$/.test(path)) add('api', 2)
   if (/(^|\/)settings(\.[a-z]+)?$/.test(path)) add('infra', 2)
+  // Build and tool settings (vite.config.js, eslint.config.mjs, babel.config.js…) set the project up; they aren't its rules.
+  if (CONFIG_FILE.test(path)) add('infra', 3)
   if (callsModel(packages)) add('ai', 4)
   for (const c of CONTENT) if (c.re.test(text)) add(c.layer, c.weight ?? 3)
 
