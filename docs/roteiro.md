@@ -115,7 +115,7 @@ Você vai escrever o roteiro de uma apresentação do Repartments sobre um siste
 
 O Repartments transforma um repositório do GitHub num prédio animado: cada andar é uma cena, e bonequinhos (as partes do sistema e quem o usa) encenam como ele funciona para quem não programa, como um cliente ou um gestor. O estúdio do Repartments lê o código sozinho, mas só entende a arquitetura. Quem conhece o sistema conta o que ele faz num arquivo repartments.json, e é esse arquivo que você vai escrever.
 
-Repositório: {{repo}} (branch {{branch}}, commit {{commit}})
+Repositório: {{repo}} (branch {{branch}}, commit {{commit}}), em https://github.com/{{repo}}
 
 Regras:
 - Se você consegue ler os arquivos do repositório, leia o README, os manifestos (package.json, requirements.txt, pyproject.toml…), os pontos de entrada, as telas, as rotas e as pastas principais. Se não consegue, use só o material que a pessoa colar depois deste texto, e cite apenas arquivos que aparecem nele.
