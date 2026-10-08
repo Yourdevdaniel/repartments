@@ -280,6 +280,7 @@ const ACTION: Record<StepAction, { prop: 'letter' | 'box'; icon: string; anim: '
 }
 
 const KIND_LABEL: Record<Flow['kind'], { name: Text; color: string }> = {
+  features: { name: { en: 'Features', pt: 'Funcionalidades' }, color: '#e05d8c' },
   agent: { name: { en: 'AI agent', pt: 'Agente de IA' }, color: '#a855f7' },
   request: { name: { en: 'Request', pt: 'Pedido' }, color: '#2f8fe6' },
   job: { name: { en: 'Background', pt: 'Segundo plano' }, color: '#37814a' },

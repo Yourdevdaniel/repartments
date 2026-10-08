@@ -277,13 +277,14 @@ export type FlowStep = {
 }
 
 /**
- * One scene of the presentation: a request, an agent's decision, a background job. The studio also
- * makes scenes of commits in the browser (`commit`: the author visiting the parts they changed;
- * `activity`: which parts change the most), which never come from the analysis.
+ * One scene of the presentation: what a person can do with the system (`features`), a request, an
+ * agent's decision, a background job. The studio also makes scenes of commits in the browser
+ * (`commit`: the author visiting the parts they changed; `activity`: which parts change the most),
+ * which never come from the analysis.
  */
 export type Flow = {
   id: string
-  kind: 'request' | 'agent' | 'job' | 'overview' | 'commit' | 'activity'
+  kind: 'features' | 'request' | 'agent' | 'job' | 'overview' | 'commit' | 'activity'
   title: Text
   summary: Text
   actors: Actor[]
@@ -292,7 +293,8 @@ export type Flow = {
 
 export type ArchitectureModel = {
   version: 1
-  repo: { owner: string; name: string; branch: string; sha: string; private: boolean }
+  /** `description` is the one-line description on GitHub, when it has one. */
+  repo: { owner: string; name: string; branch: string; sha: string; private: boolean; description?: string | null }
   generatedAt: string
   stats: {
     /** Files in the repo's tree, files read, and their lines. */

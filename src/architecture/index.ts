@@ -15,11 +15,12 @@ import { readFiles } from './fetch'
 import { callsOf, endpointsOf, matchCall, type RouteDef } from './endpoints'
 import { databaseLabelOf, externalsFrom, imagesOf, type Usage } from './externals'
 import { buildFlows } from './flows'
+import { featuresOf, README } from './features'
 import { indefiniteArticle, nameWith, plainAgentName, plainExternalName, plainLayerName, screenPartName, subjectOf } from './plain'
 import { importsOf } from './imports'
 import { normalizePath, createResolver } from './resolve'
 import { selectFiles, type TreeEntry } from './select'
-import { clip, count, joinList, langOf } from './text'
+import { basenameOf, clip, count, joinList, langOf } from './text'
 
 export type { TreeEntry } from './select'
 
@@ -90,7 +91,7 @@ function entryFilesOf(path: string, text: string): string[] {
  * plain names, outside services by what they do, and the first agent's choices. No language names,
  * brands or model ids, since the people watching don't code.
  */
-function summaryOf(repoName: string, components: Component[], externals: External[], agents: Agent[]): Text {
+function summaryOf(repoName: string, components: Component[], externals: External[], agents: Agent[], about: string | null = null): Text {
   const layers = LAYER_ORDER.filter((l) => components.some((c) => c.layer === l) && l !== 'tests').slice(0, 5)
   const kinds = [...new Set(externals.map((e) => e.kind))].slice(0, 4)
   const agent = agents[0]
@@ -99,10 +100,18 @@ function summaryOf(repoName: string, components: Component[], externals: Externa
   const tools = agent?.tools.length ?? 0
   const pt: string[] = []
   const en: string[] = []
-  if (components.length) {
-    pt.push(`O ${repoName} tem ${count(components.length, 'parte', 'partes')}: ${joinList(layers.map((l) => nameWith('none', plainLayerName(l).pt, 'pt')), 'pt')}.`)
-    en.push(`The ${repoName} has ${count(components.length, 'part', 'parts')}: ${joinList(layers.map((l) => nameWith('none', plainLayerName(l).en, 'en')), 'en')}.`)
-  } else {
+  // What the system is, in its author's words, before what it is made of.
+  if (about) {
+    const said = /[.!?…]$/.test(about) ? about : `${about}.`
+    pt.push(said)
+    en.push(said)
+  }
+  // Tests are counted out, as they are left out of the list that follows.
+  const counted = components.filter((c) => c.layer !== 'tests').length
+  if (counted) {
+    pt.push(`O ${repoName} tem ${count(counted, 'parte', 'partes')}: ${joinList(layers.map((l) => nameWith('none', plainLayerName(l).pt, 'pt')), 'pt')}.`)
+    en.push(`The ${repoName} has ${count(counted, 'part', 'parts')}: ${joinList(layers.map((l) => nameWith('none', plainLayerName(l).en, 'en')), 'en')}.`)
+  } else if (!about) {
     pt.push(`O ${repoName} é um sistema.`)
     en.push(`The ${repoName} is a system.`)
   }
@@ -224,6 +233,12 @@ function flowDetailsOf(input: {
   return { models, calls, screens, subjects, tasks }
 }
 
+/** A README or an HTML page: read for what the system does, not as code. */
+function isDocument(path: string): boolean {
+  const name = basenameOf(path)
+  return README.test(name) || /\.html?$/i.test(name)
+}
+
 /**
  * The whole model from a tree and the file texts. Never throws on odd input: a file that can't be
  * read is skipped, and a missing piece leaves that part of the model empty.
@@ -234,7 +249,10 @@ export function buildModel(input: SourceInput): ArchitectureModel {
 
 function buildModelWith(input: SourceInput, progress: (stage: 'graph' | 'flows') => void): ArchitectureModel {
   const tree = Array.isArray(input.tree) ? input.tree.filter((e) => e && e.type === 'blob' && typeof e.path === 'string') : []
-  const files = input.files instanceof Map ? input.files : new Map<string, string>()
+  const read = input.files instanceof Map ? input.files : new Map<string, string>()
+  // The README and the HTML pages tell what the system does (features.ts); the code analysis below
+  // never sees them, so a README that mentions PostgreSQL doesn't count as using it.
+  const files = new Map([...read].filter(([p]) => !isDocument(p)))
   const treePaths = tree.map((e) => e.path)
   const allPaths = [...new Set([...treePaths, ...files.keys()])]
   const sources = [...files.keys()].filter((p) => langOf(p) !== null).sort()
@@ -365,7 +383,8 @@ function buildModelWith(input: SourceInput, progress: (stage: 'graph' | 'flows')
   progress('flows')
   const details = flowDetailsOf({ files, targetsOf, compOf, endpoints })
   const parts = withAgentNames(components, agents)
-  const flows = buildFlows({ components: parts, dependencies, externals, endpoints, agents, fileDeps, details })
+  const told = featuresOf(read, input.repo.description ?? null)
+  const flows = buildFlows({ components: parts, dependencies, externals, endpoints, agents, fileDeps, details, features: told.features })
 
   const lines = [...files.values()].reduce((n, t) => n + (t ? t.split('\n').length : 0), 0)
   return {
@@ -379,7 +398,7 @@ function buildModelWith(input: SourceInput, progress: (stage: 'graph' | 'flows')
       truncated: input.truncated,
       languages: languagesOf(sources),
     },
-    summary: summaryOf(input.repo.name, parts, externals, agents),
+    summary: summaryOf(input.repo.name, parts, externals, agents, told.about),
     components: parts,
     dependencies,
     externals,
@@ -401,7 +420,7 @@ export async function analyzeRepository(
   onProgress: Progress,
 ): Promise<ArchitectureModel> {
   onProgress({ stage: 'tree' })
-  const info = await client.get<{ default_branch?: string; private?: boolean }>(`/repos/${owner}/${repo}`)
+  const info = await client.get<{ default_branch?: string; private?: boolean; description?: string | null }>(`/repos/${owner}/${repo}`)
   const useBranch = branch || info.data.default_branch || 'main'
   const commit = await client.get<{ sha?: string }>(`/repos/${owner}/${repo}/commits/${encodeURIComponent(useBranch)}`)
   const sha = commit.data.sha ?? ''
@@ -411,7 +430,7 @@ export async function analyzeRepository(
   const files = await readFiles(client, owner, repo, sha, selected.paths, (done, total) => onProgress({ stage: 'files', done, total }))
   return buildModelWith(
     {
-      repo: { owner, name: repo, branch: useBranch, sha, private: info.data.private === true },
+      repo: { owner, name: repo, branch: useBranch, sha, private: info.data.private === true, description: typeof info.data.description === 'string' ? info.data.description : null },
       tree: entries,
       files,
       truncated: treeRes.data.truncated === true || selected.truncated,

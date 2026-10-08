@@ -1,8 +1,8 @@
 /**
  * Turns the model into the presentation's scenes: at most six flows, each a short story with up to
- * seven actors and fourteen steps. The order is what the audience should see first: agents (at most
- * two), requests to the API (at most three), a background job, and an overview only when nothing else
- * was found.
+ * seven actors and fourteen steps. The order is what the audience should see first: what a person can
+ * do with the system (its features, in its own words), agents (at most two), requests to the API (at
+ * most three), a background job, and an overview only when nothing else was found.
  *
  * Every step is a plain sentence in both languages, built from a template per kind of step. The people
  * in a scene wear plain names ("Recepção de leads", "Banco de dados", "Buscar leads"); each actor also
@@ -17,6 +17,8 @@ import type { Actor, ActorKind, Agent, Component, Dependency, Endpoint, External
 import { clip, cap, firstSentence, joinList } from './text'
 import { fieldList, humanField, modelForResource, plainLabel, singularOf, taskPhraseOf, type DataModel, type FlowDetails, type Lang, type ScreenDetails } from './details'
 import { isPlural, nameWith, plainAgentName, plainExternalName, plainPartName, plainToolName, type Prep } from './plain'
+import type { Feature } from './features'
+import { componentOf } from '../shared/components'
 
 export type FlowInput = {
   components: Component[]
@@ -28,6 +30,8 @@ export type FlowInput = {
   fileDeps?: Map<string, string[]>
   /** What the code says beyond the graph: fields, screens, sent data, e-mail subjects. Optional. */
   details?: FlowDetails
+  /** What a person can do with the system, from its README, buttons and commands (`features.ts`). */
+  features?: Feature[]
 }
 
 /** Scenes are kept small enough to follow on a screen. */
@@ -960,6 +964,81 @@ function overviewFlow(ctx: Ctx): Flow | null {
   }
 }
 
+/** How a person reaches a feature, as a verb in each language. */
+const REACH: Record<Feature['via'], Text> = {
+  button: { pt: 'clica em', en: 'clicks' },
+  command: { pt: 'manda', en: 'sends' },
+  readme: { pt: 'usa', en: 'uses' },
+}
+
+/** The system itself, for a repo whose parts couldn't be read. */
+const SYSTEM: Actor = {
+  id: 'system',
+  name: { en: 'System', pt: 'Sistema' },
+  kind: 'screen',
+  component: null,
+  external: null,
+  note: { en: 'What the person uses.', pt: 'O que a pessoa usa.' },
+}
+
+/**
+ * "What you can do": the person uses each feature and the system answers. A button or command is
+ * played by the part whose file holds it; a README feature by the screens, or by the system as a
+ * whole when it has none. Names and descriptions are the repo's own; only the frame around them is a
+ * template.
+ */
+function featuresFlow(ctx: Ctx, features: Feature[]): Flow | null {
+  if (features.length < 2) return null
+  const visible = ctx.components.filter((c) => c.layer !== 'tests' && c.layer !== 'infra')
+  // Without screens the system answers as a whole: "the business rules show the result" means nothing to a visitor.
+  const main = [...visible].filter((c) => c.layer === 'interface').sort((a, b) => b.files - a.files)[0] ?? null
+  const actors: Actor[] = [PERSON]
+  const actorOf = (f: Feature): Actor => {
+    const owner = f.ref ? componentOf(f.ref.file, ctx.components) : null
+    const comp = owner && owner.layer !== 'tests' ? owner : main
+    const actor = comp ? componentActor(comp) : SYSTEM
+    const known = actors.find((a) => a.id === actor.id)
+    if (known) return known
+    if (actors.length >= MAX_ACTORS) return actors[1] ?? actor
+    actors.push(actor)
+    return actor
+  }
+  const steps: FlowStep[] = []
+  for (const f of features) {
+    const who = actorOf(f)
+    const shows = both((l) => `${at('none', who.name, l, true)} ${vb(who.name, l, l === 'pt' ? 'mostra' : 'shows', l === 'pt' ? 'mostram' : 'show')} ${l === 'pt' ? 'o resultado' : 'the result'}`)
+    const answer: Text = f.detail ? { pt: clip(cap(f.detail), CAPTION_LIMIT), en: clip(cap(f.detail), CAPTION_LIMIT) } : shows
+    if (f.label) {
+      if (steps.length + 2 > MAX_STEPS) break
+      const label = f.label
+      steps.push({
+        from: PERSON.id,
+        to: who.id,
+        action: 'ask',
+        text: both((l) => clip(`${at('none', PERSON.name, l, true)} ${REACH[f.via][l]} «${label}»`, CAPTION_LIMIT)),
+        say: { pt: clip(label, 18), en: clip(label, 18) },
+        ...(f.ref ? { ref: f.ref } : {}),
+      })
+      steps.push({ from: who.id, to: PERSON.id, action: 'show', text: answer, say: { pt: 'pronto!', en: 'done!' } })
+    } else {
+      if (steps.length + 1 > MAX_STEPS) break
+      steps.push({ from: who.id, to: PERSON.id, action: 'show', text: answer, say: { pt: 'olha só', en: 'look' } })
+    }
+  }
+  if (steps.length < 2) return null
+  return {
+    id: 'features',
+    kind: 'features',
+    title: { pt: 'O que dá para fazer', en: 'What you can do' },
+    summary: {
+      pt: 'Cada coisa que dá para fazer com o sistema, com o nome que ela tem nele.',
+      en: 'Each thing you can do with the system, by the name it has in it.',
+    },
+    actors,
+    steps,
+  }
+}
+
 /** The scenes of a repo, most telling first, within the limits. */
 export function buildFlows(input: FlowInput): Flow[] {
   // Names are worked out among all the parts, so two parts that would share a plain name get told apart.
@@ -973,6 +1052,9 @@ export function buildFlows(input: FlowInput): Flow[] {
     details: input.details ?? null,
   }
   const flows: Flow[] = []
+
+  const features = featuresFlow(ctx, input.features ?? [])
+  if (features) flows.push(features)
 
   for (const agent of input.agents.slice(0, 2)) {
     const comp = ctx.byId.get(agent.component)

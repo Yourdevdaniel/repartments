@@ -208,7 +208,7 @@ describe('analyzeRepository', () => {
     const stages: string[] = []
     const onProgress: Progress = (e) => stages.push(e.stage)
     const model = await analyzeRepository(fakeClient(log), 'acme', 'crm', undefined, onProgress)
-    expect(model.repo).toEqual({ owner: 'acme', name: 'crm', branch: 'main', sha: 'abc123', private: true })
+    expect(model.repo).toEqual({ owner: 'acme', name: 'crm', branch: 'main', sha: 'abc123', private: true, description: null })
     expect(model.components.length).toBeGreaterThanOrEqual(8)
     expect(model.flows.length).toBeGreaterThan(0)
     expect(stages[0]).toBe('tree')
@@ -223,5 +223,48 @@ describe('analyzeRepository', () => {
     const client: GitHubClient = fakeClient(log)
     await analyzeRepository(client, 'acme', 'crm', 'feat/studio', () => {}).catch(() => undefined)
     expect(log.some((l) => l === 'GET /repos/acme/crm/commits/feat%2Fstudio')).toBe(true)
+  })
+
+  it('keeps the repo description from GitHub in the model', async () => {
+    const base = fakeClient([])
+    const client: GitHubClient = {
+      ...base,
+      get: async <T,>(path: string) => {
+        if (path === '/repos/acme/crm') return { data: { default_branch: 'main', private: true, description: 'CRM de leads.' } as unknown as T, next: false }
+        return base.get<T>(path)
+      },
+    }
+    const model = await analyzeRepository(client, 'acme', 'crm', undefined, () => {})
+    expect(model.repo.description).toBe('CRM de leads.')
+  })
+})
+
+describe('buildModel: README and database', () => {
+  it('does not count a database named only in the README as a database service', () => {
+    const model = buildModel({
+      repo: { owner: 'acme', name: 'leads', branch: 'main', sha: 's', private: false },
+      tree: [{ path: 'README.md', type: 'blob' }, { path: 'app/main.py', type: 'blob' }],
+      files: new Map([
+        ['README.md', '# Leads\n\nGuarda tudo no PostgreSQL.\n'],
+        ['app/main.py', 'from fastapi import FastAPI\n\napp = FastAPI()\n\n@app.get("/leads")\ndef leads():\n    return []\n'],
+      ]),
+      truncated: false,
+    })
+    expect(model.externals.some((e) => e.kind === 'database')).toBe(false)
+    expect(model.externals.some((e) => e.name === 'PostgreSQL')).toBe(false)
+  })
+
+  it('opens the summary with the first sentence of the README', () => {
+    const model = buildModel({
+      repo: { owner: 'acme', name: 'leads', branch: 'main', sha: 's', private: false },
+      tree: [{ path: 'README.md', type: 'blob' }, { path: 'app/main.py', type: 'blob' }],
+      files: new Map([
+        ['README.md', '# Leads\n\nGestor de leads para equipes comerciais.\n\n## Funcionalidades\n\n- Cadastro de leads\n'],
+        ['app/main.py', 'from fastapi import FastAPI\n\napp = FastAPI()\n\n@app.get("/leads")\ndef leads():\n    return []\n'],
+      ]),
+      truncated: false,
+    })
+    expect(model.summary.pt.startsWith('Gestor de leads para equipes comerciais. ')).toBe(true)
+    expect(model.summary.en.startsWith('Gestor de leads para equipes comerciais. ')).toBe(true)
   })
 })

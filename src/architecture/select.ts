@@ -4,6 +4,7 @@
  * never are. When the repo is too big, the most telling files (manifests, then shallow source, tests
  * last) are kept and the rest is reported as left out.
  */
+import { README } from './features'
 import { basenameOf, langOf } from './text'
 
 /** One entry of GitHub's recursive tree. */
@@ -38,6 +39,7 @@ const EXCLUDED_DIRS = new Set([
 const LOCKFILES = /^(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|Pipfile\.lock|go\.sum|Cargo\.lock|composer\.lock|Gemfile\.lock|bun\.lockb?)$/
 const MANIFEST = /^(package\.json|requirements[\w.-]*\.txt|pyproject\.toml|go\.mod|composer\.json|Gemfile|pom\.xml|build\.gradle(\.kts)?|docker-compose[\w.-]*\.ya?ml|compose\.ya?ml|Dockerfile|tsconfig\.json|jsconfig\.json|schema\.prisma|vercel\.json)$/
 const PROMPT_EXT = /\.(md|txt|yaml|yml|json|jinja|j2|prompt)$/i
+const HTML = /\.html?$/i
 const NEVER = /(^\.env)|\.(pem|key|p12|pfx)$|secret|credential|id_rsa/i
 
 /** Whether a path is a test file, by its folder or its name. */
@@ -50,12 +52,18 @@ export function isTestPath(path: string): boolean {
   return false
 }
 
-/** Manifests, prompt files, source and tests, in the order they are kept when the budget runs out. */
+/** The README at the root, and the page an app starts from: they say what the system does. */
+function isGuide(path: string): boolean {
+  const name = basenameOf(path)
+  return (README.test(name) && !path.includes('/')) || (name.toLowerCase() === 'index.html' && path.split('/').length <= 2)
+}
+
+/** Manifests, the README and prompt files; then source; then tests and other pages, in the order they are kept when the budget runs out. */
 function tierOf(path: string): 0 | 1 | 2 {
   const name = basenameOf(path)
-  if (MANIFEST.test(name)) return 0
+  if (MANIFEST.test(name) || isGuide(path)) return 0
   if (PROMPT_EXT.test(name)) return 0
-  if (isTestPath(path)) return 2
+  if (isTestPath(path) || HTML.test(name)) return 2
   return 1
 }
 
@@ -80,7 +88,8 @@ export function selectFiles(tree: TreeEntry[]): { paths: string[]; truncated: bo
     if (size > MAX_FILE_BYTES) continue
     const isSource = langOf(path) !== null && !/\.d\.ts$/.test(name)
     const isPrompt = PROMPT_EXT.test(name) && path.toLowerCase().includes('prompt')
-    if (!isSource && !MANIFEST.test(name) && !isPrompt) continue
+    // Pages are read for their buttons (features.ts); README.md only at the root.
+    if (!isSource && !MANIFEST.test(name) && !isPrompt && !isGuide(path) && !HTML.test(name)) continue
     candidates.push({ path, size, tier: tierOf(path) })
   }
   candidates.sort((a, b) => a.tier - b.tier || a.path.split('/').length - b.path.split('/').length || (a.path < b.path ? -1 : 1))

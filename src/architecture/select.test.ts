@@ -86,6 +86,23 @@ describe('selectFiles', () => {
   })
 })
 
+describe('selectFiles: guide pages', () => {
+  it('reads the README at the root first, and leaves out the ones in folders', () => {
+    const { paths } = selectFiles([blob('src/app.ts'), blob('docs/README.md'), blob('README.md')])
+    expect(paths).toEqual(['README.md', 'src/app.ts'])
+  })
+
+  it('reads index.html at the root or one folder down first, and a deeper one after the code', () => {
+    const { paths } = selectFiles([blob('src/app.ts'), blob('frontend/src/index.html'), blob('frontend/index.html'), blob('index.html')])
+    expect(paths).toEqual(['index.html', 'frontend/index.html', 'src/app.ts', 'frontend/src/index.html'])
+  })
+
+  it('reads other pages after the code', () => {
+    const { paths } = selectFiles([blob('pages/about.html'), blob('src/app.ts')])
+    expect(paths).toEqual(['src/app.ts', 'pages/about.html'])
+  })
+})
+
 describe('isTestPath', () => {
   it('recognises test folders and test file names in each language', () => {
     expect(isTestPath('src/__tests__/a.ts')).toBe(true)

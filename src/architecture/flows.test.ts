@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Agent, Component, Dependency, Endpoint, External, Flow, Layer } from '../shared/studio'
 import { buildFlows, MAX_ACTORS, MAX_FLOWS, MAX_STEPS } from './flows'
 import type { FlowDetails } from './details'
+import type { Feature } from './features'
 
 const component = (id: string, layer: Layer, extra: Partial<Component> = {}): Component => ({
   id,
@@ -421,5 +422,77 @@ describe('buildFlows: plain and technical names', () => {
     expect(names.some((n) => /PostgreSQL|Resend|BullMQ|OpenAI|gpt-4o/.test(n))).toBe(false)
     const note = flows.flatMap((f) => f.actors).find((a) => a.id === 'e:ext:postgresql')?.note.pt
     expect(note).toBe('PostgreSQL guarda os dados do sistema.')
+  })
+})
+
+describe('buildFlows: what you can do', () => {
+  const components = [
+    component('frontend/pages', 'interface', { name: 'Frontend Pages' }),
+    component('backend/routes', 'api', { name: 'Backend Routes' }),
+    component('backend/services', 'logic', { name: 'Backend Services' }),
+  ]
+  const dependencies = [dep('frontend/pages', 'backend/routes')]
+  const features: Feature[] = [
+    { label: 'Passo a passo', detail: 'Mostra cada passo da receita.', via: 'button', ref: { file: 'frontend/pages/Home.tsx', line: 12 } },
+    { label: '/start', detail: 'Mostra as instruções iniciais.', via: 'command', ref: { file: 'backend/services/bot.ts', line: 4 } },
+    { label: null, detail: 'Importa planilhas de contatos.', via: 'readme', ref: null },
+  ]
+  const run = (list: Feature[]) => buildFlows({ components, dependencies, externals: [], endpoints: [], agents: [], features: list })
+
+  it('puts the features scene first, with the plain names of the parts', () => {
+    const flows = buildFlows({
+      components,
+      dependencies,
+      externals: [],
+      endpoints: [endpoint('POST', '/api/leads', 'backend/routes')],
+      agents: [],
+      features,
+    })
+    expect(flows[0].kind).toBe('features')
+    expect(flows[0].id).toBe('features')
+    expect(flows[0].title).toEqual({ pt: 'O que dá para fazer', en: 'What you can do' })
+    expect(flows[0].actors.map((a) => a.name.pt)).toEqual(['Usuário', 'Páginas', 'Regras do negócio'])
+    expect(flows.slice(1).map((f) => f.kind)).toContain('request')
+    expectWellFormed(flows[0])
+  })
+
+  it('tells a feature with a label as the person asking for it, then the part showing the result', () => {
+    const [flow] = run(features)
+    expect(flow.steps[0]).toMatchObject({
+      from: 'person',
+      to: 'c:frontend/pages',
+      action: 'ask',
+      text: { pt: 'O usuário clica em «Passo a passo»' },
+      say: { pt: 'Passo a passo' },
+      ref: { file: 'frontend/pages/Home.tsx', line: 12 },
+    })
+    expect(flow.steps[1]).toMatchObject({ from: 'c:frontend/pages', to: 'person', action: 'show', text: { pt: 'Mostra cada passo da receita.' } })
+    expect(flow.steps[2]).toMatchObject({ from: 'person', to: 'c:backend/services', action: 'ask' })
+    expect(flow.steps[3]).toMatchObject({ from: 'c:backend/services', to: 'person', action: 'show' })
+    expectWellFormed(flow)
+  })
+
+  it('tells a feature with only a sentence as one show step, with no question', () => {
+    const [flow] = run(features)
+    const last = flow.steps[flow.steps.length - 1]
+    expect(last).toMatchObject({ from: 'c:frontend/pages', to: 'person', action: 'show', text: { pt: 'Importa planilhas de contatos.' } })
+    expect(flow.steps.filter((s) => s.action === 'ask')).toHaveLength(2)
+    expect(flow.steps).toHaveLength(5)
+  })
+
+  it('leaves the scene out when there are fewer than two features', () => {
+    expect(run([features[0]]).some((f) => f.kind === 'features')).toBe(false)
+    expect(run([]).some((f) => f.kind === 'features')).toBe(false)
+  })
+
+  it('respects the step and actor limits when there are many features', () => {
+    const parts = Array.from({ length: 10 }, (_, i) => component(`part${i}/core`, 'logic'))
+    const many: Feature[] = parts.map((c, i) => ({ label: `Função ${i}`, detail: `Faz a função ${i}.`, via: 'button', ref: { file: `${c.id}/a.ts`, line: 1 } }))
+    const [flow] = buildFlows({ components: parts, dependencies: [], externals: [], endpoints: [], agents: [], features: many })
+    expect(flow.kind).toBe('features')
+    expect(flow.actors.length).toBeLessThanOrEqual(MAX_ACTORS)
+    expect(flow.steps.length).toBeLessThanOrEqual(MAX_STEPS)
+    expect(flow.steps.length).toBe(MAX_STEPS)
+    expectWellFormed(flow)
   })
 })
