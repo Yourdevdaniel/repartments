@@ -12,7 +12,8 @@ flowchart LR
   F --> G[externals.ts<br/>bancos, IA, e-mail…]
   G --> H[agents.ts<br/>agentes de IA]
   H --> P[plain.ts<br/>nomes simples]
-  P --> I[flows.ts + text.ts<br/>cenas e frases]
+  P --> J[features.ts<br/>o que dá para fazer]
+  J --> I[flows.ts + text.ts<br/>cenas e frases]
   I --> M[(ArchitectureModel)]
 ```
 
@@ -21,7 +22,7 @@ flowchart LR
 ## 1. Escolher e baixar os arquivos (`select.ts`, `fetch.ts`)
 
 1. `GET /repos/{o}/{r}` (branch principal, privado ou não), `GET /repos/{o}/{r}/commits/{branch}` (o commit) e `GET /git/trees/{sha}?recursive=1` (a árvore inteira).
-2. Entram: código (`.ts .tsx .js .jsx .mjs .cjs .vue .svelte .py .go .java .kt .rb .php .cs`), manifestos (`package.json`, `requirements*.txt`, `pyproject.toml`, `go.mod`, `composer.json`, `Gemfile`, `pom.xml`, `build.gradle`, compose, `Dockerfile`, `tsconfig.json`, `schema.prisma`…) e arquivos de texto com `prompt` no caminho (`.md .txt .yaml .json .jinja…`).
+2. Entram: código (`.ts .tsx .js .jsx .mjs .cjs .vue .svelte .py .go .java .kt .rb .php .cs`), manifestos (`package.json`, `requirements*.txt`, `pyproject.toml`, `go.mod`, `composer.json`, `Gemfile`, `pom.xml`, `build.gradle`, compose, `Dockerfile`, `tsconfig.json`, `schema.prisma`…) e arquivos de texto com `prompt` no caminho (`.md .txt .yaml .json .jinja…`). Também entram o `README` da raiz e o `index.html` (até uma pasta de profundidade) no primeiro nível, e outros `.html` mais ao fundo, depois do código. Esses arquivos servem só à leitura de funcionalidades (seção 10): não entram na análise de código.
 3. Ficam de fora: `node_modules/`, `dist/`, `build/`, `.next/`, `vendor/`, `coverage/`, ambientes virtuais, arquivos minificados, lockfiles, `*.d.ts`, arquivos acima de 200 KB e, **sempre**, `.env*`, `*.pem`, `*.key` e afins.
 4. Orçamento: até **700 arquivos e 7 MB**. Prioridade: manifestos, depois código (das pastas mais rasas para as mais fundas), testes por último. Se algo ficou de fora, `stats.truncated` avisa e o mapa mostra uma nota.
 5. Os textos vêm pela API GraphQL, em lotes de 60 arquivos, 4 lotes por vez, com o progresso mostrado na tela.
@@ -76,6 +77,7 @@ O mapa desenha esse grafo (`src/studio/map/AgentGraph.tsx`) e a apresentação e
 
 Até 6 cenas, com no máximo 7 participantes e 14 passos cada, nesta ordem:
 
+0. **O que dá para fazer**, antes de todas, se a seção 10 achou 2 ou mais funcionalidades: cada funcionalidade com nome vira um pedido da pessoa (“Passo a passo”) e a resposta da parte que a atende; a que só tem uma frase vira um passo de “mostrar”.
 1. **Como o agente decide** (até 2 agentes): a mensagem chega, o agente lê as instruções, pergunta ao modelo, escolhe entre as ferramentas, usa até duas, pergunta de novo se houver laço e responde.
 2. **Pedidos** (até 3 rotas, as de cadeia mais longa, preferindo criar e listar): a pessoa usa a tela, a tela pede à API, a segurança confere, a API passa às regras, as regras buscam ou guardam no banco, e-mails e tarefas saem, a resposta volta e aparece na tela.
 3. **Tarefas em segundo plano**, se houver fila: alguém deixa a tarefa, o trabalhador pega e conclui.
@@ -109,6 +111,26 @@ Quem assiste não programa, então nenhum nome de pasta, de função, de marca o
 As frases usam o nome simples com o artigo e a preposição certos ("a recepção passa o trabalho para as regras do negócio", "no banco de dados"); quando a tela tem título e a parte não foi batizada por ele, a legenda diz qual tela ("O usuário abre “Leads” nas páginas…"). O resumo do sistema também é simples: "O crm tem 12 partes: as telas, a recepção, o porteiro… Usa um banco de dados, uma fila de tarefas, um modelo de IA e um serviço de e-mail."
 
 Como cada legenda nomeia seus participantes pelo nome simples, a apresentação troca um pelo outro palavra a palavra (`applyEdits` em `src/scene/tour.ts`): é assim que as perguntas "Antes de apresentar" mostram os nomes do código e que os nomes escolhidos à mão chegam às legendas ([ADR 0004](adr/0004-apresentacao-no-motor-de-historias.md)).
+
+## 10. Funcionalidades (`features.ts`)
+
+A arquitetura diz como as partes conversam, mas não o que o sistema faz para quem o usa: que uma página desenha uma árvore passo a passo, que um bot responde a `/start`. Isso está nas palavras do próprio autor, então o estúdio lê três lugares, sem inventar nada:
+
+- **O README da raiz.** A frase de abertura (o `about`: a primeira frase depois do título, pulando selos e imagens) e os itens das seções que falam do que o projeto faz (“Funcionalidades”, “Como usar”, “What it does”, “O que o site faz”, “Features”…). Entram bullets com nome em negrito (`- **Passo a passo:** roda mostrando cada linha.`), parágrafos que começam em negrito e linhas de tabela. Seções de instalação, execução, tecnologias, licença e testes ficam de fora, e blocos de código são ignorados. Antes do primeiro `##`, só entram bullets com nome em negrito.
+- **Os botões das telas** (`.jsx .tsx .vue .svelte .html`): o texto visível, o `aria-label` ou o `title`. Reconhece `onClick`, `@click`, `(click)` e `<input type="submit">`. Botões de ir e vir (“Fechar”, “Voltar”, “Próximo”, “Sair”…) e textos que são só uma expressão `{x}` ficam de fora.
+- **Os comandos**: `/start` de bots (python-telegram-bot e parecidos) e subcomandos de ferramentas de terminal (argparse, commander, typer, click), com a ajuda do comando como detalhe.
+
+Regras:
+
+- O nome fica no idioma do autor, sem emoji, negrito ou pontuação sobrando (“📂 Importar / 💾 Exportar” vira “Importar / Exportar”). Nome com mais de 48 caracteres é frase, não nome; o detalhe tem no máximo 110 caracteres.
+- Quando o README e o código dizem a mesma coisa (um botão com o mesmo nome de um item), o item vai primeiro e ganha o arquivo e a linha do botão (`ref`) e o jeito de chegar (`via: 'button'`). O que só o README diz vem em seguida, e depois o que só o código diz.
+- No máximo **6** funcionalidades por repositório.
+
+Fallback do `about`, nesta ordem: a frase do README, a descrição do repositório no GitHub (`repo.description`), o `<title>` do `index.html` (sem “Vite + React”, “React App” e títulos de modelo). O `about` abre o resumo do sistema.
+
+Por que README e `.html` ficam fora da análise de código: não têm imports nem rotas e, se entrassem, virariam partes e camadas falsas. Citar “PostgreSQL” num README também não cria um serviço de banco. Por isso `isDocument` os tira antes de partes, rotas e serviços, e a contagem de partes do resumo não inclui os testes.
+
+Limites: um README fraco dá uma cena fraca; o texto vem no idioma do autor, sem tradução; botões montados com texto vindo de variáveis não são lidos; sem README, botão nem comando, a cena não aparece.
 
 ## Limites conhecidos
 
