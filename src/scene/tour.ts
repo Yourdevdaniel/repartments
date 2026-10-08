@@ -279,6 +279,16 @@ const ACTION: Record<StepAction, { prop: 'letter' | 'box'; icon: string; anim: '
   send: { prop: 'letter', icon: '📤', anim: 'interact-left', done: '🚀' },
 }
 
+/**
+ * Seconds a caption needs on screen to be read at a calm pace: about three words a second plus a
+ * moment to look up, never less than 2.6 s nor more than 9 s. The longer of the two languages counts,
+ * since the story's timing is shared by both.
+ */
+export function readingTime(text: Text): number {
+  const words = Math.max(...[text.pt, text.en].map((t) => t.trim().split(/\s+/).filter(Boolean).length))
+  return Math.min(9, Math.max(2.6, 1 + words / 3))
+}
+
 const KIND_LABEL: Record<Flow['kind'], { name: Text; color: string }> = {
   authored: { name: { en: "Author's script", pt: 'Roteiro do autor' }, color: '#7c5cff' },
   features: { name: { en: 'Features', pt: 'Funcionalidades' }, color: '#e05d8c' },
@@ -558,6 +568,8 @@ export function buildTour(flow: Flow, lang: 'en' | 'pt', options: TourOptions = 
 
   for (const step of steps) {
     const look = ACTION[step.action]
+    // The step lasts at least as long as its caption takes to read; the extra time goes to the moment after the hand-over.
+    const hold = readingTime(step.text)
     const icon = look.icon
     const other = look.prop === 'letter' ? 'box' : 'letter'
 
@@ -570,10 +582,10 @@ export function buildTour(flow: Flow, lang: 'en' | 'pt', options: TourOptions = 
         acts[id] = { path: route(pos(id), home(id)) }
         where.set(id, { home: true })
         beats.push({ caption: caption(step, icon), dur: 0.8, acts })
-        beats.push({ dur: 1.8, say: { [id]: bubble(icon, step.say) }, acts: { [id]: { anim: look.anim, face: faces.get(id) } }, flags: step.action === 'show' ? { tv: true } : undefined })
+        beats.push({ dur: Math.max(1.8, hold - 0.8), say: { [id]: bubble(icon, step.say) }, acts: { [id]: { anim: look.anim, face: faces.get(id) } }, flags: step.action === 'show' ? { tv: true } : undefined })
       } else {
         acts[id] = { anim: step.action === 'decide' ? 'idle' : look.anim, face: faces.get(id) }
-        beats.push({ caption: caption(step, icon), dur: 1.9, say: { [id]: bubble(icon, step.say) }, acts, flags: step.action === 'show' ? { tv: true } : undefined })
+        beats.push({ caption: caption(step, icon), dur: Math.max(1.9, hold), say: { [id]: bubble(icon, step.say) }, acts, flags: step.action === 'show' ? { tv: true } : undefined })
       }
       if (step.action === 'decide') {
         beats.push({ dur: 1.1, say: { [id]: { icon: look.done } }, acts: { [id]: { anim: 'emote-yes', face: [home(id)[0], 2] } } })
@@ -596,7 +608,7 @@ export function buildTour(flow: Flow, lang: 'en' | 'pt', options: TourOptions = 
       } else acts[from] = { anim: 'interact-right', face: faces.get(from) }
       beats.push({ caption: caption(step, icon), dur: 0.9, props, say: { [from]: bubble(icon, step.say) }, acts })
       beats.push({
-        dur: 1.3,
+        dur: Math.max(1.3, hold - 0.9),
         props: { [look.prop]: to },
         say: { [to]: { icon: look.done } },
         acts: { [from]: { anim: 'interact-right', face: wt.at }, [to]: { anim: look.anim === 'pick-up' ? 'emote-yes' : look.anim, face: home(from) } },
@@ -616,7 +628,7 @@ export function buildTour(flow: Flow, lang: 'en' | 'pt', options: TourOptions = 
     // A caption needs a moment on screen even when nobody has to walk.
     beats.push({ caption: caption(step, icon), dur: 0.9, props, say: { [from]: bubble(icon, step.say) }, acts })
     beats.push({
-      dur: 1.5,
+      dur: Math.max(1.5, hold - 0.9),
       props: { [look.prop]: to },
       say: { [to]: { icon: look.done } },
       acts: { [to]: { anim: look.anim, face: look.anim === 'pick-up' ? faces.get(to) : meet }, [from]: { anim: 'idle', face: home(to) } },

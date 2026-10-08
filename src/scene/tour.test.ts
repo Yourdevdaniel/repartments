@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Actor, Flow, FlowStep } from '../shared/studio'
 import { flagAt, propAt, sample } from './story'
-import { actorKey, applyEdits, buildTour, CODE, NO_EDITS, renameParts } from './tour'
+import { actorKey, applyEdits, buildTour, CODE, NO_EDITS, readingTime, renameParts } from './tour'
 
 const t = (en: string, pt = en) => ({ en, pt })
 const actor = (id: string, kind: Actor['kind'], name: string, component: string | null = null): Actor => ({
@@ -80,6 +80,23 @@ describe('buildTour', () => {
     expect(flat.repo).toBe('Criar leads')
     expect(flat.cast.map((c) => c.tech)).toEqual(['User', 'Leads Screen', 'Leads API', 'Lead Service', 'PostgreSQL'])
     expect(new Set(flat.cast.map((c) => c.model)).size).toBe(flat.cast.length)
+  })
+
+  it('keeps each caption up long enough to read it, longer for a long sentence', () => {
+    const long = 'O usuário preenche o formulário com o nome, o e-mail, o telefone e a empresa do novo lead e clica em salvar'
+    const slow: Flow = { ...request, steps: request.steps.map((s, i) => (i === 0 ? { ...s, text: t(long) } : s)) }
+    const captions = buildTour(slow, 'en').stories.main.captions
+    // A caption stays up until the next one starts.
+    const shown = captions.slice(0, -1).map((c, i) => captions[i + 1].t0 - c.t0)
+    shown.forEach((span, i) => expect(span).toBeGreaterThanOrEqual(readingTime(captions[i].caption) - 0.01))
+    expect(shown[0]).toBeGreaterThan(shown[1])
+  })
+
+  it('reads at about three words a second, between 2.6 and 9 seconds', () => {
+    expect(readingTime(t('Salvo'))).toBe(2.6)
+    expect(readingTime(t('um dois três quatro cinco seis sete oito nove dez onze doze'))).toBe(5)
+    expect(readingTime(t('palavra '.repeat(60)))).toBe(9)
+    expect(readingTime({ en: 'short', pt: 'uma frase bem mais longa em português do que em inglês aqui' })).toBe(5)
   })
 
   it('narrates every step in order, in both languages', () => {
