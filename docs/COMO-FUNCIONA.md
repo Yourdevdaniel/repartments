@@ -208,6 +208,7 @@ Sem login: **Ver um exemplo** abre um CRM de exemplo (com assistente de vendas d
 O repositório vira um prédio em que **cada andar é uma cena**:
 
 - **Conheça o sistema** (térreo): um guia visita as partes principais e cada uma diz, numa frase, o que faz.
+- **O que dá para fazer**: as funcionalidades do projeto, lidas do README, dos botões das telas e dos comandos, cada uma encenada como um pedido da pessoa e a resposta da parte que a atende ([ADR 0009](adr/0009-funcionalidades-pelo-readme-e-pela-interface.md)).
 - **Como o agente decide**: a mensagem chega, o agente lê as instruções, pergunta ao modelo de IA, escolhe entre as ferramentas, usa a que precisa e responde.
 - **Pedidos** ("Criar leads", "Ver clientes"…): a tela pede, a segurança confere, as regras trabalham, o banco guarda ou entrega, o e-mail sai, a resposta aparece na tela.
 - **Tarefas em segundo plano**, quando há fila.
