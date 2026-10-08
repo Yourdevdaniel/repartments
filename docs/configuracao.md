@@ -76,6 +76,8 @@ Três verificações automáticas cuidam de que o segredo não vaze:
 
 E, na configuração:
 
+- [ ] A política de privacidade (`src/privacy/policy.ts`) tem um contato de verdade em `CONTROLLER.contact`, o DPA da Vercel foi aceito na conta e o registro em [privacidade.md](privacidade.md) está em dia.
+
 - [ ] `.env.local` não está no git (`git status` não mostra; o `.gitignore` cobre `.env*`).
 - [ ] O app do GitHub pede só leitura (GitHub App) ou `public_repo` se privados não forem necessários.
 - [ ] `GITHUB_CLIENT_SECRET` só no ambiente do servidor (`.env.local` ignorado pelo git, ou variável *Sensitive* na Vercel). Nunca no código, no repositório ou no navegador.
