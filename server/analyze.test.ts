@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { analyze, residentsFrom, signals, statusOf } from './analyze'
 import { alias, type RawRepo } from './github'
-import { buildingFor, USERNAME } from './handler'
+import { buildingFor, canonicalQuery, USERNAME } from './handler'
+import { expiringSoon } from './github'
 
 function repo(files: Record<string, string | true>, extra: Partial<RawRepo> = {}): RawRepo {
   const r: RawRepo = {
@@ -276,5 +277,37 @@ describe('buildingFor', () => {
 
   it('answers 503 when the server has no token', async () => {
     expect((await buildingFor('x', undefined)).status).toBe(503)
+  })
+})
+
+describe('canonicalQuery', () => {
+  it('leaves the URLs the site itself asks for alone', () => {
+    expect(canonicalQuery('?user=octocat')).toBeNull()
+    expect(canonicalQuery('?user=octocat&after=Y3Vyc29yOjEy%3D%3D')).toBeNull()
+  })
+
+  it('folds case changes and extra parameters into the one cached URL', () => {
+    expect(canonicalQuery('?user=OctoCat')).toBe('?user=octocat')
+    expect(canonicalQuery('?user=octocat&_=123')).toBe('?user=octocat')
+    expect(canonicalQuery('?_=1&after=abc&user=Octocat')).toBe('?user=octocat&after=abc')
+  })
+
+  it('has nothing to fold without a user', () => {
+    expect(canonicalQuery('')).toBeNull()
+    expect(canonicalQuery('?_=1')).toBeNull()
+  })
+})
+
+describe('expiringSoon', () => {
+  const now = new Date('2026-10-06T12:00:00Z')
+
+  it('warns in the last two weeks of the token', () => {
+    expect(expiringSoon('2026-10-15 09:00:00 UTC', now)).toBe(true)
+    expect(expiringSoon('2026-12-01 09:00:00 UTC', now)).toBe(false)
+  })
+
+  it('stays quiet when GitHub sends no date it can read', () => {
+    expect(expiringSoon(null, now)).toBe(false)
+    expect(expiringSoon('someday', now)).toBe(false)
   })
 })

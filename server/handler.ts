@@ -12,6 +12,22 @@ export const USERNAME = /^[a-zA-Z\d](?:[a-zA-Z\d]|-(?=[a-zA-Z\d])){0,38}$/
 /** GitHub's page cursors are short base64 strings. */
 const CURSOR = /^[A-Za-z0-9+/=_-]{1,200}$/
 
+/**
+ * The one URL each building is cached under at the edge, when `search` isn't it already (other case,
+ * extra parameters, another order); null when it is. The function redirects there, so those
+ * variations can't skip the cache and spend the GitHub token's hourly quota.
+ */
+export function canonicalQuery(search: string): string | null {
+  const params = new URLSearchParams(search)
+  const user = params.get('user')
+  if (!user) return null
+  const canonical = new URLSearchParams({ user: user.toLowerCase() })
+  const after = params.get('after')
+  if (after) canonical.set('after', after)
+  const wanted = `?${canonical}`
+  return search === wanted ? null : wanted
+}
+
 /** `long` for answers worth keeping an hour, `brief` for a building GitHub was too slow to finish. */
 export type Answer = { status: number; body: Building | BuildingError; cache: 'long' | 'brief' | false }
 
@@ -41,6 +57,8 @@ export async function buildingFor(login: string | null, token: string | undefine
     }
   } catch (err) {
     if (err instanceof GitHubError) {
+      // An expired or revoked token breaks every building: say so where the owner will look.
+      if (err.message.includes('token')) console.error(`[repartments] ${err.message}: make a new GITHUB_TOKEN and update it on Vercel.`)
       const status = err.kind === 'not-found' ? 404 : err.kind === 'rate-limited' ? 429 : 502
       return { status, body: { error: err.kind }, cache: err.kind === 'not-found' ? 'long' : false }
     }
