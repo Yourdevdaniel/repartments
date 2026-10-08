@@ -58,6 +58,10 @@ For the studio:
 - **A strict CSP with Trusted Types** (`script-src 'self'`, `connect-src 'self' https://api.github.com`, `require-trusted-types-for 'script'`) shuts the usual doors to injected scripts.
 - **Code stays with its owner.** The analysis runs in the browser of the person signed in with access to the repo; the code comes straight from GitHub and never reaches Repartments' server or any AI service. `.env` files, keys and certificates are never read. A saved presentation holds the script and file names, never code.
 
+## Privacy
+
+The site has no sign-up, no database and no advertising cookies. The privacy policy is at `/privacidade` (or `/privacy`), linked from every page and next to the sign-in button; it covers what is handled under Brazil's LGPD, why, for how long, who else is involved (GitHub, Vercel) and how to use one's rights. A presentation with commits can be saved without their authors' names. The internal record of these operations is [docs/privacidade.md](docs/privacidade.md), and [ADR 0011](docs/adr/0011-privacidade-e-lgpd.md) the decision.
+
 Found a security problem? Please report it privately through the repo's **Security → Report a vulnerability**, not in a public issue.
 
 ## Documentation (in Portuguese)

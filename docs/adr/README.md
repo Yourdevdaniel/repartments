@@ -14,6 +14,7 @@ Cada decisão que muda a forma do sistema fica registrada aqui, no formato [MADR
 | [0008](0008-continuar-com-github.md) | Botão "Continuar com GitHub", com o segredo só para trocar o código | Aceito |
 | [0009](0009-funcionalidades-pelo-readme-e-pela-interface.md) | O que o sistema faz vem do README e da interface, não só da arquitetura | Aceito |
 | [0010](0010-roteiro-do-autor.md) | Roteiro do autor: um repartments.json escrito pela IA do cliente, sem LLM no estúdio | Aceito |
+| [0011](0011-privacidade-e-lgpd.md) | Privacidade e LGPD: política no site, aviso no login, salvar sem nomes e registro das operações | Aceito |
 
 Para uma decisão nova, copie o modelo abaixo para `NNNN-titulo-curto.md` e adicione a linha na tabela.
 
