@@ -27,6 +27,12 @@ const w = {
     en: "Paste it into the AI you use (ideally one that can see the repo). It sends back a repartments.json file, which you import here. The studio sends nothing; the text has file names, names from the code and descriptions, not the files' contents, and that AI's own terms apply to what you give it.",
     pt: 'Cole na IA que você usa (de preferência uma que acesse o repositório). Ela devolve um arquivo repartments.json, que você importa aqui. O estúdio não envia nada; o texto leva nomes de arquivos, nomes tirados do código e descrições, não o conteúdo dos arquivos, e o que você entregar à IA segue os termos dela.',
   },
+  view: { en: 'See the prompt', pt: 'Ver o prompt' },
+  promptLabel: { en: 'The prompt for the AI', pt: 'O prompt para a IA' },
+  promptLead: {
+    en: "This is what goes to the AI: Repartments' rules, the request and a draft of what the studio read. Paste it into the AI you use (the studio sends nothing), then bring the answer back with Script → Paste the AI's answer.",
+    pt: 'Este é o texto que vai para a IA: as regras do Repartments, o pedido e o rascunho do que o estúdio leu. Cole na IA que você usa (o estúdio não envia nada) e depois traga a resposta em Roteiro → Colar a resposta da IA.',
+  },
   import: { en: 'Import script from a file…', pt: 'Importar roteiro de um arquivo…' },
   paste: { en: "Paste the AI's answer…", pt: 'Colar a resposta da IA…' },
   pasteHint: {
@@ -87,6 +93,33 @@ function said(state: Copied, idle: L): L {
   return state === 'copied' ? w.copied : state === 'file' ? w.savedAsFile : idle
 }
 
+/** The prompt in full, to read before copying it: the same text "Copy prompt for the AI" copies. */
+export function PromptPanel({ prompt, lang }: { prompt: string; lang: Lang }) {
+  const [copied, copy] = useCopy()
+  return (
+    <div>
+      <p className="text-[11px] leading-snug text-ink-soft">{w.promptLead[lang]}</p>
+      <textarea
+        readOnly
+        value={prompt}
+        rows={8}
+        spellCheck={false}
+        aria-label={w.promptLabel[lang]}
+        onFocus={(e) => e.currentTarget.select()}
+        className="mt-2 w-full resize-y rounded-xl border border-ink/10 bg-white p-2 font-mono text-[11px] leading-snug text-ink"
+      />
+      <button
+        type="button"
+        onClick={() => void copy(prompt, 'repartments-prompt.txt')}
+        className="mt-1 h-8 rounded-full bg-ink px-3 text-xs font-extrabold text-white"
+        title={w.copyTitle[lang]}
+      >
+        📋 {said(copied, w.copyPrompt)[lang]}
+      </button>
+    </div>
+  )
+}
+
 type MenuProps = {
   model: ArchitectureModel
   /** The scenes on screen with the presenter's edits, for the export. */
@@ -106,10 +139,12 @@ export function AuthoredMenu({ model, flows, lang, showingAutomatic, onShowAutom
   const [copied, copy] = useCopy()
   const [error, setError] = useState<string | null>(null)
   const [pasting, setPasting] = useState(false)
+  const [viewing, setViewing] = useState(false)
   const [pasted, setPasted] = useState('')
   const close = () => {
     menu.current?.removeAttribute('open')
     setPasting(false)
+    setViewing(false)
   }
   const item = 'block w-full rounded-xl px-3 py-2 text-left text-xs font-extrabold text-ink hover:bg-ink/[0.06]'
 
@@ -136,11 +171,19 @@ export function AuthoredMenu({ model, flows, lang, showingAutomatic, onShowAutom
       <summary className="flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-full bg-white/80 px-3.5 text-xs font-extrabold text-ink transition-colors hover:bg-white">
         📝 {w.script[lang]} <span className="font-bold text-ink-soft">· {(model.authored && !showingAutomatic && !refused(model) ? w.fromAuthor : w.fromCode)[lang]}</span>
       </summary>
-      <div className="absolute right-0 z-30 mt-2 w-72 rounded-[22px] border border-white/80 bg-white p-2 shadow-[0_18px_50px_-22px_rgba(40,52,110,0.45)]">
+      <div className={`absolute right-0 z-30 mt-2 ${viewing ? 'w-[min(34rem,calc(100vw-2rem))]' : 'w-72'} rounded-[22px] border border-white/80 bg-white p-2 shadow-[0_18px_50px_-22px_rgba(40,52,110,0.45)]`}>
         <button type="button" onClick={copyPrompt} className={item} title={w.copyTitle[lang]}>
           📋 {said(copied, w.copyPrompt)[lang]}
         </button>
         <p className="px-3 pb-2 text-[11px] leading-snug text-ink-soft">{w.copyHint[lang]}</p>
+        <button type="button" onClick={() => setViewing((v) => !v)} className={item} aria-expanded={viewing}>
+          👁 {w.view[lang]}
+        </button>
+        {viewing && (
+          <div className="px-3 pb-2">
+            <PromptPanel prompt={authorPrompt(model)} lang={lang} />
+          </div>
+        )}
         <button type="button" onClick={() => file.current?.click()} className={item} title={w.importTitle[lang]}>
           📂 {w.import[lang]}
         </button>

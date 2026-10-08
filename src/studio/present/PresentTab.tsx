@@ -10,6 +10,7 @@ import type { Lang } from '../../ui/roles'
 import { scriptFlows } from './intro'
 import { ScriptEditor } from './ScriptEditor'
 import { Theater } from './Theater'
+import { authorPrompt } from '../authorPrompt'
 
 const w = {
   scenes: { en: 'Scenes', pt: 'Cenas' },
@@ -91,7 +92,9 @@ export function PresentTab({ model, edits, onEdits, lang }: { model: Architectur
           subtitle: (model.automatic ? w.authoredOn : w.readOn)(new Intl.DateTimeFormat(lang === 'pt' ? 'pt-BR' : 'en', { dateStyle: 'long' }).format(new Date(model.generatedAt)))[lang],
         }}
       />
-      {editing && <ScriptEditor flows={generated} edits={edits} onChange={onEdits} lang={lang} onClose={() => setEditing(false)} keyOf={actorKey} />}
+      {editing && (
+        <ScriptEditor flows={generated} edits={edits} onChange={onEdits} lang={lang} onClose={() => setEditing(false)} keyOf={actorKey} prompt={authorPrompt(model)} />
+      )}
     </>
   )
 }

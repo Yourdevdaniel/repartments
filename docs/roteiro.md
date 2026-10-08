@@ -102,6 +102,7 @@ Se o `commit` do roteiro é diferente do commit aberto (um não é prefixo do ou
 O menu **Roteiro** do estúdio tem:
 
 - **Copiar prompt para a IA**: copia o texto da seção abaixo, já com o repositório, a branch, o commit e um rascunho do que o estúdio leu. Cole na IA da sua escolha (de preferência com acesso ao repositório) e peça o arquivo.
+- **Ver o prompt**: mostra o mesmo texto inteiro antes de copiar, para conferir o que vai para a IA. Ele também aparece no topo de **Editar roteiro**, em "Pedir para uma IA escrever o roteiro inteiro".
 - **Importar roteiro de um arquivo…**: escolha o `repartments.json` (ou o arquivo com a resposta da IA).
 - **Colar a resposta da IA…**: cole a resposta inteira num campo de texto; o estúdio acha o bloco ```json nela, como faria com o arquivo. Os avisos aparecem na tela; **Copiar pedido de correção para a IA** gera um texto para colar de volta na mesma IA, listando o que deve ser consertado.
 - **Exportar roteiro**: baixa um `repartments.json` do que o estúdio mostra agora (partes, cenas e as edições feitas). Salvar esse arquivo na raiz do repositório faz as edições viajarem com o código.

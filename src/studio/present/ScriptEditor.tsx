@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import type { Actor, Flow } from '../../shared/studio'
 import { NO_EDITS, type ScriptEdits } from '../../scene/tour'
 import type { Lang } from '../../ui/roles'
+import { PromptPanel } from '../Authored'
 
 const w = {
   title: { en: 'Edit the script', pt: 'Editar o roteiro' },
@@ -15,6 +16,7 @@ const w = {
     en: 'Changes apply to the language on screen and are saved in this browser (and in the saved presentation).',
     pt: 'As mudanças valem para o idioma da tela e ficam salvas neste navegador (e na apresentação salva).',
   },
+  askAi: { en: 'Have an AI write the whole script', pt: 'Pedir para uma IA escrever o roteiro inteiro' },
   people: { en: 'Residents', pt: 'Moradores' },
   peopleLead: { en: 'Renaming one renames it in every scene.', pt: 'Renomear um muda o nome em todas as cenas.' },
   scenes: { en: 'Scenes', pt: 'Cenas' },
@@ -35,6 +37,7 @@ export function ScriptEditor({
   lang,
   onClose,
   keyOf,
+  prompt,
 }: {
   /** The scenes as generated (before edits), in order. */
   flows: Flow[]
@@ -43,6 +46,8 @@ export function ScriptEditor({
   lang: Lang
   onClose: () => void
   keyOf: (a: Actor) => string
+  /** The prompt for an AI to write the whole script, offered at the top. */
+  prompt?: string
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
 
@@ -81,6 +86,14 @@ export function ScriptEditor({
           </button>
         </header>
         <div className="overflow-y-auto px-5 py-4">
+          {prompt && (
+            <details className="mb-5 rounded-2xl border border-ink/10 bg-white/70 p-3">
+              <summary className="cursor-pointer text-sm font-extrabold">🤖 {w.askAi[lang]}</summary>
+              <div className="mt-2">
+                <PromptPanel prompt={prompt} lang={lang} />
+              </div>
+            </details>
+          )}
           <h3 className="text-sm font-extrabold">{w.people[lang]}</h3>
           <p className="text-xs text-ink-soft">{w.peopleLead[lang]}</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
