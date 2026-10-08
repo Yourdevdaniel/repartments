@@ -25,7 +25,7 @@ import { Backdrop } from '../../ui/Backdrop'
 import { glass, LoopStrip } from '../../ui/kit'
 import type { L, Lang } from '../../ui/roles'
 import type { Deck } from '../export/deck'
-import { canRecord, compositor, fontsReady, recordCanvas, videoFileName, type Overlay } from '../export/video'
+import { canRecord, compositor, fontsReady, framePacer, recordCanvas, videoBitrate, videoFileName, type Overlay } from '../export/video'
 import { saveBlob } from '../store'
 import { PlaybackBar, pw, RATES, rateLabel, ShortcutsHelp } from './Playback'
 import { PresentSetup, type SetupOptions } from './PresentSetup'
@@ -346,12 +346,28 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     cancelled.current = false
     const comp = compositor()
     recorder.current = { comp, rec: null }
+    let steady = false
+    // Loaded and running smoothly: the video starts here, from the first scene's beginning. As on
+    // entering a scene, the last step's caption, shown before the first one starts, isn't its end.
+    const pace = framePacer(() => {
+      steady = true
+      if (!clock.current) return
+      clock.current.current = 0
+      seenStart.current = false
+      reachedEnd.current = false
+    })
     // Frames count once the first scene is on: no building, no veil, at the start of the file.
     sink.current = (canvas) => {
       const r = recorder.current
       if (!r || !insideRef.current) return
-      r.rec ??= recordCanvas(r.comp.canvas)
-      r.comp.draw(canvas, overlay.current)
+      // The refresh this frame is drawn for, the same all through the frame.
+      const now = Number(document.timeline.currentTime ?? performance.now())
+      const kept = pace.keep(now)
+      // The recorder starts once the frame rate is known (it sets the bit rate), paused until the
+      // scene runs steadily: every frame meanwhile warms its encoder up.
+      if (!r.rec && pace.fps) r.rec = recordCanvas(r.comp.canvas, videoBitrate(pace.fps))
+      if (steady) r.rec?.resume()
+      if (kept || !steady) r.comp.draw(canvas, overlay.current, now)
     }
     setHelp(false)
     setHud(true)
