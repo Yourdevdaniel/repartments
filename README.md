@@ -13,6 +13,7 @@ Switch to **Studio** at the top (or go to `/studio`) and sign in with GitHub to 
 - **How it works:** the repo becomes a building where every floor is a scene: what the project lets you do (read from its README, buttons and commands), the main parts introducing themselves, a request going through the system, an AI agent reading its instructions and choosing its tools, a background job. The parts, as residents, act it out in an office floor plan, walking round the furniture, with plain-language captions in the system's own words (the form's fields, what gets saved, the e-mail's subject). Before presenting, a few yes/no questions (each with an example) choose plain names or the code's own for the system's parts, the AI's tools and the outside services. Edit the script in your client's words, present it full screen with video-player controls and keys (pause, step by step, start and end, half to double speed, hide the controls; `?` lists them), save it as a file and open it later without signing in, or download it as an MP4 video (captions drawn in) or a PowerPoint (a slide per scene, with a picture and the steps), both made in the browser.
 - **Commits:** another building where every floor is a commit: its author walks in and visits each part of the system they changed, and the more a part changed, the warmer its room. The ground floor shows which parts change the most.
 - **Map:** the parts in bands (screens, API, security, business logic, AI, jobs, data), the arrows between them, the outside services they use, each AI agent's decision graph, and the commit heat on top.
+- **Author's script:** a `repartments.json` at the repo's root (or imported in the studio) lets whoever knows the system say what it is, name its parts and pick the scenes, replacing the ones read from the code; the studio offers a prompt to copy so your own AI can write it, and sends nothing anywhere. Format, JSON Schema and the full prompt: [docs/roteiro.md](docs/roteiro.md).
 
 No sign-in? "See an example" opens a made-up CRM with an AI sales assistant.
 
@@ -68,6 +69,7 @@ Found a security problem? Please report it privately through the repo's **Securi
 | [analise.md](docs/analise.md) | How the studio reads a repo: files, imports, parts, routes, AI agents, scenes. |
 | [api.md](docs/api.md) | Every endpoint, its parameters, answers and errors. |
 | [configuracao.md](docs/configuracao.md) | Environment variables, creating the GitHub App, running and deploying. |
+| [roteiro.md](docs/roteiro.md) | The author's script (`repartments.json`): format, limits, schema and the prompt to copy. |
 | [adr/](docs/adr/README.md) | Architecture decision records. |
 
 ## Credits

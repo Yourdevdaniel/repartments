@@ -14,7 +14,8 @@ flowchart LR
   H --> P[plain.ts<br/>nomes simples]
   P --> J[features.ts<br/>o que dá para fazer]
   J --> I[flows.ts + text.ts<br/>cenas e frases]
-  I --> M[(ArchitectureModel)]
+  I --> R[authored.ts<br/>roteiro do autor]
+  R --> M[(ArchitectureModel)]
 ```
 
 `analyzeRepository()` (em `index.ts`) faz as leituras no GitHub; `buildModel()` é **puro**: a mesma árvore e os mesmos textos dão sempre o mesmo modelo, e é ele que os testes exercitam com um CRM de exemplo (`fixtures.ts`).
@@ -22,7 +23,7 @@ flowchart LR
 ## 1. Escolher e baixar os arquivos (`select.ts`, `fetch.ts`)
 
 1. `GET /repos/{o}/{r}` (branch principal, privado ou não), `GET /repos/{o}/{r}/commits/{branch}` (o commit) e `GET /git/trees/{sha}?recursive=1` (a árvore inteira).
-2. Entram: código (`.ts .tsx .js .jsx .mjs .cjs .vue .svelte .py .go .java .kt .rb .php .cs`), manifestos (`package.json`, `requirements*.txt`, `pyproject.toml`, `go.mod`, `composer.json`, `Gemfile`, `pom.xml`, `build.gradle`, compose, `Dockerfile`, `tsconfig.json`, `schema.prisma`…) e arquivos de texto com `prompt` no caminho (`.md .txt .yaml .json .jinja…`). Também entram o `README` da raiz e o `index.html` (até uma pasta de profundidade) no primeiro nível, e outros `.html` mais ao fundo, depois do código. Esses arquivos servem só à leitura de funcionalidades (seção 10): não entram na análise de código.
+2. Entram: código (`.ts .tsx .js .jsx .mjs .cjs .vue .svelte .py .go .java .kt .rb .php .cs`), manifestos (`package.json`, `requirements*.txt`, `pyproject.toml`, `go.mod`, `composer.json`, `Gemfile`, `pom.xml`, `build.gradle`, compose, `Dockerfile`, `tsconfig.json`, `schema.prisma`…) e arquivos de texto com `prompt` no caminho (`.md .txt .yaml .json .jinja…`). Também entram o `README` da raiz e o `index.html` (até uma pasta de profundidade) no primeiro nível, e outros `.html` mais ao fundo, depois do código. Esses arquivos servem só à leitura de funcionalidades (seção 10): não entram na análise de código. O mesmo vale para o `repartments.json` da raiz (seção 11).
 3. Ficam de fora: `node_modules/`, `dist/`, `build/`, `.next/`, `vendor/`, `coverage/`, ambientes virtuais, arquivos minificados, lockfiles, `*.d.ts`, arquivos acima de 200 KB e, **sempre**, `.env*`, `*.pem`, `*.key` e afins.
 4. Orçamento: até **700 arquivos e 7 MB**. Prioridade: manifestos, depois código (das pastas mais rasas para as mais fundas), testes por último. Se algo ficou de fora, `stats.truncated` avisa e o mapa mostra uma nota.
 5. Os textos vêm pela API GraphQL, em lotes de 60 arquivos, 4 lotes por vez, com o progresso mostrado na tela.
@@ -131,6 +132,10 @@ Fallback do `about`, nesta ordem: a frase do README, a descrição do repositór
 Por que README e `.html` ficam fora da análise de código: não têm imports nem rotas e, se entrassem, virariam partes e camadas falsas. Citar “PostgreSQL” num README também não cria um serviço de banco. Por isso `isDocument` os tira antes de partes, rotas e serviços, e a contagem de partes do resumo não inclui os testes.
 
 Limites: um README fraco dá uma cena fraca; o texto vem no idioma do autor, sem tradução; botões montados com texto vindo de variáveis não são lidos; sem README, botão nem comando, a cena não aparece.
+
+## 11. Roteiro do autor (`authored.ts`)
+
+É o último passo: se o repositório tem um `repartments.json` na raiz, ou se a pessoa importou um no estúdio, o que ele diz tem a palavra final. O arquivo é lido como dado (`JSON.parse`, campo a campo, textos cortados, arquivos citados conferidos contra a árvore do repositório), dá o resumo, os nomes das partes, as funcionalidades e as cenas, e **substitui** as cenas lidas do código, que ficam de reserva. Nenhuma LLM é chamada pelo estúdio; quem escreve o arquivo é o autor, ou a IA dele a partir do prompt que o estúdio oferece. O formato, o que é recusado ou vira aviso e o prompt inteiro estão em [roteiro.md](roteiro.md) ([ADR 0010](adr/0010-roteiro-do-autor.md)).
 
 ## Limites conhecidos
 
