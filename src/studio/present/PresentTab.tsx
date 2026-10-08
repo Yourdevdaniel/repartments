@@ -26,6 +26,10 @@ const w = {
     en: 'Written automatically from the system’s own code. Edit the script to use your client’s words.',
     pt: 'Escrito automaticamente a partir do código do próprio sistema. Edite o roteiro para usar as palavras do seu cliente.',
   },
+  authoredNote: {
+    en: "Written by the system's author (repartments.json). The studio checked the files it cites against the code.",
+    pt: 'Escrito pelo autor do sistema (repartments.json). O estúdio conferiu no código os arquivos que ele cita.',
+  },
 }
 
 export function PresentTab({ model, edits, onEdits, lang }: { model: ArchitectureModel; edits: ScriptEdits; onEdits: (e: ScriptEdits) => void; lang: Lang }) {
@@ -56,7 +60,7 @@ export function PresentTab({ model, edits, onEdits, lang }: { model: Architectur
               {model.repo.owner}/{model.repo.name}
             </p>
             <p className="mt-1 text-sm leading-snug">{summary[lang]}</p>
-            {!model.agents.length && <p className="mt-2 rounded-xl bg-ink/5 px-3 py-2 text-xs leading-snug text-ink-soft">{w.noAgent[lang]}</p>}
+            {!model.agents.length && !model.automatic && <p className="mt-2 rounded-xl bg-ink/5 px-3 py-2 text-xs leading-snug text-ink-soft">{w.noAgent[lang]}</p>}
           </>
         }
         listTitle={w.scenes}
@@ -70,7 +74,7 @@ export function PresentTab({ model, edits, onEdits, lang }: { model: Architectur
             ✏️ {w.edit[lang]}
           </button>
         }
-        note={w.note}
+        note={model.automatic ? w.authoredNote : w.note}
         empty={w.none}
         keysOff={editing}
         setup={{

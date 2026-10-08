@@ -17,6 +17,7 @@ const w = {
   fromAuthor: { en: "Author's script", pt: 'Roteiro do autor' },
   copyPrompt: { en: 'Copy prompt for the AI', pt: 'Copiar prompt para a IA' },
   copied: { en: 'Copied!', pt: 'Copiado!' },
+  savedAsFile: { en: 'No clipboard here: saved as a file', pt: 'Sem área de transferência: salvo como arquivo' },
   copyHint: {
     en: 'Paste it into the AI you use, with access to the repo if it can. It answers with a repartments.json to import here. Nothing is sent by the studio.',
     pt: 'Cole na IA que você usa, com acesso ao repositório se ela tiver. Ela responde com um repartments.json para importar aqui. O estúdio não envia nada.',
@@ -60,6 +61,23 @@ async function copyText(text: string, fallbackName: string): Promise<boolean> {
   }
 }
 
+type Copied = 'idle' | 'copied' | 'file'
+
+/** Copies on click and says for a moment how it went: copied, or saved as a file when there is no clipboard. */
+function useCopy(): [Copied, (text: string, fallbackName: string) => Promise<void>] {
+  const [state, setState] = useState<Copied>('idle')
+  const copy = async (text: string, fallbackName: string) => {
+    setState((await copyText(text, fallbackName)) ? 'copied' : 'file')
+    window.setTimeout(() => setState('idle'), 2400)
+  }
+  return [state, copy]
+}
+
+/** The button's words while idle, or how the copy went. */
+function said(state: Copied, idle: L): L {
+  return state === 'copied' ? w.copied : state === 'file' ? w.savedAsFile : idle
+}
+
 type MenuProps = {
   model: ArchitectureModel
   /** The scenes on screen with the presenter's edits, for the export. */
@@ -76,7 +94,7 @@ type MenuProps = {
 export function AuthoredMenu({ model, flows, lang, showingAutomatic, onShowAutomatic, onImport, onRemoveImport }: MenuProps) {
   const menu = useRef<HTMLDetailsElement>(null)
   const file = useRef<HTMLInputElement>(null)
-  const [copied, setCopied] = useState(false)
+  const [copied, copy] = useCopy()
   const [error, setError] = useState(false)
   const [pasting, setPasting] = useState(false)
   const [pasted, setPasted] = useState('')
@@ -86,12 +104,7 @@ export function AuthoredMenu({ model, flows, lang, showingAutomatic, onShowAutom
   }
   const item = 'block w-full rounded-xl px-3 py-2 text-left text-xs font-extrabold text-ink hover:bg-ink/[0.06]'
 
-  const copyPrompt = async () => {
-    if (await copyText(authorPrompt(model), 'repartments-prompt.txt')) {
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1800)
-    }
-  }
+  const copyPrompt = () => copy(authorPrompt(model), 'repartments-prompt.txt')
   const read = async (f: File | undefined) => {
     if (!f) return
     close()
@@ -116,7 +129,7 @@ export function AuthoredMenu({ model, flows, lang, showingAutomatic, onShowAutom
       </summary>
       <div className="absolute right-0 z-30 mt-2 w-72 rounded-[22px] border border-white/80 bg-white p-2 shadow-[0_18px_50px_-22px_rgba(40,52,110,0.45)]">
         <button type="button" onClick={copyPrompt} className={item}>
-          📋 {(copied ? w.copied : w.copyPrompt)[lang]}
+          📋 {said(copied, w.copyPrompt)[lang]}
         </button>
         <p className="px-3 pb-2 text-[11px] leading-snug text-ink-soft">{w.copyHint[lang]}</p>
         <button type="button" onClick={() => file.current?.click()} className={item}>
@@ -198,20 +211,15 @@ function refused(model: ArchitectureModel): boolean {
 
 /** Under the bar: where the scenes come from, whether the script may be out of date, and its notes. */
 export function AuthoredNotice({ model, lang }: { model: ArchitectureModel; lang: Lang }) {
-  const [copied, setCopied] = useState(false)
+  const [copied, copy] = useCopy()
   const info = model.authored
   if (!info) return null
   const notes = info.problems.filter((p) => p.level === 'warning')
   const errors = info.problems.filter((p) => p.level === 'error')
-  const copyFix = async () => {
-    if (await copyText(fixPrompt(info.problems, lang), 'repartments-correcao.txt')) {
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1800)
-    }
-  }
+  const copyFix = () => copy(fixPrompt(info.problems, lang), 'repartments-correcao.txt')
   const fixButton = (
     <button type="button" onClick={copyFix} className="ml-2 rounded-full bg-ink/[0.07] px-3 py-1 text-[11px] font-extrabold text-ink hover:bg-ink/[0.12]">
-      📋 {(copied ? w.copied : w.copyFix)[lang]}
+      📋 {said(copied, w.copyFix)[lang]}
     </button>
   )
   if (errors.length)
