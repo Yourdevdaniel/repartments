@@ -73,7 +73,7 @@ flowchart TB
   subgraph vercel[Vercel]
     static[Arquivos estáticos<br/>dist/ + public/models]
     fn_building[api/building.ts]
-    fn_auth[api/auth/config, login, callback, claim,<br/>device, token<br/>server/auth.ts]
+    fn_auth[api/auth/config, login, callback, claim, revoke,<br/>device, token<br/>server/auth.ts]
   end
   gh[(api.github.com)]
   ghlogin[(github.com/login)]
@@ -124,7 +124,7 @@ flowchart LR
 |---|---|
 | `src/studio/Studio.tsx` | Cabeçalho, botão "Continuar com GitHub" (ou os estados do login pelo código, sem segredo), lista de repositórios, exemplo embutido, abrir apresentação salva. |
 | `src/studio/session.ts` | O estado do login para as telas (vindo do cofre), contagem regressiva das 8 horas. |
-| `src/github/vault*.ts`, `allow.ts` | O cofre do token: um worker que recebe o token pelo login web (`claim`) ou faz o device flow, guarda o token na memória, só deixa passar leituras e esquece tudo em 8 horas. |
+| `src/github/vault*.ts`, `allow.ts` | O cofre do token: um worker que recebe o token pelo login web (`claim`) ou faz o device flow, guarda o token na memória, só deixa passar leituras e esquece tudo em 8 horas; ao soltar um token, pede ao servidor para encerrá-lo no GitHub (`revoke`). |
 | `src/security.ts` | Política de Trusted Types: só scripts do próprio site, nunca texto virando HTML. |
 | `src/studio/api.ts` | Todas as chamadas ao GitHub feitas pela página, com erros traduzidos. |
 | `src/studio/Workspace.tsx` | Abas Como funciona / Commits / Mapa; guarda o modelo, o roteiro, o commit em cena e o calor; aplica os nomes do roteiro no mapa e nos commits; salvar apresentação. |
