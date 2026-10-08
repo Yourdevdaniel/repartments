@@ -16,32 +16,41 @@ const w = {
   fromCode: { en: 'Read from the code', pt: 'Lido do código' },
   fromAuthor: { en: "Author's script", pt: 'Roteiro do autor' },
   copyPrompt: { en: 'Copy prompt for the AI', pt: 'Copiar prompt para a IA' },
-  copied: { en: 'Copied!', pt: 'Copiado!' },
-  savedAsFile: { en: 'No clipboard here: saved as a file', pt: 'Sem área de transferência: salvo como arquivo' },
-  copyHint: {
-    en: 'Paste it into the AI you use, with access to the repo if it can. It answers with a repartments.json to import here. Nothing is sent by the studio.',
-    pt: 'Cole na IA que você usa, com acesso ao repositório se ela tiver. Ela responde com um repartments.json para importar aqui. O estúdio não envia nada.',
+  copyTitle: {
+    en: 'The fixed instructions plus this repo, its branch and commit, and what the studio read as a draft.',
+    pt: 'As instruções fixas mais este repositório, a branch, o commit e o rascunho do que o estúdio leu.',
   },
-  import: { en: 'Import script…', pt: 'Importar roteiro…' },
+  importTitle: { en: 'A repartments.json, or any text with a ```json block in it.', pt: 'Um repartments.json, ou qualquer texto com um bloco ```json.' },
+  copied: { en: 'Copied!', pt: 'Copiado!' },
+  savedAsFile: { en: "Couldn't copy: saved as a file", pt: 'Não deu para copiar: salvo como arquivo' },
+  copyHint: {
+    en: 'Paste it into the AI you use (ideally one that can see the repo). It sends back a repartments.json file, which you import here. The studio sends nothing.',
+    pt: 'Cole na IA que você usa (de preferência uma que acesse o repositório). Ela devolve um arquivo repartments.json, que você importa aqui. O estúdio não envia nada.',
+  },
+  import: { en: 'Import script from a file…', pt: 'Importar roteiro de um arquivo…' },
   paste: { en: "Paste the AI's answer…", pt: 'Colar a resposta da IA…' },
-  pasteHint: { en: 'The whole answer is fine: the studio finds the JSON in it.', pt: 'Pode colar a resposta inteira: o estúdio acha o JSON nela.' },
+  pasteHint: {
+    en: 'You can paste the whole answer: the studio finds the script inside the text.',
+    pt: 'Pode colar a resposta inteira: o estúdio encontra o roteiro no meio do texto.',
+  },
   use: { en: 'Use this script', pt: 'Usar este roteiro' },
   export: { en: 'Export script', pt: 'Exportar roteiro' },
   exportHint: {
-    en: 'The script on screen, with your edits, as repartments.json: put it at the root of the repo and it is read every time.',
-    pt: 'O roteiro da tela, com as suas edições, como repartments.json: coloque na raiz do repositório e ele é lido sempre.',
+    en: 'Downloads the script on screen, with your edits, as repartments.json. Keep it at the root of the repo and the studio uses it every time.',
+    pt: 'Baixa o roteiro que está na tela, com as suas edições, como o arquivo repartments.json. Guarde-o na raiz do repositório e o estúdio passa a usá-lo sempre.',
   },
   automatic: { en: 'Show the scenes read from the code', pt: 'Ver as cenas lidas do código' },
   authoredScenes: { en: "Back to the author's scenes", pt: 'Voltar às cenas do autor' },
   remove: { en: 'Remove the imported script', pt: 'Tirar o roteiro importado' },
-  fromRepo: { en: 'repartments.json in the repo', pt: 'repartments.json do repositório' },
+  fromRepo: { en: 'file in the repo (repartments.json)', pt: 'arquivo do repositório (repartments.json)' },
   imported: { en: 'imported', pt: 'importado' },
   refused: { en: "The script couldn't be used:", pt: 'O roteiro não pôde ser usado:' },
-  copyFix: { en: 'Copy correction request', pt: 'Copiar pedido de correção' },
+  copyFix: { en: 'Copy correction request for the AI', pt: 'Copiar pedido de correção para a IA' },
+  technical: { en: 'Technical detail', pt: 'Detalhe técnico' },
   readFailed: { en: "Couldn't read that file.", pt: 'Não deu para ler esse arquivo.' },
   stale: (commit: string, date: string | null): L => ({
-    en: `Written for commit ${commit}${date ? ` on ${date}` : ''}; the code has changed since. Check that it still holds.`,
-    pt: `Escrito para o commit ${commit}${date ? ` em ${date}` : ''}; o código mudou desde então. Confira se ainda vale.`,
+    en: `Written for an earlier version of the code (commit ${commit}${date ? `, ${date}` : ''}). The code has changed since: check that the script still holds.`,
+    pt: `Escrito para uma versão anterior do código (commit ${commit}${date ? `, ${date}` : ''}). O código mudou desde então: confira se o roteiro ainda vale.`,
   }),
   checked: (ok: number, missing: number): L => ({
     en: `${ok} cited file${ok === 1 ? '' : 's'} found in the repo${missing ? `, ${missing} not found` : ''}.`,
@@ -95,7 +104,7 @@ export function AuthoredMenu({ model, flows, lang, showingAutomatic, onShowAutom
   const menu = useRef<HTMLDetailsElement>(null)
   const file = useRef<HTMLInputElement>(null)
   const [copied, copy] = useCopy()
-  const [error, setError] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [pasting, setPasting] = useState(false)
   const [pasted, setPasted] = useState('')
   const close = () => {
@@ -109,10 +118,10 @@ export function AuthoredMenu({ model, flows, lang, showingAutomatic, onShowAutom
     if (!f) return
     close()
     try {
-      setError(false)
+      setError(null)
       onImport(await f.text())
-    } catch {
-      setError(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
     } finally {
       if (file.current) file.current.value = ''
     }
@@ -128,16 +137,20 @@ export function AuthoredMenu({ model, flows, lang, showingAutomatic, onShowAutom
         📝 {w.script[lang]} <span className="font-bold text-ink-soft">· {(model.authored && !showingAutomatic && !refused(model) ? w.fromAuthor : w.fromCode)[lang]}</span>
       </summary>
       <div className="absolute right-0 z-30 mt-2 w-72 rounded-[22px] border border-white/80 bg-white p-2 shadow-[0_18px_50px_-22px_rgba(40,52,110,0.45)]">
-        <button type="button" onClick={copyPrompt} className={item}>
+        <button type="button" onClick={copyPrompt} className={item} title={w.copyTitle[lang]}>
           📋 {said(copied, w.copyPrompt)[lang]}
         </button>
         <p className="px-3 pb-2 text-[11px] leading-snug text-ink-soft">{w.copyHint[lang]}</p>
-        <button type="button" onClick={() => file.current?.click()} className={item}>
+        <button type="button" onClick={() => file.current?.click()} className={item} title={w.importTitle[lang]}>
           📂 {w.import[lang]}
         </button>
         <input ref={file} type="file" accept=".json,application/json,text/plain" className="hidden" onChange={(e) => void read(e.target.files?.[0])} />
-        {error && <p className="px-3 pb-1 text-[11px] font-bold text-[#c2410c]">{w.readFailed[lang]}</p>}
-        <button type="button" onClick={() => setPasting((p) => !p)} className={item} aria-expanded={pasting}>
+        {error !== null && (
+          <p className="px-3 pb-1 text-[11px] font-bold text-[#c2410c]" title={error}>
+            {w.readFailed[lang]} <code className="font-normal">{error}</code>
+          </p>
+        )}
+        <button type="button" onClick={() => setPasting((p) => !p)} className={item} aria-expanded={pasting} title={w.importTitle[lang]}>
           📥 {w.paste[lang]}
         </button>
         {pasting && (
@@ -204,6 +217,23 @@ function dayOf(date: string | null, lang: Lang): string | null {
   return Number.isNaN(d.getTime()) ? date : d.toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+const PLACES: Record<string, L> = {
+  parts: { en: 'Part', pt: 'Parte' },
+  features: { en: 'Feature', pt: 'Funcionalidade' },
+  scenes: { en: 'Scene', pt: 'Cena' },
+  cast: { en: 'character', pt: 'personagem' },
+  steps: { en: 'step', pt: 'passo' },
+  paths: { en: 'path', pt: 'caminho' },
+}
+
+/** "scenes[0].steps[3]" as anyone reads it ("Cena 1, passo 4"); the path itself stays on screen for people who code. */
+export function placeOf(where: string, lang: Lang): string {
+  return [...where.matchAll(/(\w+)\[(\d+)\]/g)]
+    .map(([, key, n]) => (PLACES[key] ? `${PLACES[key][lang]} ${Number(n) + 1}` : ''))
+    .filter(Boolean)
+    .join(', ')
+}
+
 /** Whether the script was refused as a whole (not JSON, a newer version…). */
 function refused(model: ArchitectureModel): boolean {
   return !!model.authored?.problems.some((p) => p.level === 'error')
@@ -227,6 +257,12 @@ export function AuthoredNotice({ model, lang }: { model: ArchitectureModel; lang
       <div className="mx-3 mb-2 rounded-2xl bg-[#fff1e6] px-4 py-2 text-xs text-[#9a3412] md:mx-4">
         <b>{w.refused[lang]}</b> {errors.map((e) => e.message[lang]).join(' ')}
         {fixButton}
+        {errors.some((e) => e.detail) && (
+          <details className="mt-1">
+            <summary className="cursor-pointer text-[11px] font-bold">{w.technical[lang]}</summary>
+            <code className="text-[11px]">{errors.map((e) => e.detail).filter(Boolean).join(' · ')}</code>
+          </details>
+        )}
       </div>
     )
   return (
@@ -242,7 +278,8 @@ export function AuthoredNotice({ model, lang }: { model: ArchitectureModel; lang
           <ul className="mt-1 list-disc pl-5">
             {notes.map((n, i) => (
               <li key={i}>
-                {n.where && <code className="text-[11px]">{n.where}</code>} {n.message[lang]}
+                {placeOf(n.where, lang) && <b className="text-ink">{placeOf(n.where, lang)}: </b>}
+                {n.message[lang]} {n.where && <code className="text-[11px] text-ink-soft/80">{n.where}</code>}
               </li>
             ))}
           </ul>

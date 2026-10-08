@@ -57,7 +57,7 @@ export function authorPrompt(model: ArchitectureModel): string {
 
 /** What to paste back into the same AI when the studio refused the file or left parts of it out. */
 export function fixPrompt(problems: AuthoredProblem[], lang: 'pt' | 'en'): string {
-  const list = problems.map((p) => `- ${p.where ? `${p.where}: ` : ''}${p.message[lang]}`).join('\n')
+  const list = problems.map((p) => `- ${p.where ? `${p.where}: ` : ''}${p.message[lang]}${p.detail ? ` (${p.detail})` : ''}`).join('\n')
   return lang === 'pt'
     ? `O estúdio do Repartments leu o repartments.json que você escreveu e apontou isto:\n${list}\n\nCorrija esses pontos sem mudar o resto e responda só com o arquivo repartments.json completo, num único bloco \`\`\`json.`
     : `The Repartments studio read the repartments.json you wrote and pointed this out:\n${list}\n\nFix these points without changing the rest and answer only with the complete repartments.json file, in a single \`\`\`json block.`

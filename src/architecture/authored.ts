@@ -93,20 +93,32 @@ function idOf(v: unknown): string | null {
 export function parseAuthored(text: string, paths: ReadonlySet<string> | null): AuthoredResult {
   const problems: AuthoredProblem[] = []
   const warn = (where: string, message: Text) => problems.push({ where, level: 'warning', message })
-  const refuse = (message: Text): AuthoredResult => ({ script: null, problems: [{ where: '', level: 'error', message }], verified: 0, unverified: 0 })
+  const refuse = (message: Text, detail?: string): AuthoredResult => ({
+    script: null,
+    problems: [{ where: '', level: 'error', message, ...(detail ? { detail } : {}) }],
+    verified: 0,
+    unverified: 0,
+  })
   if (text.length > MAX_BYTES) return refuse(say('O arquivo passa de 200 KB: não parece um roteiro.', 'The file is over 200 KB: it does not look like a script.'))
 
   let root: unknown
   try {
     root = JSON.parse(jsonOf(text))
   } catch (err) {
-    return refuse(say(`Não é um JSON válido (${(err as Error).message}).`, `It is not valid JSON (${(err as Error).message}).`))
+    // In plain words for whoever pasted it; the parser's own message is kept for people who code and for the AI.
+    return refuse(
+      say(
+        'Isso não é um roteiro: falta o arquivo repartments.json (um bloco que começa com { e termina com }). Peça para a IA responder só com o arquivo.',
+        "This isn't a script: the repartments.json file is missing (a block that starts with { and ends with }). Ask the AI to answer with the file only.",
+      ),
+      (err as Error).message,
+    )
   }
-  if (!isObj(root)) return refuse(say('O arquivo precisa ser um objeto JSON, entre { }.', 'The file must be a JSON object, between { }.'))
+  if (!isObj(root)) return refuse(say('O roteiro precisa ser um bloco entre { e }, não uma lista nem um texto solto.', 'The script must be a block between { and }, not a list or loose text.'))
   const version = typeof root.version === 'number' ? root.version : 1
   if (typeof root.version !== 'number') warn('version', say('Sem "version": lido como versão 1.', 'No "version": read as version 1.'))
   if (version > AUTHORED_VERSION || version < 1 || !Number.isInteger(version))
-    return refuse(say(`Feito para a versão ${version} do formato; este estúdio lê a versão ${AUTHORED_VERSION}.`, `Made for version ${version} of the format; this studio reads version ${AUTHORED_VERSION}.`))
+    return refuse(say(`Versão ${version} do formato não aceita: este estúdio lê a versão ${AUTHORED_VERSION}. Peça à IA para gerar o roteiro nessa versão.`, `Format version ${version} is not supported: this studio reads version ${AUTHORED_VERSION}. Ask the AI to write the script in that version.`))
 
   let verified = 0
   let unverified = 0
@@ -149,7 +161,7 @@ export function parseAuthored(text: string, paths: ReadonlySet<string> | null): 
   const parts: AuthoredScript['parts'] = []
   list(root.parts, 'parts', MAX_PARTS).forEach((raw, i) => {
     const where = `parts[${i}]`
-    if (!isObj(raw)) return warn(where, say('Parte ignorada: não é um objeto.', 'Part left out: not an object.'))
+    if (!isObj(raw)) return warn(where, say('Parte ignorada: formato inválido.', 'Part left out: invalid format.'))
     const id = idOf(raw.id)
     const name = textOf(raw.name, LIMIT.name)
     if (!id || !name) return warn(where, say('Parte ignorada: precisa de "id" e "name".', 'Part left out: it needs an "id" and a "name".'))
@@ -165,7 +177,7 @@ export function parseAuthored(text: string, paths: ReadonlySet<string> | null): 
   const features: Feature[] = []
   list(root.features, 'features', MAX_FEATURES).forEach((raw, i) => {
     const where = `features[${i}]`
-    if (!isObj(raw)) return warn(where, say('Funcionalidade ignorada: não é um objeto.', 'Feature left out: not an object.'))
+    if (!isObj(raw)) return warn(where, say('Funcionalidade ignorada: formato inválido.', 'Feature left out: invalid format.'))
     const label = textOf(raw.name, LIMIT.feature)
     const detail = textOf(raw.does, LIMIT.does)
     if (!label && !detail) return warn(where, say('Funcionalidade ignorada: precisa de "name" ou "does".', 'Feature left out: it needs a "name" or "does".'))
@@ -177,13 +189,13 @@ export function parseAuthored(text: string, paths: ReadonlySet<string> | null): 
   const castParts = new Map<string, string>()
   list(root.scenes, 'scenes', MAX_FLOWS).forEach((raw, i) => {
     const where = `scenes[${i}]`
-    if (!isObj(raw)) return warn(where, say('Cena ignorada: não é um objeto.', 'Scene left out: not an object.'))
+    if (!isObj(raw)) return warn(where, say('Cena ignorada: formato inválido.', 'Scene left out: invalid format.'))
     const title = textOf(raw.title, LIMIT.title)
     if (!title) return warn(where, say('Cena ignorada: precisa de "title".', 'Scene left out: it needs a "title".'))
     const actors: Actor[] = []
     list(raw.cast, `${where}.cast`, MAX_ACTORS).forEach((c, k) => {
       const at = `${where}.cast[${k}]`
-      if (!isObj(c)) return warn(at, say('Personagem ignorado: não é um objeto.', 'Character left out: not an object.'))
+      if (!isObj(c)) return warn(at, say('Personagem ignorado: formato inválido.', 'Character left out: invalid format.'))
       const id = idOf(c.id)
       const part = idOf(c.part) ? parts.find((p) => p.id === c.part) : undefined
       if (c.part !== undefined && !part) warn(`${at}.part`, say(`A parte "${String(c.part)}" não está em "parts".`, `The part "${String(c.part)}" is not in "parts".`))
@@ -198,11 +210,11 @@ export function parseAuthored(text: string, paths: ReadonlySet<string> | null): 
     const steps: FlowStep[] = []
     list(raw.steps, `${where}.steps`, MAX_STEPS).forEach((s, k) => {
       const at = `${where}.steps[${k}]`
-      if (!isObj(s)) return warn(at, say('Passo ignorado: não é um objeto.', 'Step left out: not an object.'))
+      if (!isObj(s)) return warn(at, say('Passo ignorado: formato inválido.', 'Step left out: invalid format.'))
       const from = actors.find((a) => a.id === s.from)
       const to = actors.find((a) => a.id === (s.to ?? s.from))
       const text = textOf(s.text, LIMIT.step)
-      if (!from || !to || !text) return warn(at, say('Passo ignorado: "from" e "to" precisam ser ids do elenco, e "text" é obrigatório.', 'Step left out: "from" and "to" must be cast ids, and "text" is required.'))
+      if (!from || !to || !text) return warn(at, say('Passo ignorado: faltou o texto ("text"), ou "from"/"to" não são personagens desta cena.', 'Step left out: the "text" is missing, or "from"/"to" are not characters in this scene.'))
       const action = ACTIONS.includes(s.action as StepAction) ? (s.action as StepAction) : 'call'
       if (!ACTIONS.includes(s.action as StepAction)) warn(`${at}.action`, say(`Ação desconhecida "${String(s.action)}": vira "call".`, `Unknown action "${String(s.action)}": it becomes "call".`))
       const ref = refOf(s, at)

@@ -17,18 +17,19 @@ const w = {
   sceneOf: (n: number, of: number) => ({ en: `Scene ${n} of ${of}`, pt: `Cena ${n} de ${of}` }),
   edit: { en: 'Edit script', pt: 'Editar roteiro' },
   readOn: (date: string) => ({ en: `Read from the code on ${date}`, pt: `Lido do código em ${date}` }),
+  authoredOn: (date: string) => ({ en: `Author's script, checked against the code on ${date}`, pt: `Roteiro do autor, conferido com o código em ${date}` }),
   none: { en: 'No scenes to show: every scene is hidden in the script.', pt: 'Nenhuma cena para mostrar: todas estão ocultas no roteiro.' },
   noAgent: {
-    en: 'No AI agent found in this repo, so there is no "how the AI decides" scene. The studio recognises OpenAI, Anthropic, Google, Mistral, Cohere, Groq and Ollama SDKs, LangChain/LangGraph, LlamaIndex, CrewAI, the OpenAI Agents SDK and the Vercel AI SDK.',
-    pt: 'Nenhum agente de IA encontrado neste repositório, então não há a cena "como a IA decide". O estúdio reconhece os SDKs da OpenAI, Anthropic, Google, Mistral, Cohere, Groq e Ollama, LangChain/LangGraph, LlamaIndex, CrewAI, o OpenAI Agents SDK e o Vercel AI SDK.',
+    en: 'No AI agent found in this repo, so there is no "how the AI decides" scene. The studio recognizes the common AI libraries (OpenAI, Anthropic, Google, Mistral, Cohere, Groq, Ollama, LangChain/LangGraph, LlamaIndex, CrewAI, OpenAI Agents and Vercel AI).',
+    pt: 'Nenhum agente de IA encontrado neste repositório, então não há a cena "como a IA decide". O estúdio reconhece as bibliotecas de IA mais comuns (OpenAI, Anthropic, Google, Mistral, Cohere, Groq, Ollama, LangChain/LangGraph, LlamaIndex, CrewAI, OpenAI Agents e Vercel AI).',
   },
   note: {
     en: 'Written automatically from the system’s own code. Edit the script to use your client’s words.',
     pt: 'Escrito automaticamente a partir do código do próprio sistema. Edite o roteiro para usar as palavras do seu cliente.',
   },
   authoredNote: {
-    en: "Written by the system's author (repartments.json). The studio checked the files it cites against the code.",
-    pt: 'Escrito pelo autor do sistema (repartments.json). O estúdio conferiu no código os arquivos que ele cita.',
+    en: "Written by the system's author (repartments.json file). The studio checked that the files it cites exist in the code.",
+    pt: 'Escrito pelo autor do sistema (arquivo repartments.json). O estúdio conferiu se os arquivos que ele cita existem no código.',
   },
 }
 
@@ -87,7 +88,7 @@ export function PresentTab({ model, edits, onEdits, lang }: { model: Architectur
         exportInfo={{
           title: `${model.repo.owner}/${model.repo.name}`,
           summary: summary[lang],
-          subtitle: w.readOn(new Intl.DateTimeFormat(lang === 'pt' ? 'pt-BR' : 'en', { dateStyle: 'long' }).format(new Date(model.generatedAt)))[lang],
+          subtitle: (model.automatic ? w.authoredOn : w.readOn)(new Intl.DateTimeFormat(lang === 'pt' ? 'pt-BR' : 'en', { dateStyle: 'long' }).format(new Date(model.generatedAt)))[lang],
         }}
       />
       {editing && <ScriptEditor flows={generated} edits={edits} onChange={onEdits} lang={lang} onClose={() => setEditing(false)} keyOf={actorKey} />}

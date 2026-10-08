@@ -324,7 +324,11 @@ export type ArchitectureModel = {
 }
 
 /** Something in an author's script that was left out or changed, and where (`scenes[1].steps[3]`). */
-export type AuthoredProblem = { where: string; level: 'error' | 'warning'; message: Text }
+/**
+ * Something in an author's script that was left out or changed: where (`scenes[1].steps[3]`), what in
+ * plain words, and for people who code the exact reason when there is one (a JSON parser's message).
+ */
+export type AuthoredProblem = { where: string; level: 'error' | 'warning'; message: Text; detail?: string }
 
 export type AuthoredInfo = {
   /** Read from `repartments.json` at the repo's root, or imported in the studio. */

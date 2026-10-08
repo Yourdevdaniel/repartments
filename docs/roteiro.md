@@ -8,7 +8,7 @@ A leitura automática do estúdio ([analise.md](analise.md)) entende a **arquite
 ## De onde o estúdio lê
 
 1. **`repartments.json` na raiz do repositório**: lido junto com os outros arquivos (só o da raiz; o de uma subpasta é ignorado). Origem "repo".
-2. **Importado** no estúdio (menu **Roteiro**, "Importar roteiro…" ou "Colar a resposta da IA…"): vale no lugar do da raiz. Origem "import".
+2. **Importado** no estúdio (menu **Roteiro**, "Importar roteiro de um arquivo…" ou "Colar a resposta da IA…"): vale no lugar do da raiz. Origem "import".
 
 O arquivo pode ser o JSON puro ou um texto qualquer com um bloco ```` ```json ```` (a resposta de uma IA salva como veio): vale o primeiro bloco.
 
@@ -102,8 +102,8 @@ Se o `commit` do roteiro é diferente do commit aberto (um não é prefixo do ou
 O menu **Roteiro** do estúdio tem:
 
 - **Copiar prompt para a IA**: copia o texto da seção abaixo, já com o repositório, a branch, o commit e um rascunho do que o estúdio leu. Cole na IA da sua escolha (de preferência com acesso ao repositório) e peça o arquivo.
-- **Importar roteiro…**: escolha o `repartments.json` (ou o arquivo com a resposta da IA).
-- **Colar a resposta da IA…**: cole a resposta inteira num campo de texto; o estúdio acha o bloco ```json nela, como faria com o arquivo. Os avisos aparecem na tela; **Copiar pedido de correção** gera um texto para colar de volta na mesma IA, listando o que deve ser consertado.
+- **Importar roteiro de um arquivo…**: escolha o `repartments.json` (ou o arquivo com a resposta da IA).
+- **Colar a resposta da IA…**: cole a resposta inteira num campo de texto; o estúdio acha o bloco ```json nela, como faria com o arquivo. Os avisos aparecem na tela; **Copiar pedido de correção para a IA** gera um texto para colar de volta na mesma IA, listando o que deve ser consertado.
 - **Exportar roteiro**: baixa um `repartments.json` do que o estúdio mostra agora (partes, cenas e as edições feitas). Salvar esse arquivo na raiz do repositório faz as edições viajarem com o código.
 
 ## Transparência sobre o prompt
