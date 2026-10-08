@@ -987,8 +987,8 @@ const SYSTEM: Actor = {
  * whole when it has none. Names and descriptions are the repo's own; only the frame around them is a
  * template.
  */
-function featuresFlow(ctx: Ctx, features: Feature[]): Flow | null {
-  if (features.length < 2) return null
+function featuresFlow(ctx: Ctx, features: Feature[], min = 2): Flow | null {
+  if (features.length < min) return null
   const visible = ctx.components.filter((c) => c.layer !== 'tests' && c.layer !== 'infra')
   // Without screens the system answers as a whole: "the business rules show the result" means nothing to a visitor.
   const main = [...visible].filter((c) => c.layer === 'interface').sort((a, b) => b.files - a.files)[0] ?? null
@@ -1007,16 +1007,18 @@ function featuresFlow(ctx: Ctx, features: Feature[]): Flow | null {
   for (const f of features) {
     const who = actorOf(f)
     const shows = both((l) => `${at('none', who.name, l, true)} ${vb(who.name, l, l === 'pt' ? 'mostra' : 'shows', l === 'pt' ? 'mostram' : 'show')} ${l === 'pt' ? 'o resultado' : 'the result'}`)
-    const answer: Text = f.detail ? { pt: clip(cap(f.detail), CAPTION_LIMIT), en: clip(cap(f.detail), CAPTION_LIMIT) } : shows
-    if (f.label) {
+    // The author's own wording in each language when there is one; else the repo's, the same in both.
+    const label: Text | null = f.text?.label ?? (f.label ? { pt: f.label, en: f.label } : null)
+    const detail: Text | null = f.text?.detail ?? (f.detail ? { pt: f.detail, en: f.detail } : null)
+    const answer: Text = detail ? both((l) => clip(cap(detail[l]), CAPTION_LIMIT)) : shows
+    if (label) {
       if (steps.length + 2 > MAX_STEPS) break
-      const label = f.label
       steps.push({
         from: PERSON.id,
         to: who.id,
         action: 'ask',
-        text: both((l) => clip(`${at('none', PERSON.name, l, true)} ${REACH[f.via][l]} «${label}»`, CAPTION_LIMIT)),
-        say: { pt: clip(label, 18), en: clip(label, 18) },
+        text: both((l) => clip(`${at('none', PERSON.name, l, true)} ${REACH[f.via][l]} «${label[l]}»`, CAPTION_LIMIT)),
+        say: both((l) => clip(label[l], 18)),
         ...(f.ref ? { ref: f.ref } : {}),
       })
       steps.push({ from: who.id, to: PERSON.id, action: 'show', text: answer, say: { pt: 'pronto!', en: 'done!' } })
@@ -1037,6 +1039,13 @@ function featuresFlow(ctx: Ctx, features: Feature[]): Flow | null {
     actors,
     steps,
   }
+}
+
+/** The "What you can do" scene alone, for features listed by the author (one is enough then). */
+export function featuresScene(components: Component[], features: Feature[]): Flow | null {
+  const named = components.map((c) => (c.label ? c : { ...c, label: plainPartName(c, components) }))
+  const ctx: Ctx = { components: named, byId: new Map(named.map((c) => [c.id, c])), deps: [], externals: [], fileDeps: new Map(), details: null }
+  return featuresFlow(ctx, features, 1)
 }
 
 /** The scenes of a repo, most telling first, within the limits. */

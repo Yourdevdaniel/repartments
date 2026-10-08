@@ -7,10 +7,12 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AnalysisEvent, ArchitectureModel, Churn, CommitDetail, RepoSummary, StudioErrorCode } from '../shared/studio'
-import { PLAIN, type ScriptEdits } from '../scene/tour'
+import { applyEdits, PLAIN, type ScriptEdits } from '../scene/tour'
+import { applyAuthored, parseAuthored } from '../architecture/authored'
 import { glass } from '../ui/kit'
 import type { Lang } from '../ui/roles'
 import { api, StudioApiError } from './api'
+import { AuthoredMenu, AuthoredNotice } from './Authored'
 import { t } from './copy'
 import { MapTab } from './map/MapTab'
 import { PresentTab } from './present/PresentTab'
@@ -41,6 +43,9 @@ export function Workspace({ source, lang }: { source: Source; lang: Lang }) {
   const [model, setModel] = useState<ArchitectureModel | null>(() => (source.kind === 'file' ? source.file.model : store.model(owner, repo)))
   const [edits, setEditsState] = useState<ScriptEdits>(() => (source.kind === 'file' ? source.file.edits : store.edits(owner, repo)))
   const [analysis, setAnalysis] = useState<Analysis>({ state: 'idle' })
+  /** An author's script imported here (kept for "Read again"), and whether the scenes read from the code are on show instead. */
+  const [imported, setImported] = useState<string | null>(() => (source.kind === 'repo' ? store.authored(owner, repo) : null))
+  const [showingAutomatic, setShowingAutomatic] = useState(false)
   const [selected, setSelected] = useState<CommitDetail | null>(null)
   const [churn, setChurn] = useState<Churn | null>(null)
   const [churnLoading, setChurnLoading] = useState(false)
@@ -71,21 +76,35 @@ export function Workspace({ source, lang }: { source: Source; lang: Lang }) {
 
   useEffect(() => () => abort.current?.abort(), [])
 
-  const analyze = async () => {
+  const analyze = async (script: string | null = imported) => {
     abort.current?.abort()
     const ctrl = new AbortController()
     abort.current = ctrl
     setAnalysis({ state: 'running', stage: { type: 'progress', stage: 'tree' } })
     try {
-      const next = await api.architecture(owner, repo, undefined, (stage) => setAnalysis({ state: 'running', stage }), ctrl.signal)
+      const next = await api.architecture(owner, repo, undefined, (stage) => setAnalysis({ state: 'running', stage }), ctrl.signal, script ?? undefined)
       setModel(next)
+      setShowingAutomatic(false)
       store.saveModel(next)
+      // A script that was refused isn't kept: reading again goes back to the repo's own.
+      const keep = script !== null && !next.authored?.problems.some((p) => p.level === 'error') ? script : null
+      setImported(keep)
+      store.saveAuthored(owner, repo, keep)
       setAnalysis({ state: 'idle' })
     } catch (err) {
       if ((err as Error).name === 'AbortError') return
       setAnalysis({ state: 'failed', error: failed(err) })
     }
   }
+
+  /** An imported script: the repo is read again with it, so the files it cites are checked; a saved presentation takes it as is. */
+  const importScript = (text: string) => {
+    if (source.kind === 'repo') return void analyze(text)
+    if (!model) return
+    setModel(applyAuthored(model, parseAuthored(text, null), 'import'))
+    setShowingAutomatic(false)
+  }
+  const removeImport = () => void analyze(null)
 
   const setEdits = (next: ScriptEdits) => {
     setEditsState(next)
@@ -105,6 +124,11 @@ export function Workspace({ source, lang }: { source: Source; lang: Lang }) {
   }
 
   const naming = edits.naming ?? PLAIN
+  // The scenes on show: the author's script, or the ones read from the code that it keeps aside.
+  const shown = useMemo<ArchitectureModel | null>(
+    () => (model && showingAutomatic && model.automatic ? { ...model, flows: model.automatic } : model),
+    [model, showingAutomatic],
+  )
 
   // The presenter's names for the parts (renamed by hand, or the plain label), so the commits tell
   // a part the way the presentation does. `name` stays the code's name for the technical switch.
@@ -150,7 +174,7 @@ export function Workspace({ source, lang }: { source: Source; lang: Lang }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-2 px-3 pb-2 md:px-4">
+      <div className="relative z-40 flex flex-wrap items-center gap-2 px-3 pb-2 md:px-4">
         <div className={`${glass} flex p-1`} role="tablist" aria-label={t.studio[lang]}>
           {TABS.map((id) => (
             <button
@@ -171,9 +195,20 @@ export function Workspace({ source, lang }: { source: Source; lang: Lang }) {
             <span className="hidden text-xs font-semibold text-ink-soft md:inline">{t.analyzedAt(fmt.format(new Date(model.generatedAt)))[lang]}</span>
           )}
           {model && source.kind === 'repo' && analysis.state !== 'running' && (
-            <button type="button" onClick={analyze} className="h-9 rounded-full bg-white/80 px-3.5 text-xs font-extrabold text-ink transition-colors hover:bg-white">
+            <button type="button" onClick={() => void analyze()} className="h-9 rounded-full bg-white/80 px-3.5 text-xs font-extrabold text-ink transition-colors hover:bg-white">
               ↻ {t.reanalyze[lang]}
             </button>
+          )}
+          {shown && analysis.state !== 'running' && (
+            <AuthoredMenu
+              model={shown}
+              flows={applyEdits(shown.flows, edits)}
+              lang={lang}
+              showingAutomatic={showingAutomatic}
+              onShowAutomatic={setShowingAutomatic}
+              onImport={importScript}
+              onRemoveImport={imported !== null && source.kind === 'repo' ? removeImport : null}
+            />
           )}
           {model && (
             <button
@@ -188,13 +223,15 @@ export function Workspace({ source, lang }: { source: Source; lang: Lang }) {
         </div>
       </div>
 
+      {tab === 'present' && model && !showingAutomatic && analysis.state !== 'running' && <AuthoredNotice model={model} lang={lang} />}
+
       <div className="relative min-h-0 flex-1">
         {analysis.state === 'running' ? (
           <Progress lang={lang} event={analysis.stage} />
         ) : needsModel || (analysis.state === 'failed' && !model) ? (
-          <AnalyzeCard lang={lang} canRead={source.kind === 'repo'} error={analysis.state === 'failed' ? analysis.error : null} onAnalyze={analyze} />
-        ) : tab === 'present' && model ? (
-          <PresentTab model={model} edits={edits} onEdits={setEdits} lang={lang} />
+          <AnalyzeCard lang={lang} canRead={source.kind === 'repo'} error={analysis.state === 'failed' ? analysis.error : null} onAnalyze={() => void analyze()} />
+        ) : tab === 'present' && shown ? (
+          <PresentTab model={shown} edits={edits} onEdits={setEdits} lang={lang} />
         ) : tab === 'map' && mapModel ? (
           <div className="h-full overflow-y-auto px-3 pb-3 md:px-4 md:pb-4">
             <MapTab

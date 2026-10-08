@@ -284,7 +284,7 @@ export type FlowStep = {
  */
 export type Flow = {
   id: string
-  kind: 'features' | 'request' | 'agent' | 'job' | 'overview' | 'commit' | 'activity'
+  kind: 'authored' | 'features' | 'request' | 'agent' | 'job' | 'overview' | 'commit' | 'activity'
   title: Text
   summary: Text
   actors: Actor[]
@@ -314,6 +314,30 @@ export type ArchitectureModel = {
   agents: Agent[]
   /** The presentation's scenes, most telling first. */
   flows: Flow[]
+  /**
+   * The author's script (`repartments.json`, see `src/architecture/authored.ts`) when one was read
+   * from the repo or imported: its scenes and names replaced the ones read from the code.
+   */
+  authored?: AuthoredInfo
+  /** The scenes read from the code, kept aside when the author's script replaced them. */
+  automatic?: Flow[]
+}
+
+/** Something in an author's script that was left out or changed, and where (`scenes[1].steps[3]`). */
+export type AuthoredProblem = { where: string; level: 'error' | 'warning'; message: Text }
+
+export type AuthoredInfo = {
+  /** Read from `repartments.json` at the repo's root, or imported in the studio. */
+  source: 'repo' | 'import'
+  /** The commit and the date it says it was written for, if it says. */
+  commit: string | null
+  writtenAt: string | null
+  /** Written for another commit than the one read: it may no longer match the code. */
+  stale: boolean
+  /** Files it cites that exist in the repo, and those that don't (or couldn't be checked). */
+  verified: number
+  unverified: number
+  problems: AuthoredProblem[]
 }
 
 /** What the analysis reports while it works (`progress`), and how it ends. */

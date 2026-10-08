@@ -15,6 +15,7 @@ import { readFiles } from './fetch'
 import { callsOf, endpointsOf, matchCall, type RouteDef } from './endpoints'
 import { databaseLabelOf, externalsFrom, imagesOf, type Usage } from './externals'
 import { buildFlows } from './flows'
+import { AUTHORED_FILE, applyAuthored, parseAuthored } from './authored'
 import { featuresOf, README } from './features'
 import { indefiniteArticle, nameWith, plainAgentName, plainExternalName, plainLayerName, screenPartName, subjectOf } from './plain'
 import { importsOf } from './imports'
@@ -37,6 +38,8 @@ export type SourceInput = {
   truncated: boolean
   /** Defaults to now. */
   generatedAt?: string
+  /** An author's script imported in the studio, used instead of the repo's own `repartments.json`. */
+  authored?: string
 }
 
 const LANGUAGE_NAMES: Record<string, string> = {
@@ -236,7 +239,7 @@ function flowDetailsOf(input: {
 /** A README or an HTML page: read for what the system does, not as code. */
 function isDocument(path: string): boolean {
   const name = basenameOf(path)
-  return README.test(name) || /\.html?$/i.test(name)
+  return README.test(name) || /\.html?$/i.test(name) || path === AUTHORED_FILE
 }
 
 /**
@@ -387,7 +390,7 @@ function buildModelWith(input: SourceInput, progress: (stage: 'graph' | 'flows')
   const flows = buildFlows({ components: parts, dependencies, externals, endpoints, agents, fileDeps, details, features: told.features })
 
   const lines = [...files.values()].reduce((n, t) => n + (t ? t.split('\n').length : 0), 0)
-  return {
+  const model: ArchitectureModel = {
     version: 1,
     repo: input.repo,
     generatedAt: input.generatedAt ?? new Date().toISOString(),
@@ -406,6 +409,10 @@ function buildModelWith(input: SourceInput, progress: (stage: 'graph' | 'flows')
     agents,
     flows,
   }
+  // The author's script, imported or at the repo's root, has the last word (authored.ts).
+  const script = input.authored ?? read.get(AUTHORED_FILE)
+  if (script === undefined) return model
+  return applyAuthored(model, parseAuthored(script, new Set(allPaths)), input.authored !== undefined ? 'import' : 'repo')
 }
 
 /**
@@ -418,6 +425,8 @@ export async function analyzeRepository(
   repo: string,
   branch: string | undefined,
   onProgress: Progress,
+  /** An author's script imported in the studio, to use instead of the repo's `repartments.json`. */
+  authored?: string,
 ): Promise<ArchitectureModel> {
   onProgress({ stage: 'tree' })
   const info = await client.get<{ default_branch?: string; private?: boolean; description?: string | null }>(`/repos/${owner}/${repo}`)
@@ -434,6 +443,7 @@ export async function analyzeRepository(
       tree: entries,
       files,
       truncated: treeRes.data.truncated === true || selected.truncated,
+      ...(authored !== undefined ? { authored } : {}),
     },
     (stage) => onProgress({ stage }),
   )

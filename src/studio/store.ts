@@ -11,11 +11,12 @@
  * Browser storage can be missing or full (private windows, blocked site data): every access is
  * wrapped, and the studio works without it, just forgetting on reload.
  */
-import type { ArchitectureModel, CommitDetail, FileStatus } from '../shared/studio'
+import type { ArchitectureModel, CommitDetail, FileStatus, Flow } from '../shared/studio'
 import { NO_EDITS, type ScriptEdits } from '../scene/tour'
 
 const modelKey = (owner: string, repo: string) => `studio:model:${owner.toLowerCase()}/${repo.toLowerCase()}`
 const editsKey = (owner: string, repo: string) => `studio:edits:${owner.toLowerCase()}/${repo.toLowerCase()}`
+const authoredKey = (owner: string, repo: string) => `studio:authored:${owner.toLowerCase()}/${repo.toLowerCase()}`
 
 function read<T>(key: string): T | null {
   try {
@@ -42,6 +43,20 @@ export const store = {
   saveModel: (m: ArchitectureModel) => write(modelKey(m.repo.owner, m.repo.name), m),
   edits: (owner: string, repo: string): ScriptEdits => ({ ...NO_EDITS, ...read<ScriptEdits>(editsKey(owner, repo)) }),
   saveEdits: (owner: string, repo: string, edits: ScriptEdits) => write(editsKey(owner, repo), edits),
+  /** An author's script imported in the studio, so reading the repo again keeps using it. */
+  authored: (owner: string, repo: string): string | null => {
+    const text = read<string>(authoredKey(owner, repo))
+    return typeof text === 'string' ? text : null
+  },
+  saveAuthored: (owner: string, repo: string, text: string | null) => {
+    if (text === null) {
+      try {
+        sessionStorage.removeItem(authoredKey(owner, repo))
+      } catch {
+        // Nothing to forget.
+      }
+    } else write(authoredKey(owner, repo), text)
+  },
 }
 
 /**
@@ -108,16 +123,24 @@ export function isModel(m: unknown): m is ArchitectureModel {
     isText(x.summary) &&
     [x.components, x.dependencies, x.externals, x.endpoints, x.agents, x.flows].every(isList) &&
     x.components.every((c) => typeof c.id === 'string' && typeof c.name === 'string' && isText(c.summary)) &&
-    x.flows.every(
-      (f) =>
-        typeof f.id === 'string' &&
-        isText(f.title) &&
-        isText(f.summary) &&
-        isList(f.actors) &&
-        f.actors.every((a) => typeof a.id === 'string' && isText(a.name)) &&
-        isList(f.steps) &&
-        f.steps.every((s) => typeof s.from === 'string' && typeof s.to === 'string' && isText(s.text)),
-    )
+    x.flows.every(isFlow) &&
+    // The scenes an author's script set aside, and what it reported (both only with a script).
+    (x.automatic === undefined || (isList(x.automatic) && x.automatic.every(isFlow))) &&
+    (x.authored === undefined ||
+      (!!x.authored && isList(x.authored.problems) && x.authored.problems.every((p) => typeof p.where === 'string' && isText(p.message))))
+  )
+}
+
+function isFlow(f: Flow): boolean {
+  return (
+    !!f &&
+    typeof f.id === 'string' &&
+    isText(f.title) &&
+    isText(f.summary) &&
+    isList(f.actors) &&
+    f.actors.every((a) => typeof a.id === 'string' && isText(a.name)) &&
+    isList(f.steps) &&
+    f.steps.every((s) => typeof s.from === 'string' && typeof s.to === 'string' && isText(s.text))
   )
 }
 

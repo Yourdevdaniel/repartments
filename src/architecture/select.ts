@@ -4,6 +4,7 @@
  * never are. When the repo is too big, the most telling files (manifests, then shallow source, tests
  * last) are kept and the rest is reported as left out.
  */
+import { AUTHORED_FILE } from './authored'
 import { README } from './features'
 import { basenameOf, langOf } from './text'
 
@@ -52,10 +53,10 @@ export function isTestPath(path: string): boolean {
   return false
 }
 
-/** The README at the root, and the page an app starts from: they say what the system does. */
+/** The README and the author's script at the root, and the page an app starts from: they say what the system does. */
 function isGuide(path: string): boolean {
   const name = basenameOf(path)
-  return (README.test(name) && !path.includes('/')) || (name.toLowerCase() === 'index.html' && path.split('/').length <= 2)
+  return ((README.test(name) || name === AUTHORED_FILE) && !path.includes('/')) || (name.toLowerCase() === 'index.html' && path.split('/').length <= 2)
 }
 
 /** Manifests, the README and prompt files; then source; then tests and other pages, in the order they are kept when the budget runs out. */

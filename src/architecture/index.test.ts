@@ -268,3 +268,36 @@ describe('buildModel: README and database', () => {
     expect(model.summary.en.startsWith('Gestor de leads para equipes comerciais. ')).toBe(true)
   })
 })
+
+describe('buildModel: repartments.json (the author\'s script)', () => {
+  /** The CRM fixture with a `repartments.json` at the root that says what the system is. */
+  const withRootScript = (): SourceInput => ({
+    ...crmFixture,
+    tree: [...crmFixture.tree, { path: 'repartments.json', type: 'blob', size: 100 }],
+    files: new Map([...crmFixture.files, ['repartments.json', JSON.stringify({ version: 1, about: 'Frase do autor.' })]]),
+  })
+
+  it('takes the root script as the author\'s words, and says where it came from', () => {
+    const model = buildModel(withRootScript())
+    expect(model.authored?.source).toBe('repo')
+    expect(model.summary.pt).toBe('Frase do autor.')
+  })
+
+  it('prefers an imported script over the one at the root', () => {
+    const model = buildModel({ ...withRootScript(), authored: JSON.stringify({ version: 1, about: 'Frase importada.' }) })
+    expect(model.authored?.source).toBe('import')
+    expect(model.summary.pt).toBe('Frase importada.')
+  })
+
+  it('does not analyse the script as code: the parts are the same as without it, and it appears in no part or file', () => {
+    const withScript = buildModel(withRootScript())
+    const without = buildModel(crmFixture)
+    const names = (m: ArchitectureModel) => m.components.map((c) => c.name).sort()
+    expect(names(withScript)).toEqual(names(without))
+    expect(JSON.stringify(withScript.components)).not.toContain('repartments.json')
+  })
+
+  it('has no authored part when there is no script', () => {
+    expect(buildModel(crmFixture).authored).toBeUndefined()
+  })
+})

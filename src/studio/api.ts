@@ -52,5 +52,7 @@ export const api = {
     branch: string | undefined,
     onProgress: (e: Extract<AnalysisEvent, { type: 'progress' }>) => void,
     signal?: AbortSignal,
-  ): Promise<ArchitectureModel> => run((c) => analyzeRepository(c, owner, repo, branch, (p) => onProgress({ type: 'progress', ...p })), signal),
+    /** An imported `repartments.json`, used instead of the repo's own. */
+    authored?: string,
+  ): Promise<ArchitectureModel> => run((c) => analyzeRepository(c, owner, repo, branch, (p) => onProgress({ type: 'progress', ...p }), authored), signal),
 }

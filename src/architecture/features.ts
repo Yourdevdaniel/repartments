@@ -8,6 +8,7 @@
  * shows its label or a command is registered in the code. Labels and descriptions keep the author's
  * wording and language; only markdown, emoji and leftover punctuation are taken off.
  */
+import type { Text } from '../shared/studio'
 import { basenameOf, clip, firstSentence, lineOf } from './text'
 
 /** One thing a person can do with the system. */
@@ -20,6 +21,8 @@ export type Feature = {
   via: 'button' | 'command' | 'readme'
   /** Where the button or command is in the code. */
   ref: { file: string; line: number } | null
+  /** The name and description in each language, when the author wrote both (`repartments.json`). */
+  text?: { label: Text | null; detail: Text | null }
 }
 
 /** The README at the root, read along with the code. */

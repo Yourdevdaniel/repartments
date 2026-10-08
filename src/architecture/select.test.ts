@@ -84,6 +84,12 @@ describe('selectFiles', () => {
   it('tolerates a tree that is not what it should be', () => {
     expect(selectFiles([{ path: 42 as unknown as string, type: 'blob' }, blob('src/x.ts', -5)]).paths).toEqual(['src/x.ts'])
   })
+
+  it('reads the repartments.json at the root, and leaves out one in a folder', () => {
+    const { paths } = selectFiles([blob('repartments.json'), blob('src/app.ts'), blob('sub/repartments.json')])
+    expect(paths).toContain('repartments.json')
+    expect(paths).not.toContain('sub/repartments.json')
+  })
 })
 
 describe('selectFiles: guide pages', () => {
