@@ -17,15 +17,15 @@ const w = {
   fromAuthor: { en: "Author's script", pt: 'Roteiro do autor' },
   copyPrompt: { en: 'Copy prompt for the AI', pt: 'Copiar prompt para a IA' },
   copyTitle: {
-    en: 'The fixed instructions plus this repo, its branch and commit, and what the studio read as a draft.',
-    pt: 'As instruções fixas mais este repositório, a branch, o commit e o rascunho do que o estúdio leu.',
+    en: "The fixed instructions plus this repo, its branch and commit, and what the studio read as a draft. What you give an AI follows that AI's own terms.",
+    pt: 'As instruções fixas mais este repositório, a branch, o commit e o rascunho do que o estúdio leu. O que você entrega a uma IA segue os termos dela.',
   },
   importTitle: { en: 'A repartments.json, or any text with a ```json block in it.', pt: 'Um repartments.json, ou qualquer texto com um bloco ```json.' },
   copied: { en: 'Copied!', pt: 'Copiado!' },
   savedAsFile: { en: "Couldn't copy: saved as a file", pt: 'Não deu para copiar: salvo como arquivo' },
   copyHint: {
-    en: "Paste it into the AI you use (ideally one that can see the repo). It sends back a repartments.json file, which you import here. The studio sends nothing; the text has file names, names from the code and descriptions, not the files' contents, and that AI's own terms apply to what you give it.",
-    pt: 'Cole na IA que você usa (de preferência uma que acesse o repositório). Ela devolve um arquivo repartments.json, que você importa aqui. O estúdio não envia nada; o texto leva nomes de arquivos, nomes tirados do código e descrições, não o conteúdo dos arquivos, e o que você entregar à IA segue os termos dela.',
+    en: 'Paste it into your AI (ideally one that sees the repo) and import here the repartments.json it returns. The studio sends nothing, and the text has only names and descriptions, never file contents.',
+    pt: 'Cole na sua IA (de preferência uma que veja o repositório) e importe aqui o repartments.json que ela devolver. O estúdio não envia nada, e o texto leva só nomes e descrições, nunca o conteúdo dos arquivos.',
   },
   view: { en: 'See the prompt', pt: 'Ver o prompt' },
   promptLabel: { en: 'The prompt for the AI', pt: 'O prompt para a IA' },
@@ -146,7 +146,9 @@ export function AuthoredMenu({ model, flows, lang, showingAutomatic, onShowAutom
     setPasting(false)
     setViewing(false)
   }
-  const item = 'block w-full rounded-xl px-3 py-2 text-left text-xs font-extrabold text-ink hover:bg-ink/[0.06]'
+  // Every action looks like a button: the main one filled, the rest light.
+  const item = 'flex w-full items-center gap-2 rounded-full border border-ink/10 bg-ink/[0.04] px-3.5 py-2 text-left text-xs font-extrabold text-ink transition-colors hover:bg-ink/[0.09]'
+  const main = 'flex w-full items-center justify-center gap-2 rounded-full bg-ink px-4 py-2.5 text-xs font-extrabold text-white transition-colors hover:bg-ink/85'
 
   const copyPrompt = () => copy(authorPrompt(model), 'repartments-prompt.txt')
   const read = async (f: File | undefined) => {
@@ -172,82 +174,84 @@ export function AuthoredMenu({ model, flows, lang, showingAutomatic, onShowAutom
         📝 {w.script[lang]} <span className="font-bold text-ink-soft">· {(model.authored && !showingAutomatic && !refused(model) ? w.fromAuthor : w.fromCode)[lang]}</span>
       </summary>
       <div className={`absolute right-0 z-30 mt-2 ${viewing ? 'w-[min(34rem,calc(100vw-2rem))]' : 'w-72'} rounded-[22px] border border-white/80 bg-white p-2 shadow-[0_18px_50px_-22px_rgba(40,52,110,0.45)]`}>
-        <button type="button" onClick={copyPrompt} className={item} title={w.copyTitle[lang]}>
-          📋 {said(copied, w.copyPrompt)[lang]}
-        </button>
-        <p className="px-3 pb-2 text-[11px] leading-snug text-ink-soft">{w.copyHint[lang]}</p>
-        <button type="button" onClick={() => setViewing((v) => !v)} className={item} aria-expanded={viewing}>
-          👁 {w.view[lang]}
-        </button>
-        {viewing && (
-          <div className="px-3 pb-2">
-            <PromptPanel prompt={authorPrompt(model)} lang={lang} />
-          </div>
-        )}
-        <button type="button" onClick={() => file.current?.click()} className={item} title={w.importTitle[lang]}>
-          📂 {w.import[lang]}
-        </button>
-        <input ref={file} type="file" accept=".json,application/json,text/plain" className="hidden" onChange={(e) => void read(e.target.files?.[0])} />
-        {error !== null && (
-          <p className="px-3 pb-1 text-[11px] font-bold text-[#c2410c]" title={error}>
-            {w.readFailed[lang]} <code className="font-normal">{error}</code>
-          </p>
-        )}
-        <button type="button" onClick={() => setPasting((p) => !p)} className={item} aria-expanded={pasting} title={w.importTitle[lang]}>
-          📥 {w.paste[lang]}
-        </button>
-        {pasting && (
-          <div className="px-3 pb-2">
-            <textarea
-              value={pasted}
-              onChange={(e) => setPasted(e.target.value)}
-              rows={5}
-              spellCheck={false}
-              aria-label={w.paste[lang]}
-              className="w-full resize-y rounded-xl border border-ink/10 bg-white p-2 font-mono text-[11px] text-ink"
-            />
-            <p className="pb-1 text-[11px] leading-snug text-ink-soft">{w.pasteHint[lang]}</p>
+        <p className="px-2 pt-1 pb-2 text-[11px] leading-snug text-ink-soft">{w.copyHint[lang]}</p>
+        <div className="grid gap-1.5">
+          <button type="button" onClick={copyPrompt} className={main} title={w.copyTitle[lang]}>
+            📋 {said(copied, w.copyPrompt)[lang]}
+          </button>
+          <button type="button" onClick={() => setViewing((v) => !v)} className={item} aria-expanded={viewing}>
+            👁 {w.view[lang]}
+          </button>
+          {viewing && (
+            <div className="px-3 pb-2">
+              <PromptPanel prompt={authorPrompt(model)} lang={lang} />
+            </div>
+          )}
+          <button type="button" onClick={() => file.current?.click()} className={item} title={w.importTitle[lang]}>
+            📂 {w.import[lang]}
+          </button>
+          <input ref={file} type="file" accept=".json,application/json,text/plain" className="hidden" onChange={(e) => void read(e.target.files?.[0])} />
+          {error !== null && (
+            <p className="px-3 pb-1 text-[11px] font-bold text-[#c2410c]" title={error}>
+              {w.readFailed[lang]} <code className="font-normal">{error}</code>
+            </p>
+          )}
+          <button type="button" onClick={() => setPasting((p) => !p)} className={item} aria-expanded={pasting} title={w.importTitle[lang]}>
+            📥 {w.paste[lang]}
+          </button>
+          {pasting && (
+            <div className="px-3 pb-2">
+              <textarea
+                value={pasted}
+                onChange={(e) => setPasted(e.target.value)}
+                rows={5}
+                spellCheck={false}
+                aria-label={w.paste[lang]}
+                className="w-full resize-y rounded-xl border border-ink/10 bg-white p-2 font-mono text-[11px] text-ink"
+              />
+              <p className="pb-1 text-[11px] leading-snug text-ink-soft">{w.pasteHint[lang]}</p>
+              <button
+                type="button"
+                disabled={!pasted.trim()}
+                onClick={() => {
+                  onImport(pasted)
+                  setPasted('')
+                  close()
+                }}
+                className="h-8 rounded-full bg-ink px-3 text-xs font-extrabold text-white disabled:opacity-40"
+              >
+                {w.use[lang]}
+              </button>
+            </div>
+          )}
+          <button type="button" onClick={exportScript} className={item} title={w.exportHint[lang]}>
+            💾 {w.export[lang]}
+          </button>
+          {model.automatic && (
             <button
               type="button"
-              disabled={!pasted.trim()}
               onClick={() => {
-                onImport(pasted)
-                setPasted('')
+                onShowAutomatic(!showingAutomatic)
                 close()
               }}
-              className="h-8 rounded-full bg-ink px-3 text-xs font-extrabold text-white disabled:opacity-40"
+              className={item}
             >
-              {w.use[lang]}
+              🔎 {(showingAutomatic ? w.authoredScenes : w.automatic)[lang]}
             </button>
-          </div>
-        )}
-        <button type="button" onClick={exportScript} className={item} title={w.exportHint[lang]}>
-          💾 {w.export[lang]}
-        </button>
-        {model.automatic && (
-          <button
-            type="button"
-            onClick={() => {
-              onShowAutomatic(!showingAutomatic)
-              close()
-            }}
-            className={item}
-          >
-            🔎 {(showingAutomatic ? w.authoredScenes : w.automatic)[lang]}
-          </button>
-        )}
-        {onRemoveImport && (
-          <button
-            type="button"
-            onClick={() => {
-              onRemoveImport()
-              close()
-            }}
-            className={item}
-          >
-            ✕ {w.remove[lang]}
-          </button>
-        )}
+          )}
+          {onRemoveImport && (
+            <button
+              type="button"
+              onClick={() => {
+                onRemoveImport()
+                close()
+              }}
+              className={item}
+            >
+              ✕ {w.remove[lang]}
+            </button>
+          )}
+        </div>
       </div>
     </details>
   )
