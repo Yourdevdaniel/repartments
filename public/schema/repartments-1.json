@@ -1,0 +1,616 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Yourdevdaniel/repartments/main/public/schema/repartments-1.json",
+  "title": "Roteiro do autor do Repartments (versão 1)",
+  "description": "O repartments.json na raiz do repositório: quem conhece o sistema diz o que ele é, como as partes se chamam e quais cenas mostrar. Campos desconhecidos na raiz são aceitos (compatibilidade para frente).",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Endereço deste schema, para o editor conferir o arquivo."
+    },
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Versão do formato. O estúdio recusa versões maiores que 1; sem o campo, lê como 1."
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{4,40}$",
+      "description": "Commit lido ao escrever o roteiro. Se for diferente do commit aberto, o estúdio avisa que está desatualizado."
+    },
+    "writtenAt": {
+      "type": "string",
+      "pattern": "^d{4}-d{2}-d{2}",
+      "description": "Data em que o roteiro foi escrito (AAAA-MM-DD)."
+    },
+    "about": {
+      "description": "Uma ou duas frases sobre o que o sistema faz e para quem; vira o resumo. Texto simples (vale para pt e en) ou {\"pt\",\"en\"}; até 300 caracteres, o resto é cortado.",
+      "oneOf": [
+        {
+          "type": "string",
+          "maxLength": 300
+        },
+        {
+          "type": "object",
+          "properties": {
+            "pt": {
+              "type": "string",
+              "maxLength": 300
+            },
+            "en": {
+              "type": "string",
+              "maxLength": 300
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "pt"
+              ]
+            },
+            {
+              "required": [
+                "en"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "parts": {
+      "type": "array",
+      "maxItems": 16,
+      "description": "Partes principais do sistema. Só as 16 primeiras entram.",
+      "items": {
+        "$ref": "#/$defs/part"
+      }
+    },
+    "features": {
+      "type": "array",
+      "maxItems": 6,
+      "description": "O que a pessoa consegue fazer com o sistema; vira a cena \"O que dá para fazer\". Só as 6 primeiras entram.",
+      "items": {
+        "$ref": "#/$defs/feature"
+      }
+    },
+    "scenes": {
+      "type": "array",
+      "maxItems": 6,
+      "description": "Cenas da apresentação. Se houver cenas ou funcionalidades, elas substituem as cenas lidas do código. Só as 6 primeiras entram.",
+      "items": {
+        "$ref": "#/$defs/scene"
+      }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "part": {
+      "type": "object",
+      "required": [
+        "id",
+        "name"
+      ],
+      "description": "Uma parte do sistema. Sem \"id\" ou \"name\", a parte é ignorada.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[w.-]{1,40}$",
+          "description": "Identificador curto e único, usado em \"part\" nos personagens."
+        },
+        "name": {
+          "description": "Nome simples da parte. Texto simples (vale para pt e en) ou {\"pt\",\"en\"}; até 28 caracteres, o resto é cortado.",
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 28
+            },
+            {
+              "type": "object",
+              "properties": {
+                "pt": {
+                  "type": "string",
+                  "maxLength": 28
+                },
+                "en": {
+                  "type": "string",
+                  "maxLength": 28
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "pt"
+                  ]
+                },
+                {
+                  "required": [
+                    "en"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "does": {
+          "description": "O que a parte faz. Texto simples (vale para pt e en) ou {\"pt\",\"en\"}; até 120 caracteres, o resto é cortado.",
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 120
+            },
+            {
+              "type": "object",
+              "properties": {
+                "pt": {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                "en": {
+                  "type": "string",
+                  "maxLength": 120
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "pt"
+                  ]
+                },
+                {
+                  "required": [
+                    "en"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "person",
+            "screen",
+            "api",
+            "security",
+            "service",
+            "agent",
+            "llm",
+            "tool",
+            "worker",
+            "queue",
+            "database",
+            "cache",
+            "external"
+          ],
+          "description": "Papel do personagem ou da parte. Valor desconhecido vira \"service\" (com aviso)."
+        },
+        "paths": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "string"
+          },
+          "description": "Pastas ou arquivos que a parte cobre. Quem existe no repositório decide qual componente é renomeado."
+        }
+      }
+    },
+    "feature": {
+      "type": "object",
+      "anyOf": [
+        {
+          "required": [
+            "name"
+          ]
+        },
+        {
+          "required": [
+            "does"
+          ]
+        }
+      ],
+      "description": "Uma funcionalidade. Precisa de \"name\" ou \"does\".",
+      "properties": {
+        "name": {
+          "description": "Nome da funcionalidade, como aparece no sistema (texto do botão, comando). Texto simples (vale para pt e en) ou {\"pt\",\"en\"}; até 48 caracteres, o resto é cortado.",
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 48
+            },
+            {
+              "type": "object",
+              "properties": {
+                "pt": {
+                  "type": "string",
+                  "maxLength": 48
+                },
+                "en": {
+                  "type": "string",
+                  "maxLength": 48
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "pt"
+                  ]
+                },
+                {
+                  "required": [
+                    "en"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "does": {
+          "description": "O que ela faz. Texto simples (vale para pt e en) ou {\"pt\",\"en\"}; até 120 caracteres, o resto é cortado.",
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 120
+            },
+            {
+              "type": "object",
+              "properties": {
+                "pt": {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                "en": {
+                  "type": "string",
+                  "maxLength": 120
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "pt"
+                  ]
+                },
+                {
+                  "required": [
+                    "en"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "how": {
+          "type": "string",
+          "enum": [
+            "button",
+            "command",
+            "readme"
+          ],
+          "description": "Como a pessoa chega nela. Valor desconhecido vira \"readme\"."
+        },
+        "file": {
+          "type": "string",
+          "description": "Arquivo do repositório, caminho a partir da raiz, sem \"..\" nem caminho absoluto. O estúdio confere se existe."
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Linha do arquivo citado (opcional)."
+        }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "required": [
+        "title",
+        "cast",
+        "steps"
+      ],
+      "description": "Uma cena. Sem \"title\" ou sem nenhum passo válido, a cena é ignorada.",
+      "properties": {
+        "title": {
+          "description": "Título da cena. Texto simples (vale para pt e en) ou {\"pt\",\"en\"}; até 60 caracteres, o resto é cortado.",
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 60
+            },
+            {
+              "type": "object",
+              "properties": {
+                "pt": {
+                  "type": "string",
+                  "maxLength": 60
+                },
+                "en": {
+                  "type": "string",
+                  "maxLength": 60
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "pt"
+                  ]
+                },
+                {
+                  "required": [
+                    "en"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "summary": {
+          "description": "Uma frase sobre a cena; sem ela vale o título. Texto simples (vale para pt e en) ou {\"pt\",\"en\"}; até 160 caracteres, o resto é cortado.",
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 160
+            },
+            {
+              "type": "object",
+              "properties": {
+                "pt": {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                "en": {
+                  "type": "string",
+                  "maxLength": 160
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "pt"
+                  ]
+                },
+                {
+                  "required": [
+                    "en"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "cast": {
+          "type": "array",
+          "maxItems": 7,
+          "description": "Personagens da cena. Só os 7 primeiros entram.",
+          "items": {
+            "$ref": "#/$defs/character"
+          }
+        },
+        "steps": {
+          "type": "array",
+          "maxItems": 14,
+          "description": "Passos em ordem. Só os 14 primeiros entram.",
+          "items": {
+            "$ref": "#/$defs/step"
+          }
+        }
+      }
+    },
+    "character": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "description": "Um personagem. Precisa de \"id\" e de \"name\" (ou de \"part\", de onde herda o nome).",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[w.-]{1,40}$",
+          "description": "Identificador curto, único na cena; os passos o usam em \"from\" e \"to\"."
+        },
+        "name": {
+          "description": "Nome do personagem. Texto simples (vale para pt e en) ou {\"pt\",\"en\"}; até 28 caracteres, o resto é cortado.",
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 28
+            },
+            {
+              "type": "object",
+              "properties": {
+                "pt": {
+                  "type": "string",
+                  "maxLength": 28
+                },
+                "en": {
+                  "type": "string",
+                  "maxLength": 28
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "pt"
+                  ]
+                },
+                {
+                  "required": [
+                    "en"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "part": {
+          "type": "string",
+          "description": "Id de uma parte de \"parts\" que este personagem representa."
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "person",
+            "screen",
+            "api",
+            "security",
+            "service",
+            "agent",
+            "llm",
+            "tool",
+            "worker",
+            "queue",
+            "database",
+            "cache",
+            "external"
+          ],
+          "description": "Papel do personagem ou da parte. Valor desconhecido vira \"service\" (com aviso)."
+        },
+        "does": {
+          "description": "O que o personagem faz. Texto simples (vale para pt e en) ou {\"pt\",\"en\"}; até 120 caracteres, o resto é cortado.",
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 120
+            },
+            {
+              "type": "object",
+              "properties": {
+                "pt": {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                "en": {
+                  "type": "string",
+                  "maxLength": 120
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "pt"
+                  ]
+                },
+                {
+                  "required": [
+                    "en"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": [
+        "from",
+        "text"
+      ],
+      "description": "Um passo da cena. \"from\" e \"to\" precisam ser ids do elenco.",
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "Id do personagem que age."
+        },
+        "to": {
+          "type": "string",
+          "description": "Id do personagem que recebe; sem ele, igual a \"from\"."
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "check",
+            "call",
+            "fetch",
+            "save",
+            "think",
+            "decide",
+            "use-tool",
+            "reply",
+            "show",
+            "queue",
+            "send"
+          ],
+          "description": "O que acontece. Valor desconhecido vira \"call\" (com aviso)."
+        },
+        "text": {
+          "description": "O que acontece neste passo. Texto simples (vale para pt e en) ou {\"pt\",\"en\"}; até 120 caracteres, o resto é cortado.",
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 120
+            },
+            {
+              "type": "object",
+              "properties": {
+                "pt": {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                "en": {
+                  "type": "string",
+                  "maxLength": 120
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "pt"
+                  ]
+                },
+                {
+                  "required": [
+                    "en"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "say": {
+          "description": "Balão de fala curto (opcional). Texto simples (vale para pt e en) ou {\"pt\",\"en\"}; até 24 caracteres, o resto é cortado.",
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 24
+            },
+            {
+              "type": "object",
+              "properties": {
+                "pt": {
+                  "type": "string",
+                  "maxLength": 24
+                },
+                "en": {
+                  "type": "string",
+                  "maxLength": 24
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "pt"
+                  ]
+                },
+                {
+                  "required": [
+                    "en"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "file": {
+          "type": "string",
+          "description": "Arquivo do repositório, caminho a partir da raiz, sem \"..\" nem caminho absoluto. O estúdio confere se existe."
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Linha do arquivo citado (opcional)."
+        }
+      }
+    }
+  }
+}
