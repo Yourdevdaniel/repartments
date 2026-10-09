@@ -273,6 +273,21 @@ describe('buildModel on other inputs', () => {
     expect(model.endpoints.map((e) => `${e.method} ${e.path}`)).toEqual(['GET /api/articles', 'GET /api/articles/{slug}'])
   })
 
+  it('finds the file of a page whose component is declared in the router file itself', () => {
+    const app = [
+      "import { Route, Routes } from 'react-router-dom'",
+      'function Home() {',
+      '  return <h1>Seu trabalho merece mais que um print.</h1>',
+      '}',
+      'export default function App() {',
+      '  return <Routes><Route path="/" element={<Home />} /></Routes>',
+      '}',
+    ].join('\n')
+    const files = new Map([['web/src/App.tsx', app]])
+    const model = buildModel({ repo: { owner: 'acme', name: 'c', branch: 'main', sha: 's', private: false }, tree: [{ path: 'web/src/App.tsx', type: 'blob' as const }], files, truncated: false })
+    expect(model.pages).toEqual([{ path: '/', name: 'Home', file: 'web/src/App.tsx', source: { file: 'web/src/App.tsx', line: 6 } }])
+  })
+
   it('tells a Django route by the method the front-end calls it with', () => {
     const model = buildModel({
       repo: { owner: 'acme', name: 'contratos', branch: 'main', sha: 's', private: false },
@@ -291,7 +306,7 @@ describe('buildModel on other inputs', () => {
     // The "Salvar" button makes the creation a journey, which takes the place of its request scene.
     const scenes = model.flows.filter((f) => f.kind === 'request' || f.kind === 'journey')
     expect(scenes.map((f) => f.id)).toEqual(['journey:POST /contracts/'])
-    expect(scenes[0].title.pt).toBe('O usuário cria um contract')
+    expect(scenes[0].title.pt).toBe('O usuário cria um contrato')
   })
 })
 

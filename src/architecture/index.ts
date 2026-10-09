@@ -322,7 +322,9 @@ function pagesOf(sources: string[], files: Map<string, string>, resolver: Return
       for (const r of routes) {
         const spec = r.spec ?? (r.component ? names.get(r.component) : undefined)
         const res = spec ? resolver(src, spec) : null
-        add(r.path, res && 'file' in res && files.has(res.file) ? res.file : null, r.component, { file: src, line: r.line })
+        // A component declared in the router file itself is shown from that file.
+        const local = !spec && !!r.component && new RegExp(String.raw`\b(?:function|const|class)\s+${r.component}\b`).test(text)
+        add(r.path, res && 'file' in res && files.has(res.file) ? res.file : local ? src : null, r.component, { file: src, line: r.line })
       }
       const address = filePageOf(src, roots)
       if (address !== null) add(address, src, null, { file: src, line: 1 })
