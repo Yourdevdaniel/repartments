@@ -210,7 +210,7 @@ O repositório vira um prédio em que **cada andar é uma cena**:
 - **Conheça o sistema** (térreo): um guia visita as partes principais e cada uma diz, numa frase, o que faz.
 - **O que dá para fazer**: as funcionalidades do projeto, lidas do README, dos botões das telas e dos comandos, cada uma encenada como um pedido da pessoa e a resposta da parte que a atende ([ADR 0009](adr/0009-funcionalidades-pelo-readme-e-pela-interface.md)).
 - **Como o agente decide**: a mensagem chega, o agente lê as instruções, pergunta ao modelo de IA, escolhe entre as ferramentas, usa a que precisa e responde.
-- **Pedidos** ("Criar leads", "Ver clientes"…): a tela pede, a segurança confere, as regras trabalham, o banco guarda ou entrega, o e-mail sai, a resposta aparece na tela.
+- **Pedidos** ("Criar leads", "Ver clientes", "Cancelar reservas"…): a tela pede, a segurança confere, as regras trabalham, o banco guarda ou entrega, o e-mail sai, a resposta aparece na tela. Rotas que só mantêm o site de pé (verificação de saúde, admin, login, token, webhooks) não viram cena; numa rota do Django, que não diz o método, vale o que a tela faz com ela ou a ação no fim do endereço ([detalhes](analise.md#quais-rotas-viram-pedido)).
 - **Tarefas em segundo plano**, quando há fila.
 
 Cenas com 4 participantes ou mais viram um **escritório**: duas fileiras de salas dos dois lados de um corredor, a de trás com paredes altas e a da frente com divisórias baixas, para a câmera ver tudo por cima. Os moradores andam pelo corredor e **desviam dos móveis** (ninguém atravessa mesas). As legendas usam as palavras do próprio sistema: o título da tela, os campos do formulário ("preenche nome, empresa, e-mail e telefone e clica em “Salvar lead”"), o que o banco guarda, o assunto do e-mail.
