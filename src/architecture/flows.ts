@@ -14,7 +14,7 @@
  * sentences say those things too; without them the scenes keep their shorter wording.
  */
 import type { Actor, ActorKind, Agent, Component, Dependency, Endpoint, External, ExternalKind, Flow, FlowStep, StepAction, Text } from '../shared/studio'
-import { clip, cap, firstSentence, joinList, langOf } from './text'
+import { clip, cap, count, firstSentence, joinList, langOf } from './text'
 import { fieldList, humanField, modelForResource, plainLabel, singularOf, taskPhraseOf, type DataModel, type FlowDetails, type Lang, type ScreenDetails } from './details'
 import { isPlural, nameWith, plainAgentName, plainExternalName, plainPartName, plainToolName, type Prep } from './plain'
 import type { Feature } from './features'
@@ -1079,7 +1079,10 @@ function agentFlow(ctx: Ctx, agent: Agent, nTools: number): Flow {
 
   const actors: Actor[] = [PERSON]
   if (caller) actors.push(componentActor(caller))
-  const codeName = ` (no código: ${agent.name})`
+  // What it does, for the people watching: its instructions are told in the "think" step, and its
+  // code name is its technical name.
+  const toolCount = tools.length ? ` e escolhe entre ${count(tools.length, 'ferramenta', 'ferramentas')}` : ''
+  const toolCountEn = tools.length ? ` and picks among ${count(tools.length, 'tool', 'tools')}` : ''
   actors.push({
     id: agentActorId,
     name: S,
@@ -1087,9 +1090,10 @@ function agentFlow(ctx: Ctx, agent: Agent, nTools: number): Flow {
     kind: 'agent',
     component: comp?.id ?? null,
     external: null,
-    note: agent.instructions
-      ? { en: clip(`${agent.instructions}${codeName}`, 200), pt: clip(`${agent.instructions}${codeName}`, 200) }
-      : { en: `Decides what to do with the message${codeName}.`, pt: `Decide o que fazer com a mensagem${codeName}.` },
+    note: {
+      pt: `Lê as instruções que recebeu, conversa com o modelo de IA${toolCount}.`,
+      en: `Reads its instructions, talks to the AI model${toolCountEn}.`,
+    },
   })
   const modelId = agent.model ?? agent.provider
   actors.push({
@@ -1254,8 +1258,8 @@ function jobFlow(ctx: Ctx): Flow | null {
       to: `e:${queue.id}`,
       action: 'queue',
       text: task
-        ? both((l) => `${at('none', p, l, true)} ${vb(p, l, l === 'pt' ? 'deixa' : 'leaves', l === 'pt' ? 'deixam' : 'leave')} uma tarefa ${task[l]} ${at('em', q, l)}`)
-        : both((l) => `${at('none', p, l, true)} ${vb(p, l, l === 'pt' ? 'deixa' : 'leaves', l === 'pt' ? 'deixam' : 'leave')} uma tarefa ${at('em', q, l)}`),
+        ? both((l) => `${at('none', p, l, true)} ${vb(p, l, l === 'pt' ? 'deixa' : 'leaves', l === 'pt' ? 'deixam' : 'leave')} ${l === 'pt' ? 'uma tarefa' : 'a task'} ${task[l]} ${at('em', q, l)}`)
+        : both((l) => `${at('none', p, l, true)} ${vb(p, l, l === 'pt' ? 'deixa' : 'leaves', l === 'pt' ? 'deixam' : 'leave')} ${l === 'pt' ? 'uma tarefa' : 'a task'} ${at('em', q, l)}`),
       say: { pt: 'pra depois', en: 'for later' },
     })
     steps.push({
@@ -1263,8 +1267,8 @@ function jobFlow(ctx: Ctx): Flow | null {
       to: `c:${worker.id}`,
       action: 'call',
       text: task
-        ? both((l) => (l === 'pt' ? `A tarefa ${task.pt} é pega ${at('por', w, 'pt')} ${at('em', q, 'pt')}` : `The task ${task.en} is taken by ${at('por', w, 'en')} ${at('em', q, 'en')}`))
-        : both((l) => (l === 'pt' ? `A tarefa é pega ${at('por', w, 'pt')} ${at('em', q, 'pt')}` : `The task is taken by ${at('por', w, 'en')} ${at('em', q, 'en')}`)),
+        ? both((l) => (l === 'pt' ? `A tarefa ${task.pt} é pega ${at('por', w, 'pt')} ${at('em', q, 'pt')}` : `The task ${task.en} is taken ${at('por', w, 'en')} from ${at('none', q, 'en')}`))
+        : both((l) => (l === 'pt' ? `A tarefa é pega ${at('por', w, 'pt')} ${at('em', q, 'pt')}` : `The task is taken ${at('por', w, 'en')} from ${at('none', q, 'en')}`)),
       say: { pt: 'tarefa!', en: 'task!' },
     })
   } else {
@@ -1282,7 +1286,7 @@ function jobFlow(ctx: Ctx): Flow | null {
       from: `c:${worker.id}`,
       to: `e:${db.id}`,
       action: 'save',
-      text: both((l) => `O resultado é guardado ${at('em', dbn, l)}`),
+      text: both((l) => (l === 'pt' ? `O resultado é guardado ${at('em', dbn, 'pt')}` : `The result is saved ${at('em', dbn, 'en')}`)),
       say: { pt: 'guardar', en: 'save' },
     })
   }
@@ -1303,7 +1307,7 @@ function jobFlow(ctx: Ctx): Flow | null {
     from: `c:${worker.id}`,
     to: `c:${worker.id}`,
     action: 'reply',
-    text: both((l) => `A tarefa é concluída ${at('por', w, l)}`),
+    text: both((l) => (l === 'pt' ? `A tarefa é concluída ${at('por', w, 'pt')}` : `The task is finished ${at('por', w, 'en')}`)),
     say: { pt: 'pronto!', en: 'done!' },
   })
 
@@ -1412,7 +1416,7 @@ function featuresFlow(ctx: Ctx, features: Feature[], min = 2): Flow | null {
         to: who.id,
         action: 'ask',
         text: both((l) => clip(`${at('none', PERSON.name, l, true)} ${REACH[f.via][l]} «${label[l]}»`, CAPTION_LIMIT)),
-        say: both((l) => clip(label[l], 18)),
+        say: both((l) => clip(bubble(label[l]), 18)),
         ...(f.ref ? { ref: f.ref } : {}),
       })
       steps.push({ from: who.id, to: PERSON.id, action: 'show', text: answer, say: { pt: 'pronto!', en: 'done!' } })

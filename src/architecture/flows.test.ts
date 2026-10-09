@@ -370,6 +370,14 @@ describe('buildFlows: agent scenes', () => {
   const components = [component('backend/ai', 'ai', { name: 'Backend Ai' }), component('frontend/chat', 'interface', { name: 'Chat' })]
   const dependencies = [dep('frontend/chat', 'backend/ai')]
 
+  it("says what the agent does in plain words in its note, not its instructions or its code name", () => {
+    const [flow] = buildFlows({ components, dependencies, externals: [ext('ext:openai', 'OpenAI', 'llm', ['backend/ai'])], endpoints: [], agents: [agent] })
+    const note = flow.actors.find((a) => a.kind === 'agent')?.note
+    expect(note?.pt).toMatch(/^Lê as instruções que recebeu/)
+    expect(note?.en).toMatch(/^Reads its instructions/)
+    expect(`${note?.pt} ${note?.en}`).not.toMatch(/no código|in the code|Bot\)/)
+  })
+
   it('draws the agent first, with its instructions, model, the branches of its graph and its tools', () => {
     const [flow] = buildFlows({ components, dependencies, externals: [ext('ext:openai', 'OpenAI', 'llm', ['backend/ai'])], endpoints: [], agents: [agent] })
     expect(flow.id).toBe('agent:backend/ai/bot.py')
@@ -419,6 +427,19 @@ describe('buildFlows: background jobs', () => {
     expect(job.steps.map((s) => s.action)).toEqual(['queue', 'call', 'save', 'reply'])
     expect(job.steps[0].text.pt).toBe('As regras do negócio deixam uma tarefa na fila de tarefas')
     expectWellFormed(job)
+  })
+
+  it('tells the job in English with no Portuguese left in it', () => {
+    const components = [component('backend/services', 'logic'), component('backend/jobs', 'jobs'), component('backend/db', 'data')]
+    const dependencies = [dep('backend/services', 'backend/jobs'), dep('backend/jobs', 'backend/db')]
+    const externals = [ext('ext:bullmq', 'BullMQ', 'queue', ['backend/jobs']), ext('ext:postgresql', 'PostgreSQL', 'database', ['backend/jobs'])]
+    const job = buildFlows({ components, dependencies, externals, endpoints: [], agents: [] }).find((f) => f.kind === 'job') as Flow
+    expect(job.steps.map((s) => s.text.en)).toEqual([
+      'The business rules leave a task in the task queue',
+      'The task is taken by the back office from the task queue',
+      'The result is saved in the database',
+      'The task is finished by the back office',
+    ])
   })
 })
 
@@ -694,6 +715,16 @@ describe('buildFlows: what you can do', () => {
     expect(flow.steps[2]).toMatchObject({ from: 'person', to: 'c:backend/services', action: 'ask' })
     expect(flow.steps[3]).toMatchObject({ from: 'c:backend/services', to: 'person', action: 'show' })
     expectWellFormed(flow)
+  })
+
+  it('keeps the bubble of a long feature name to three words', () => {
+    const long: Feature[] = [
+      { label: 'Menos fila às sextas no festival', detail: 'Pede antes.', via: 'readme', ref: null },
+      { label: 'Prof. · desde 2019', detail: 'Mostra o professor.', via: 'readme', ref: null },
+    ]
+    const [flow] = run(long)
+    for (const s of flow.steps) if (s.say) expect(s.say.pt.split(' ').length).toBeLessThanOrEqual(3)
+    expect(flow.steps[0].say?.pt).toBe('Menos fila…')
   })
 
   it('tells a feature with only a sentence as one show step, with no question', () => {
