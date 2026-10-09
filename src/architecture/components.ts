@@ -76,6 +76,8 @@ export function layerOf(path: string, text: string, packages: string[]): Layer {
   if (/(^|\/)urls\.py$/.test(path)) add('api', 3)
   if (/(^|\/)views\.py$/.test(path)) add('api', 2)
   if (/(^|\/)settings(\.[a-z]+)?$/.test(path)) add('infra', 2)
+  // A Django project's folder holds its settings and the files that start it, not business rules.
+  if (/(^|\/)[wa]sgi\.py$/.test(path)) add('infra', 3)
   // Build and tool settings (vite.config.js, eslint.config.mjs, babel.config.js…) set the project up; they aren't its rules.
   if (CONFIG_FILE.test(path)) add('infra', 3)
   if (callsModel(packages)) add('ai', 4)

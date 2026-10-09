@@ -156,6 +156,11 @@ describe('layerOf', () => {
     expect(layerOf('src/utils/format.ts', '', [])).toBe('shared')
   })
 
+  it('reads the files that start a Django project (wsgi.py, asgi.py) as its setup', () => {
+    expect(layerOf('backend/irun/wsgi.py', 'application = get_wsgi_application()', [])).toBe('infra')
+    expect(layerOf('backend/irun/asgi.py', 'application = get_asgi_application()', [])).toBe('infra')
+  })
+
   it('recognises tests by folder and by name', () => {
     expect(layerOf('tests/test_leads.py', '', [])).toBe('tests')
     expect(layerOf('src/leads.test.ts', '', [])).toBe('tests')

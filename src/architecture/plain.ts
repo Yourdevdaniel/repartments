@@ -23,7 +23,7 @@ const GENERIC = new Set([
   'helpers', 'helper', 'shared', 'common', 'config', 'infra', 'tests', 'test', 'spec', 'specs', 'packages',
   'apps', 'modules', 'features', 'direct', 'hooks', 'types', 'constants', 'styles', 'assets', 'public',
   'static', 'scripts', 'docs', 'migrations', 'fixtures', 'mocks', 'stories', 'internal', 'cmd', 'pkg',
-  'source', 'main', 'index', 'dist', 'build', 'lang', 'i18n',
+  'source', 'main', 'index', 'dist', 'build', 'lang', 'i18n', 'management', 'commands',
 ])
 
 /** Words a part's folder can name, as a reader would say them. Singular and plural forms both appear. */
@@ -95,6 +95,22 @@ const DOMAIN = new Map<string, Pair>([
   ['text', { pt: 'texto', en: 'text' }],
   ['tools', { pt: 'ferramentas', en: 'tools' }],
   ['end', { pt: 'fim', en: 'end' }],
+  ['auth', { pt: 'acesso', en: 'sign-in' }],
+  ['store', { pt: 'loja', en: 'store' }],
+  ['stores', { pt: 'lojas', en: 'stores' }],
+  ['seller', { pt: 'vendedor', en: 'seller' }],
+  ['sellers', { pt: 'vendedores', en: 'sellers' }],
+  ['community', { pt: 'comunidade', en: 'community' }],
+  ['section', { pt: 'seção', en: 'section' }],
+  ['sections', { pt: 'seções', en: 'sections' }],
+  ['exporters', { pt: 'exportação', en: 'exporters' }],
+  ['org', { pt: 'organização', en: 'organization' }],
+  ['profile', { pt: 'perfil', en: 'profile' }],
+  ['profiles', { pt: 'perfis', en: 'profiles' }],
+  ['booking', { pt: 'reserva', en: 'booking' }],
+  ['bookings', { pt: 'reservas', en: 'bookings' }],
+  ['review', { pt: 'avaliação', en: 'review' }],
+  ['reviews', { pt: 'avaliações', en: 'reviews' }],
 ])
 
 /** The verb that opens a tool's name, as a sentence starts with it. */
@@ -173,7 +189,7 @@ const PT_GENDER = new Map<string, 'o' | 'a' | 'os' | 'as'>([
   ['produto', 'o'], ['pagamento', 'o'], ['fatura', 'a'], ['conta', 'a'], ['vendas', 'as'],
   ['estoque', 'o'], ['entrega', 'a'], ['carrinho', 'o'], ['catálogo', 'o'], ['aviso', 'o'],
   ['relatório', 'o'], ['negócio', 'o'], ['contato', 'o'], ['equipe', 'a'], ['projeto', 'o'],
-  ['leads', 'os'], ['bastidores', 'os'], ['páginas', 'as'], ['peças', 'as'], ['fichas', 'as'], ['ajudantes', 'os'], ['aplicativo', 'o'], ['site', 'o'], ['servidor', 'o'], ['lead', 'o'], ['usuários', 'os'], ['clientes', 'os'], ['tarefas', 'as'],
+  ['leads', 'os'], ['comandos', 'os'], ['rotinas', 'as'], ['loja', 'a'], ['comunidade', 'a'], ['organização', 'a'], ['bastidores', 'os'], ['páginas', 'as'], ['peças', 'as'], ['fichas', 'as'], ['ajudantes', 'os'], ['aplicativo', 'o'], ['site', 'o'], ['servidor', 'o'], ['lead', 'o'], ['usuários', 'os'], ['clientes', 'os'], ['tarefas', 'as'],
 ])
 
 function pair(pt: string, en: string = pt): Pair {
@@ -210,6 +226,9 @@ export function subjectOf(path: string): string | null {
   for (let i = segments.length - 1; i >= 0; i--) {
     const seg = segments[i]
     const lower = seg.toLowerCase()
+    // A route group of Expo Router or Next.js, "(aluno)", is named for whose screens it holds.
+    const group = /^\((\w[\w-]*)\)$/.exec(seg)
+    if (group && group[1].length >= 3 && (!GENERIC.has(group[1].toLowerCase()) || group[1].toLowerCase() === 'auth')) return group[1]
     if (GENERIC.has(lower) || seg.length < 3) continue
     if (/^v\d+$/.test(lower)) continue
     if (/^[[(_.@$]/.test(seg) || seg.includes('.')) continue
@@ -313,12 +332,18 @@ const FOLDER_NOUNS = new Map<string, Pair>([
   ['helper', pair('Ajudantes', 'Helpers')],
   ['common', pair('Ajudantes', 'Helpers')],
   ['shared', pair('Ajudantes', 'Helpers')],
+  ['management', pair('Comandos', 'Commands')],
+  ['commands', pair('Comandos', 'Commands')],
+  ['scripts', pair('Rotinas', 'Scripts')],
   ['config', pair('Configuração', 'Setup')],
   ['settings', pair('Configuração', 'Setup')],
   ['tests', pair('Inspetor', 'Inspector')],
   ['test', pair('Inspetor', 'Inspector')],
   ['spec', pair('Inspetor', 'Inspector')],
 ])
+
+/** The names of a whole app, a website or a server, which only one part at a time wears. */
+const APP_NOUNS = new Set(['Site', 'Aplicativo', 'Servidor'])
 
 /** Top-level folders of an app: their parts are the whole app, a website or a server. */
 const APP_ROOTS = new Set(['', 'src', 'app', 'source', 'backend', 'frontend', 'server', 'web', 'client'])
@@ -346,7 +371,9 @@ function candidateOf(c: Named): Text {
   const base = nounOf(c)
   const subject = subjectText(c.path)
   if (!subject) return base
-  const layer = LAYER_NAMES[c.layer]
+  // Django's management commands are commands of their app, whatever layer their code looks like.
+  const commands = /(^|\/)(management|commands)$/i.test(c.path)
+  const layer = commands ? { ptWith: 'Comandos de {s}', enWith: '{S} commands' } : LAYER_NAMES[c.layer]
   const withSubject = {
     pt: layer.ptWith.replace('{s}', subject.pt).replace('{S}', capitalise(subject.pt)),
     en: layer.enWith.replace('{s}', subject.en).replace('{S}', capitalise(subject.en)),
@@ -369,6 +396,15 @@ export function plainPartName(c: Named, siblings: Named[]): Text {
   const list: Named[] = siblings.includes(c) ? siblings : [...siblings, c]
   const group = list.filter((s) => sameText(candidateOf(s), cand))
   if (group.length <= 1) return cand
+  if (APP_NOUNS.has(cand.pt)) {
+    const owner = group.find((s) => s.layer === 'interface') ?? group.find((s) => s.layer !== 'infra') ?? group[0]
+    if (owner === c) return cand
+    // The layer's own word, without a subject: "Regras", "Configuração"; "rules", "setup".
+    const layer = LAYER_NAMES[c.layer]
+    const role = { pt: layer.ptWith.replace(' de {s}', ''), en: layer.enWith.replace('{S} ', '') }
+    const named = { pt: `${role.pt} do ${cand.pt.toLowerCase()}`, en: `${cand.en} ${role.en}` }
+    if (named.pt.length <= 28 && named.en.length <= 28 && !group.some((s) => s !== c && s.layer === c.layer)) return named
+  }
   const k = group.indexOf(c)
   if (k <= 0) return cand
   const parent = parentText(c.path)

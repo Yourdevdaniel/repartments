@@ -11,6 +11,11 @@ describe('subjectOf', () => {
     expect(subjectOf('api/v2/orders')).toBe('orders')
   })
 
+  it('reads a route group of Expo Router or Next.js as its subject', () => {
+    expect(subjectOf('app/app/(aluno)')).toBe('aluno')
+    expect(subjectOf('app/app/(auth)')).toBe('auth')
+  })
+
   it('ignores the #direct marker, short names, file-like names and brackets', () => {
     expect(subjectOf('src/a')).toBeNull()
     expect(subjectOf('app/[id]')).toBeNull()
@@ -78,6 +83,28 @@ describe('plainPartName', () => {
     expect(plainPartName(d, [c, d])).toEqual({ pt: 'Telas do painel', en: 'Painel screens' })
     const twins = [part('frontend/pages', 'interface'), part('frontend/pages', 'interface')]
     expect(plainPartName(twins[1], twins)).toEqual({ pt: 'Páginas 2', en: 'Pages 2' })
+  })
+
+  it('names the screens of a route group after it, with "auth" as the sign-in screens', () => {
+    expect(plainPartName(part('app/app/(aluno)', 'interface'), [])).toEqual({ pt: 'Tela de aluno', en: 'Aluno screen' })
+    expect(plainPartName(part('app/app/(auth)', 'interface'), [])).toEqual({ pt: 'Tela de acesso', en: 'Sign-in screen' })
+  })
+
+  it('lets the screens keep the name of the app, and names the other parts at its root by their role in it', () => {
+    const setup = part('frontend', 'infra')
+    const site = part('frontend/src', 'interface')
+    expect(plainPartName(setup, [setup, site])).toEqual({ pt: 'Configuração do site', en: 'Website setup' })
+    expect(plainPartName(site, [setup, site])).toEqual({ pt: 'Site', en: 'Website' })
+    const rules = part('app/src', 'logic')
+    const screens = part('app/app', 'interface')
+    expect(plainPartName(rules, [rules, screens])).toEqual({ pt: 'Regras do aplicativo', en: 'App rules' })
+    expect(plainPartName(screens, [rules, screens])).toEqual({ pt: 'Aplicativo', en: 'App' })
+  })
+
+  it('names Django commands and script folders by what they are', () => {
+    expect(plainPartName(part('backend/core/management', 'logic'), [])).toEqual({ pt: 'Comandos', en: 'Commands' })
+    expect(plainPartName(part('scripts', 'infra'), [])).toEqual({ pt: 'Rotinas', en: 'Scripts' })
+    expect(plainPartName(part('backend/contracts/management', 'logic'), [])).toEqual({ pt: 'Comandos de contracts', en: 'Contracts commands' })
   })
 
   it('keeps every name within 28 characters', () => {
