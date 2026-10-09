@@ -14,12 +14,12 @@ export type Rate = (typeof RATES)[number]
 export const rateLabel = (r: number) => `${String(r).replace('.', ',')}x`
 
 export const pw = {
-  play: { en: 'Play', pt: 'Continuar' },
+  play: { en: 'Play', pt: 'Tocar' },
   pause: { en: 'Pause', pt: 'Pausar' },
   paused: { en: 'Paused', pt: 'Pausado' },
   playing: { en: 'Playing', pt: 'Continuando' },
   start: { en: 'Back to the start', pt: 'Voltar ao começo' },
-  end: { en: 'Go to the end', pt: 'Ir para o final' },
+  end: { en: 'Go to the end', pt: 'Ir ao fim' },
   atEnd: { en: 'Last step', pt: 'Último passo' },
   prevStep: { en: 'Previous step', pt: 'Passo anterior' },
   nextStep: { en: 'Next step', pt: 'Próximo passo' },
@@ -31,6 +31,8 @@ export const pw = {
   keys: { en: 'Keyboard shortcuts', pt: 'Atalhos do teclado' },
   controls: { en: 'Scene controls', pt: 'Controles da cena' },
   lastScene: { en: 'This is the last scene', pt: 'Esta é a última cena' },
+  fullscreen: { en: 'Fullscreen', pt: 'Tela cheia' },
+  exitFullscreen: { en: 'Exit full screen', pt: 'Sair da tela cheia' },
 } satisfies Record<string, L>
 
 const Icon = ({ d, fill = false }: { d: string; fill?: boolean }) => (
@@ -47,21 +49,23 @@ const ICONS = {
   next: <Icon d="M9.5 6.5 15 12l-5.5 5.5" />,
   end: <Icon fill d="M16.4 5H19v14h-2.6zM5 5.8v12.4a.8.8 0 0 0 1.2.7l8.6-6.2a.8.8 0 0 0 0-1.4L6.2 5.1A.8.8 0 0 0 5 5.8z" />,
   stop: <Icon fill d="M6.5 6.5h11v11h-11z" />,
+  fullscreen: <Icon d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
+  exitFullscreen: <Icon d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />,
 }
 
 function Key({ children }: { children: ReactNode }) {
   return <kbd className="inline-grid h-6 min-w-6 place-items-center rounded-md border border-ink/15 bg-white px-1.5 font-sans text-[11px] font-extrabold text-ink shadow-[0_1px_0_rgba(40,52,110,0.18)]">{children}</kbd>
 }
 
-/** A button with its name and shortcut as the tooltip ("Pausar (Espaço)"). */
-function Btn({ label, keys, onClick, children, disabled }: { label: string; keys: string; onClick: () => void; children: ReactNode; disabled?: boolean }) {
+/** A button named by its label, which is also its tooltip. */
+function Btn({ label, onClick, children, disabled }: { label: string; onClick: () => void; children: ReactNode; disabled?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      title={`${label} (${keys})`}
+      title={label}
       className="grid size-9 place-items-center rounded-full text-ink transition-colors hover:bg-ink/[0.07] active:scale-95 disabled:opacity-35"
     >
       {children}
@@ -81,35 +85,36 @@ export type PlaybackProps = {
   onStop: () => void
   onRate: () => void
   onKeys: () => void
+  fullscreen: boolean
+  onFullscreen: () => void
 }
 
-/** The bar of controls: start, previous step, play/pause, next step, end, stop, speed and shortcuts. */
-export function PlaybackBar({ lang, paused, rate, onToggle, onStart, onPrev, onNext, onEnd, onStop, onRate, onKeys }: PlaybackProps) {
-  const space = lang === 'pt' ? 'Espaço' : 'Space'
+/** The bar of controls: start, previous step, play/pause, next step, end, stop, speed, full screen and shortcuts. */
+export function PlaybackBar({ lang, paused, rate, onToggle, onStart, onPrev, onNext, onEnd, onStop, onRate, onKeys, fullscreen, onFullscreen }: PlaybackProps) {
   return (
     <div className={`${glass} pointer-events-auto flex items-center gap-0.5 p-1`} role="toolbar" aria-label={pw.controls[lang]}>
-      <Btn label={pw.start[lang]} keys="Home" onClick={onStart}>
+      <Btn label={pw.start[lang]} onClick={onStart}>
         {ICONS.start}
       </Btn>
-      <Btn label={pw.prevStep[lang]} keys="←" onClick={onPrev}>
+      <Btn label={pw.prevStep[lang]} onClick={onPrev}>
         {ICONS.prev}
       </Btn>
       <button
         type="button"
         onClick={onToggle}
         aria-label={paused ? pw.play[lang] : pw.pause[lang]}
-        title={`${paused ? pw.play[lang] : pw.pause[lang]} (${space})`}
+        title={paused ? pw.play[lang] : pw.pause[lang]}
         className="grid size-10 place-items-center rounded-full bg-ink text-white transition-transform active:scale-95"
       >
         {paused ? ICONS.play : ICONS.pause}
       </button>
-      <Btn label={pw.nextStep[lang]} keys="→" onClick={onNext}>
+      <Btn label={pw.nextStep[lang]} onClick={onNext}>
         {ICONS.next}
       </Btn>
-      <Btn label={pw.end[lang]} keys="End" onClick={onEnd}>
+      <Btn label={pw.end[lang]} onClick={onEnd}>
         {ICONS.end}
       </Btn>
-      <Btn label={pw.stop[lang]} keys="S" onClick={onStop}>
+      <Btn label={pw.stop[lang]} onClick={onStop}>
         {ICONS.stop}
       </Btn>
       <span aria-hidden="true" className="mx-1 h-5 w-px bg-ink/15" />
@@ -117,16 +122,25 @@ export function PlaybackBar({ lang, paused, rate, onToggle, onStart, onPrev, onN
         type="button"
         onClick={onRate}
         aria-label={`${pw.speed[lang]}: ${rateLabel(rate)}`}
-        title={`${pw.speed[lang]} (− / +)`}
+        title={`${pw.speed[lang]}: ${rateLabel(rate)}`}
         className={`h-9 min-w-12 rounded-full px-2.5 text-xs font-extrabold tabular-nums transition-colors hover:bg-ink/[0.07] ${rate === 1 ? 'text-ink-soft' : 'bg-accent/10 text-accent'}`}
       >
         {rateLabel(rate)}
       </button>
       <button
         type="button"
+        onClick={onFullscreen}
+        aria-label={fullscreen ? pw.exitFullscreen[lang] : pw.fullscreen[lang]}
+        title={fullscreen ? pw.exitFullscreen[lang] : pw.fullscreen[lang]}
+        className="grid size-9 place-items-center rounded-full text-ink transition-colors hover:bg-ink/[0.07] active:scale-95"
+      >
+        {fullscreen ? ICONS.exitFullscreen : ICONS.fullscreen}
+      </button>
+      <button
+        type="button"
         onClick={onKeys}
         aria-label={pw.keys[lang]}
-        title={`${pw.keys[lang]} (?)`}
+        title={pw.keys[lang]}
         className="grid h-9 min-w-9 place-items-center rounded-full px-2 text-xs font-extrabold text-ink-soft transition-colors hover:bg-ink/[0.07] hover:text-ink"
       >
         ⌨
@@ -148,6 +162,7 @@ const ROWS = (presenting: boolean): Row[] => [
   { keys: ['S'], what: { en: 'Stop (back to the start, paused)', pt: 'Parar (volta ao começo, pausado)' } },
   { keys: ['−', '+'], what: { en: 'Slower or faster: 0.5x, 1x, 1.5x, 2x', pt: 'Mais devagar ou mais rápido: 0,5x, 1x, 1,5x, 2x' } },
   { keys: ['H'], what: { en: 'Hide or show the controls', pt: 'Esconder ou mostrar os controles' } },
+  { keys: ['F'], what: { en: 'Full screen', pt: 'Tela cheia' } },
   { keys: ['?'], what: { en: 'Show these shortcuts', pt: 'Mostrar estes atalhos' } },
   { keys: ['Esc'], what: presenting ? { en: 'Leave the presentation', pt: 'Sair da apresentação' } : { en: 'Back to the building', pt: 'Voltar para o prédio' } },
 ]

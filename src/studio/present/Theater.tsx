@@ -53,6 +53,9 @@ const w = {
   steps: (n: number): L => ({ en: n === 1 ? '1 step' : `${n} steps`, pt: n === 1 ? '1 passo' : `${n} passos` }),
   recording: { en: 'Recording the video', pt: 'Gravando o vídeo' },
   makingDeck: { en: 'Making the PowerPoint', pt: 'Montando o PowerPoint' },
+  ended: { en: 'End of the presentation', pt: 'Fim da apresentação' },
+  restart: { en: 'Restart', pt: 'Recomeçar' },
+  backToBuilding: { en: 'Back to the building', pt: 'Voltar ao prédio' },
   keepOpen: { en: 'Keep this tab open and in front until it ends.', pt: 'Deixe esta aba aberta e na frente até terminar.' },
   cancel: { en: 'Cancel', pt: 'Cancelar' },
   cancelled: { en: 'Cancelled', pt: 'Cancelado' },
@@ -113,6 +116,10 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
   const [rate, setRate] = useState<number>(1)
   const [hud, setHud] = useState(true)
   const [help, setHelp] = useState(false)
+  /** The end card after the last step of the last scene, while presenting. */
+  const [ended, setEnded] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef(0)
   /** The scene's clock, handed over by the stage, to jump to a step. */
@@ -129,6 +136,10 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
   const sink = useRef<((canvas: HTMLCanvasElement) => void) | null>(null)
   const waiting = useRef<{ n: number; grab: (canvas: HTMLCanvasElement) => unknown; done: (v: unknown) => void }[]>([])
   const cancelled = useRef(false)
+  /** The scene open (null: the building) when presenting or exporting began; undefined: nothing to put back. */
+  const before = useRef<string | null | undefined>(undefined)
+  const presentingRef = useRef(presenting)
+  presentingRef.current = presenting
 
   const insideId = view.mode === 'inside' ? view.id : null
   const index = insideId ? flows.findIndex((f) => f.id === insideId) : -1
@@ -158,6 +169,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     reachedEnd.current = false
     // A new scene plays, even if the last one was paused or stopped.
     setPaused(REDUCE)
+    setEnded(false)
     if (cut || REDUCE) {
       setVeil(true)
       later(180, () => {
@@ -217,6 +229,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
   const nextStep = () => {
     if (caption.step < last) seek(caption.step + 1)
     else if (index + 1 < flows.length) step(1)
+    else if (presenting) setEnded(true)
     else flash(pw.lastScene[lang])
   }
   const prevStep = () => {
@@ -246,22 +259,63 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     setHud(!hud)
   }
 
+  /** Back to the view from before presenting or exporting: the building, or the scene that was open. */
+  const restoreBefore = useCallback(() => {
+    const id = before.current
+    if (id === undefined) return
+    before.current = undefined
+    timers.current.forEach((t) => window.clearTimeout(t))
+    timers.current = []
+    setVeil(false)
+    setView(id ? { mode: 'inside', id } : { mode: 'building', entering: null })
+  }, [])
+
   const startPresenting = () => {
+    before.current = insideRef.current
     setPresenting(true)
     document.documentElement.requestFullscreen?.().catch(() => undefined)
-    if (flows.length) enter(flows[index >= 0 ? index : 0].id, true)
+    if (flows.length) {
+      enter(flows[index >= 0 ? index : 0].id, true)
+      // The first step waits two seconds before it moves on by itself.
+      if (!REDUCE) {
+        setPaused(true)
+        later(2000, () => setPaused(REDUCE))
+      }
+    }
   }
   const stopPresenting = useCallback(() => {
     setPresenting(false)
+    setEnded(false)
+    restoreBefore()
     if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined)
-  }, [])
+  }, [restoreBefore])
+
+  /** From the end card to the building, whatever view was open before presenting. */
+  const backToBuilding = () => {
+    stopPresenting()
+    setView({ mode: 'building', entering: null })
+  }
+  const restart = () => {
+    setEnded(false)
+    enter(flows[0].id, true)
+  }
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined)
+    else root.current?.requestFullscreen?.().catch(() => undefined)
+  }
 
   // Leaving full screen with the browser's own Esc also ends the presentation.
   useEffect(() => {
-    const onChange = () => !document.fullscreenElement && setPresenting(false)
+    const onChange = () => {
+      setFullscreen(!!document.fullscreenElement)
+      if (document.fullscreenElement || !presentingRef.current) return
+      setPresenting(false)
+      // While exporting, the view stays put: endExport puts it back when the file is done.
+      if (!exportKind.current) restoreBefore()
+    }
     document.addEventListener('fullscreenchange', onChange)
     return () => document.removeEventListener('fullscreenchange', onChange)
-  }, [])
+  }, [restoreBefore])
 
   // The keys, like a video player's. Inside a scene the camera doesn't use the arrows, so they step
   // through it; on the building they still turn the camera (Stage).
@@ -283,12 +337,15 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
       return
     }
     if (k === 'Escape') {
-      if (presenting) stopPresenting()
-      else if (view.mode === 'inside') back()
+      if (presenting) {
+        if (ended) backToBuilding()
+        else stopPresenting()
+      } else if (view.mode === 'inside') back()
       return
     }
     if (k === '?') return done(() => setHelp(true))
     if (k === 'h' || k === 'H') return done(toggleHud)
+    if (k === 'f' || k === 'F') return done(toggleFullscreen)
     if (!flow) return
     if (k === ' ' || k === 'k' || k === 'K') done(togglePause)
     else if ((k === 'ArrowRight' && e.shiftKey) || k === 'PageDown') done(() => step(1))
@@ -334,6 +391,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     waiting.current = []
     setExporting(null)
     setPresenting(false)
+    restoreBefore()
   }
   const recorder = useRef<{ comp: ReturnType<typeof compositor>; rec: ReturnType<typeof recordCanvas> | null } | null>(null)
 
@@ -342,6 +400,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     setPreparing(false)
     if (!flows.length || !exportInfo) return
     if (!canRecord()) return flash(w.noRecording[lang])
+    before.current = insideRef.current
     await fontsReady()
     cancelled.current = false
     const comp = compositor()
@@ -389,6 +448,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
   const makeDeck = async () => {
     setPreparing(false)
     if (!flows.length || !exportInfo) return
+    before.current = insideRef.current
     cancelled.current = false
     const comp = compositor(1600, 900)
     setHelp(false)
@@ -449,6 +509,21 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     flash(w.cancelled[lang])
   }
 
+  // The menu asks for a file by event; the same functions as the buttons answer it.
+  const onExportEvent = (e: Event) => {
+    const kind = (e as CustomEvent<{ kind?: string }>).detail?.kind
+    if (!exportInfo || exportKind.current) return
+    if (kind === 'deck') void makeDeck()
+    else if (kind === 'video') void recordVideo()
+  }
+  const exportEvent = useRef(onExportEvent)
+  exportEvent.current = onExportEvent
+  useEffect(() => {
+    const listen = (e: Event) => exportEvent.current(e)
+    window.addEventListener('repartments:export', listen)
+    return () => window.removeEventListener('repartments:export', listen)
+  }, [])
+
   const onCaption = useCallback(
     (text: Caption | null, at: number, total: number) => {
       setCaption({ text, step: at, total })
@@ -460,6 +535,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
         reachedEnd.current = false
         if (index + 1 < flows.length) step(1)
         else if (recording) void finishVideo()
+        else setEnded(true)
         return
       }
       if (at >= 0 && at <= 1) seenStart.current = true
@@ -505,6 +581,8 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
       onStop={stop}
       onRate={() => changeRate(1, true)}
       onKeys={() => setHelp(true)}
+      fullscreen={fullscreen}
+      onFullscreen={toggleFullscreen}
     />
   )
   const overlays = (
@@ -518,9 +596,12 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     </>
   )
 
+  // The scenes, newest first, with their numbers. The side panel shows them as cards and the phone strip as chips.
+  const sceneRows = flows.map((f, i) => ({ f, i })).reverse()
+
   if (presenting) {
     return (
-      <div className="fixed inset-0 z-50 overflow-hidden text-ink" style={{ background: SKY }}>
+      <div ref={root} className="fixed inset-0 z-50 overflow-hidden text-ink" style={{ background: SKY }}>
         <Backdrop near={flow !== null} weather="sun" />
         {/* While recording, the scene is drawn 16:9 like the video, so it fills the frame. */}
         <div className="absolute inset-0 grid place-items-center">
@@ -528,6 +609,23 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
         </div>
         <div aria-hidden="true" className={`pointer-events-none absolute inset-0 bg-white/80 transition-opacity duration-200 ${veil ? 'opacity-100' : 'opacity-0'}`} />
         {overlays}
+        {ended && (
+          <div className="absolute inset-0 z-30 grid place-items-center bg-white/60 p-4">
+            <section aria-labelledby="ended-title" className={`${glass} pointer-events-auto grid w-[min(30rem,100%)] gap-4 p-6 text-center`}>
+              <h2 id="ended-title" className="text-2xl font-extrabold">
+                {w.ended[lang]}
+              </h2>
+              <div className="flex flex-wrap justify-center gap-2">
+                <button type="button" onClick={restart} className="h-11 rounded-full bg-accent px-5 text-sm font-extrabold text-white transition-transform active:scale-[0.97]">
+                  {w.restart[lang]}
+                </button>
+                <button type="button" onClick={backToBuilding} className="h-11 rounded-full bg-ink/5 px-5 text-sm font-extrabold text-ink hover:bg-ink/10">
+                  {w.backToBuilding[lang]}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
         {exporting && (
           <div className="pointer-events-none absolute top-0 right-0 z-20 flex max-w-[min(34rem,100%)] justify-end p-4 md:p-6">
             <div className={`${glass} pointer-events-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-2 px-5 py-3`} role="status">
@@ -543,18 +641,18 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
             </div>
           </div>
         )}
-        <div className={`pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-4 md:p-6 ${hud ? '' : 'hidden'}`}>
-          <div className={`${glass} max-w-[min(40rem,70vw)] px-4 py-3`}>
+        <div className={`pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-2 p-4 md:p-6 ${hud ? '' : 'hidden'}`}>
+          <div className={`${glass} w-full max-w-full px-4 py-3 md:w-auto md:max-w-[min(40rem,70vw)]`}>
             <p className="text-xs font-bold tracking-wide text-ink-soft uppercase">{flow ? sceneOf(index + 1, flows.length)[lang] : owner}</p>
             <h2 className="text-lg leading-tight font-extrabold md:text-2xl">{flow ? flow.title[lang] : ''}</h2>
             {flow && <p className="mt-0.5 hidden text-sm text-ink-soft md:block">{flow.summary[lang]}</p>}
           </div>
-          <div className={`pointer-events-auto flex items-center gap-2 ${exporting ? 'hidden' : ''}`}>
+          <div className={`pointer-events-auto flex flex-wrap items-center justify-end gap-2 ${exporting ? 'hidden' : ''}`}>
             <label className={`${glass} flex h-10 cursor-pointer items-center gap-2 px-3.5 text-xs font-extrabold text-ink-soft`}>
               <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} className="accent-[#2f8fe6]" />
               {w.auto[lang]}
             </label>
-            <button type="button" onClick={toggleHud} title={`${pw.hud[lang]} (H)`} className={`${glass} h-10 px-3.5 text-xs font-extrabold text-ink-soft hover:text-ink`}>
+            <button type="button" onClick={toggleHud} aria-label={pw.hud[lang]} title={pw.hud[lang]} className={`${glass} h-10 px-3.5 text-xs font-extrabold text-ink-soft hover:text-ink`}>
               {pw.hud[lang]}
             </button>
             <button type="button" onClick={stopPresenting} className={`${glass} h-10 px-4 text-xs font-extrabold text-ink`}>
@@ -598,7 +696,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
   }
 
   return (
-    <div className="relative h-full overflow-hidden" style={{ background: SKY }}>
+    <div ref={root} className="relative h-full overflow-hidden" style={{ background: SKY }}>
       <Backdrop near={flow !== null} weather="sun" />
       {flats.length > 0 && <div className="absolute inset-0">{stage}</div>}
       <div aria-hidden="true" className={`pointer-events-none absolute inset-0 bg-white/80 transition-opacity duration-200 ${veil ? 'opacity-100' : 'opacity-0'}`} />
@@ -661,11 +759,8 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
             <h2 className="mt-4 text-base font-extrabold">{listTitle[lang]}</h2>
             <p className="text-xs text-ink-soft">{listLead[lang]}</p>
             <ul className="mt-2 grid gap-2">
-              {flows
-                .map((f, i) => ({ f, i }))
-                .reverse()
-                .map(({ f, i }) => (
-                  <li key={f.id}>
+              {sceneRows.map(({ f, i }) => (
+                  <li key={f.id} className="min-w-0">
                     <button
                       type="button"
                       onClick={() => enter(f.id)}
@@ -675,7 +770,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
                     >
                       <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-ink/5 text-xs font-extrabold text-ink-soft">{i + 1}º</span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-extrabold">{f.title[lang]}</span>
+                        <span className="line-clamp-2 text-sm font-extrabold [overflow-wrap:anywhere]">{f.title[lang]}</span>
                         <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-soft">
                           <span className="size-2 shrink-0 rounded-full" style={{ background: flats[i].language.color }} />
                           <span className="truncate">
@@ -693,7 +788,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
         <p className="mt-4 border-t border-ink/10 pt-3 text-xs leading-snug text-ink-soft">{note[lang]}</p>
       </aside>
 
-      <div className={`pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-3 md:p-4 ${hud ? '' : 'hidden'}`}>
+      <div className={`pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-3 md:p-4 lg:right-[22.5rem] ${hud ? '' : 'hidden'}`}>
         {/* Phones have no side panel: back and present sit at the bottom. */}
         <div className="pointer-events-auto flex flex-wrap justify-center gap-2 lg:hidden">
           {flow && (
@@ -713,14 +808,26 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
           </>
         ) : (
           flats.length > 0 && (
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <div className={`${glass} px-4 py-2.5 text-center text-sm font-bold text-ink-soft`}>{(TOUCH ? w.hintTouch : w.hint)[lang]}</div>
-              {moved && (
-                <button type="button" onClick={() => setRecenter((n) => n + 1)} className={`${glass} pointer-events-auto px-4 py-2.5 text-sm font-extrabold`}>
-                  ↺
-                </button>
-              )}
-            </div>
+            <>
+              {/* Phones have no side panel: the scenes sit in a strip above the hint. */}
+              <ol className={`${glass} pointer-events-auto flex w-full max-w-full gap-1.5 overflow-x-auto p-1.5 lg:hidden`}>
+                {sceneRows.map(({ f, i }) => (
+                  <li key={f.id} className="shrink-0">
+                    <button type="button" onClick={() => enter(f.id)} className="h-9 rounded-full bg-white/50 px-3.5 text-sm font-extrabold whitespace-nowrap transition-colors hover:bg-white active:scale-[0.97]">
+                      {i + 1} · {f.title[lang]}
+                    </button>
+                  </li>
+                ))}
+              </ol>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <div className={`${glass} px-4 py-2.5 text-center text-sm font-bold text-ink-soft`}>{(TOUCH ? w.hintTouch : w.hint)[lang]}</div>
+                {moved && (
+                  <button type="button" onClick={() => setRecenter((n) => n + 1)} className={`${glass} pointer-events-auto px-4 py-2.5 text-sm font-extrabold`}>
+                    ↺
+                  </button>
+                )}
+              </div>
+            </>
           )
         )}
       </div>

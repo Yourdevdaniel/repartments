@@ -286,8 +286,8 @@ export function WorksTab({
               const c = scenes.find((s) => s.flow.id === flow.id)?.commit
               if (!c) return null
               return (
-                <div className="mt-3 rounded-2xl bg-white/70 p-3">
-                  <div className="flex items-center gap-2">
+                <div className="mt-3 min-w-0 rounded-2xl bg-white/70 p-3">
+                  <div className="flex min-w-0 items-center gap-2">
                     <Avatar name={c.author.name} src={c.author.avatarUrl} size={28} />
                     <div className="min-w-0 text-[13px] leading-tight">
                       <p className="truncate font-extrabold">{c.author.name || authorName(c)}</p>
@@ -295,7 +295,7 @@ export function WorksTab({
                     </div>
                     <span className="ml-auto font-mono text-[11px] text-ink-soft">{c.sha.slice(0, 7)}</span>
                   </div>
-                  {c.body && <p className="mt-2 line-clamp-5 text-[13px] leading-snug whitespace-pre-line text-ink-soft">{c.body}</p>}
+                  {c.body && <p className="mt-2 line-clamp-5 text-[13px] leading-snug whitespace-pre-line text-ink-soft [overflow-wrap:anywhere]">{c.body}</p>}
                   {c.url.startsWith('https://github.com/') && (<a href={c.url} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-extrabold text-accent hover:underline">
                     {w.onGitHub[lang]} ↗
                   </a>)}
