@@ -208,17 +208,148 @@ function verbOf(method: string, path: string): { pt: string; en: string } {
   }
 }
 
+/** Route words that only say where a route lives: "/api/v1/public/…". */
+const ROUTE_FILLER = /^(?:api|v\d+|public|private|rest)$/i
+
+/** The fixed words of a route, without its parameters and filler: "/api/v1/leads/:id/send" → leads, send. */
+function routeWords(path: string): string[] {
+  return path.split('/').filter((s) => s && !/[:{<[$]/.test(s) && !ROUTE_FILLER.test(s))
+}
+
 /** The last fixed word of a route: "/api/leads/:id" → "leads". */
 function resourceOf(path: string): string {
-  const fixed = path
-    .split('/')
-    .filter((s) => s && !/[:{<[$]/.test(s) && s !== 'api')
-    .pop()
+  const fixed = routeWords(path).pop()
   return (fixed ?? path).replace(/[^\p{L}\p{N}_-]/gu, '') || 'dados'
 }
 
 /** What a route does to its resource: one item, a list, or a change to it. */
 type Mode = 'list' | 'one' | 'create' | 'update' | 'delete'
+
+/**
+ * Route words that keep the site running or only sign people in: no scene is about them. A webhook is
+ * called by an outside service, not by the person the scenes follow.
+ */
+const PLUMBING = new Set([
+  'health', 'healthz', 'healthcheck', 'ping', 'metrics', 'csrf', 'swagger', 'redoc', 'openapi', 'schema', 'docs',
+  '__debug__', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'login', 'logout', 'signin', 'signout', 'entrar', 'sair',
+  'refresh', 'token', 'me', 'senha', 'password', 'esqueci', 'redefinir', 'reset', 'webhook', 'webhooks', 'callback',
+])
+
+/** Words that are plumbing only as a route's first word: "/admin/" is Django's admin, "/media/…" its uploads. */
+const PLUMBING_FIRST = new Set(['admin', 'django-admin', 'media', 'static', 'status'])
+
+/**
+ * A route that is not about what the system is for: a health check, CSRF, the admin, signing in or
+ * out, a token refresh, a webhook, static files, API docs, the root page or a catch-all pattern.
+ */
+export function isPlumbing(path: string): boolean {
+  if (/[(*]/.test(path)) return true
+  const first = path.split('/').find(Boolean)?.toLowerCase()
+  if (first && PLUMBING_FIRST.has(first)) return true
+  const words = routeWords(path).map((w) => w.toLowerCase())
+  if (words.length === 0 || words.some((w) => PLUMBING.has(w))) return true
+  // Everything under "auth" is about signing in, except signing up.
+  return words[0] === 'auth' && !SIGNUP.has(words[words.length - 1])
+}
+
+/** Last words of a route that sign a person up: "/auth/register/", "/auth/aluno/cadastro/". */
+const SIGNUP = new Set(['register', 'registro', 'cadastro', 'cadastrar', 'signup', 'sign-up', 'sign_up'])
+
+/** Words that name only where sign-up lives, not who signs up. */
+const SIGNUP_PLACES = new Set(['auth', 'account', 'accounts', 'conta', 'contas', 'user', 'users', 'usuarios'])
+
+/** Last words of a route that name what it does to the thing before it: "/reservas/:id/cancelar". */
+const ROUTE_ACTIONS = new Map<string, { verb: Text; mode: Mode }>(
+  (
+    [
+      [['cancelar', 'cancel'], { pt: 'cancelar', en: 'cancel' }, 'update'],
+      [['confirmar', 'confirm'], { pt: 'confirmar', en: 'confirm' }, 'update'],
+      [['recusar', 'rejeitar', 'reject', 'decline'], { pt: 'recusar', en: 'reject' }, 'update'],
+      [['aceitar', 'accept'], { pt: 'aceitar', en: 'accept' }, 'update'],
+      [['aprovar', 'approve'], { pt: 'aprovar', en: 'approve' }, 'update'],
+      [['enviar', 'send'], { pt: 'enviar', en: 'send' }, 'update'],
+      [['publicar', 'publish'], { pt: 'publicar', en: 'publish' }, 'update'],
+      [['assinar', 'sign'], { pt: 'assinar', en: 'sign' }, 'update'],
+      [['arquivar', 'archive'], { pt: 'arquivar', en: 'archive' }, 'update'],
+      [['finalizar', 'concluir', 'finish', 'complete'], { pt: 'concluir', en: 'complete' }, 'update'],
+      [['pagar', 'pay'], { pt: 'pagar', en: 'pay' }, 'update'],
+      [['retirar'], { pt: 'retirar', en: 'pick up' }, 'update'],
+      [['sincronizar', 'sync'], { pt: 'sincronizar', en: 'sync' }, 'update'],
+      [['verificar', 'verify', 'validar', 'validate'], { pt: 'conferir', en: 'check' }, 'one'],
+      [['exportar', 'export'], { pt: 'exportar', en: 'export' }, 'one'],
+      [['baixar', 'download', 'pdf', 'csv'], { pt: 'baixar', en: 'download' }, 'one'],
+    ] as [string[], Text, Mode][]
+  ).flatMap(([words, verb, mode]) => words.map((w) => [w, { verb, mode }] as [string, { verb: Text; mode: Mode }])),
+)
+
+/**
+ * What a route means in a scene: the verb, what it does, the thing it is about as people say it and
+ * as the code writes it (`word`, null when the route does not name it), and its title.
+ */
+type Meaning = { verb: Text; mode: Mode; res: Text; word: string | null; title: Text }
+
+/** The thing a scene is about when the route does not name it. */
+const SOME_RECORD: Text = { pt: 'registro', en: 'record' }
+
+function titled(verb: Text, res: Text | null): Text {
+  return res ? { pt: `${cap(verb.pt)} ${res.pt}`, en: `${cap(verb.en)} ${res.en}` } : { pt: cap(verb.pt), en: cap(verb.en) }
+}
+
+/** A route word as people read it: "meus-dados" → "meus dados". */
+function wordText(raw: string): Text {
+  const w = raw.replace(/[^\p{L}\p{N}_-]/gu, '').replace(/[-_]+/g, ' ').trim()
+  return w ? { pt: w, en: w } : { pt: 'dados', en: 'data' }
+}
+
+/** A route word that names a thing: not an action, and long enough to say something ("f" in "/f/:token" does not). */
+function namesThing(word: string | undefined): word is string {
+  return !!word && word.length >= 3 && !ROUTE_ACTIONS.has(word.toLowerCase()) && !SIGNUP.has(word.toLowerCase())
+}
+
+function meaningOf(method: string, path: string): Meaning {
+  const words = routeWords(path)
+  const last = (words[words.length - 1] ?? '').toLowerCase()
+  const before = words.slice(0, -1).reverse().find(namesThing)
+  if (SIGNUP.has(last)) {
+    const who = before && !SIGNUP_PLACES.has(before.toLowerCase()) ? before : null
+    if (who) {
+      const verb = { pt: 'cadastrar', en: 'sign up' }
+      return { verb, mode: 'create', res: wordText(who), word: who, title: titled(verb, wordText(who)) }
+    }
+    const verb = { pt: 'criar', en: 'create' }
+    const res = { pt: 'conta', en: 'account' }
+    return { verb, mode: 'create', res, word: 'account', title: titled(verb, res) }
+  }
+  const action = ROUTE_ACTIONS.get(last)
+  if (action) {
+    const res = before ? wordText(before) : null
+    return { verb: action.verb, mode: action.mode, res: res ?? SOME_RECORD, word: before ?? null, title: titled(action.verb, res) }
+  }
+  const verb = verbOf(method, path)
+  const word = namesThing(words[words.length - 1]) ? resourceOf(path) : null
+  const res = word ? wordText(word) : null
+  return { verb, mode: modeOf(method, path), res: res ?? SOME_RECORD, word, title: titled(verb, res) }
+}
+
+/** The method that does what a mode says, for a route that does not say its own. */
+const METHOD_OF_MODE: Record<Mode, string> = { list: 'GET', one: 'GET', create: 'POST', update: 'PATCH', delete: 'DELETE' }
+
+/** The order in which the methods a screen calls a route with are told. */
+const CALLED_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE', 'GET']
+
+/**
+ * The routes a scene can tell. A route for any method (Django, DRF) becomes the methods the screens
+ * call it with; when no screen calls it, what its words say (`cancelar`, `cadastro`), or reading it.
+ */
+function concreteRoutes(ep: Endpoint, details: FlowDetails | null): Endpoint[] {
+  if (ep.method !== 'ANY') return [ep]
+  const called = CALLED_METHODS.filter((m) => details?.calls.has(`${m} ${ep.path}`))
+  if (called.length > 0) return called.map((method) => ({ ...ep, method }))
+  const words = routeWords(ep.path)
+  const last = (words[words.length - 1] ?? '').toLowerCase()
+  const mode = SIGNUP.has(last) ? 'create' : (ROUTE_ACTIONS.get(last)?.mode ?? modeOf('GET', ep.path))
+  return [{ ...ep, method: METHOD_OF_MODE[mode] }]
+}
 
 function modeOf(method: string, path: string): Mode {
   const last = path.split('/').filter(Boolean).pop() ?? ''
@@ -268,7 +399,7 @@ function knownOf(details: FlowDetails | null, ep: Endpoint, src: Component): Kno
     sent: call?.sent ?? [],
     subject: details.subjects.get(src.id)?.[0] ?? null,
     task: taskPhraseOf(details.tasks[0]),
-    model: modelForResource(resourceOf(ep.path), details.models),
+    model: modelForResource(meaningOf(ep.method, ep.path).word ?? '', details.models),
   }
 }
 
@@ -295,9 +426,12 @@ function both(build: (lang: Lang) => string): Text {
   return { pt: build('pt'), en: build('en') }
 }
 
-/** Portuguese words ending in "a" are feminine ("tarefa", "data"); the rest are taken as masculine. */
+/**
+ * Portuguese words ending in "a", "-ção", "-são", "-dade", "-gem", "-ise" or "-tude" are feminine
+ * ("tarefa", "reserva", "análise"); the rest are taken as masculine.
+ */
 function feminine(word: string): boolean {
-  return /a$/i.test(word)
+  return /(?:a|ção|são|dade|gem|ise|tude)$/i.test(word)
 }
 
 /** "um lead", "uma tarefa" in Portuguese; "a lead", "an order" in English. */
@@ -477,15 +611,14 @@ function showCaption(mode: Mode, res: string, screen: Name, lang: Lang): string 
 function requestFlow(plan: RequestPlan, use: { sec: boolean; send: boolean; queue: boolean }): Flow {
   const { endpoint: ep, api, screen, known } = plan
   const sec = use.sec ? plan.sec : null
+  const { verb, mode, res, title } = meaningOf(ep.method, ep.path)
   // Reading something rarely sends an e-mail or leaves a task behind, so only writes show them.
-  const writes = ep.method !== 'GET'
+  const fetching = mode === 'list' || mode === 'one'
+  const writes = !fetching
   const send = use.send && writes ? plan.send : null
   const queue = use.queue && writes ? plan.queue : null
   const svc = plan.svc
   const dbSvc = plan.db
-  const verb = verbOf(ep.method, ep.path)
-  const res = resourceOf(ep.path)
-  const mode = modeOf(ep.method, ep.path)
   const an: Name = nameOf(api)
   const sn: Name | null = screen ? nameOf(screen) : null
   const secn: Name | null = sec ? nameOf(sec) : null
@@ -516,15 +649,15 @@ function requestFlow(plan: RequestPlan, use: { sec: boolean; send: boolean; queu
   const button = known && (mode === 'create' || mode === 'update') ? pickButton(known.screen?.buttons ?? []) : null
 
   if (screen && sn) {
-    if (known) stepT('person', `c:${screen.id}`, 'ask', both((l) => personCaption(mode, sn, known.screen?.title ?? null, screenFields, button, res, l)), { pt: 'clique!', en: 'click!' })
+    if (known) stepT('person', `c:${screen.id}`, 'ask', both((l) => personCaption(mode, sn, known.screen?.title ?? null, screenFields, button, res[l], l)), { pt: 'clique!', en: 'click!' })
     else step('person', `c:${screen.id}`, 'ask', `O usuário usa ${at('none', sn, 'pt')}`, `The user opens ${at('none', sn, 'en')}`, { pt: 'clique!', en: 'click!' })
-    if (known) stepT(`c:${screen.id}`, `c:${api.id}`, 'ask', both((l) => screenToApiCaption(mode, known.sent, res, sn, an, l)), { pt: 'pedido!', en: 'request!' }, ref)
+    if (known) stepT(`c:${screen.id}`, `c:${api.id}`, 'ask', both((l) => screenToApiCaption(mode, known.sent, res[l], sn, an, l)), { pt: 'pedido!', en: 'request!' }, ref)
     else
       stepT(
         `c:${screen.id}`,
         `c:${api.id}`,
         'ask',
-        both((l) => `${at('none', sn, l, true)} ${l === 'pt' ? `faz um pedido ${at('para', an, 'pt')}: ${verb.pt} ${res}` : `sends a request ${at('para', an, 'en')}: ${verb.en} ${res}`}`),
+        both((l) => `${at('none', sn, l, true)} ${l === 'pt' ? `faz um pedido ${at('para', an, 'pt')}: ${verb.pt} ${res.pt}` : `sends a request ${at('para', an, 'en')}: ${verb.en} ${res.en}`}`),
         { pt: 'pedido!', en: 'request!' },
         ref,
       )
@@ -533,7 +666,7 @@ function requestFlow(plan: RequestPlan, use: { sec: boolean; send: boolean; queu
       'person',
       `c:${api.id}`,
       'ask',
-      both((l) => (l === 'pt' ? `O usuário faz um pedido ${at('para', an, 'pt')}: ${verb.pt} ${res}` : `The user sends a request ${at('para', an, 'en')}: ${verb.en} ${res}`)),
+      both((l) => (l === 'pt' ? `O usuário faz um pedido ${at('para', an, 'pt')}: ${verb.pt} ${res.pt}` : `The user sends a request ${at('para', an, 'en')}: ${verb.en} ${res.en}`)),
       { pt: 'pedido!', en: 'request!' },
       ref,
     )
@@ -548,18 +681,17 @@ function requestFlow(plan: RequestPlan, use: { sec: boolean; send: boolean; queu
   if (dbSvc && dbn) {
     const srcId = svc ? `c:${svc.id}` : `c:${api.id}`
     const dbId = `e:${dbSvc.id}`
-    const fetching = ep.method === 'GET'
     const saysAction = fetching ? { pt: 'os dados?', en: 'the data?' } : { pt: 'guardar', en: 'save' }
     if (known) {
       const items = known.sent.length > 0 ? known.sent : (known.model?.fields ?? [])
-      stepT(srcId, dbId, fetching ? 'fetch' : 'save', both((l) => databaseCaption(mode, items, res, srcn, dbn, l)), saysAction)
+      stepT(srcId, dbId, fetching ? 'fetch' : 'save', both((l) => databaseCaption(mode, items, res[l], srcn, dbn, l)), saysAction)
     } else if (fetching) {
       step(srcId, dbId, 'fetch', `${at('none', srcn, 'pt', true)} ${vb(srcn, 'pt', 'busca', 'buscam')} os dados ${at('em', dbn, 'pt')}`, `${at('none', srcn, 'en', true)} ${vb(srcn, 'en', 'fetches', 'fetch')} the data ${at('em', dbn, 'en')}`, saysAction)
     } else {
       step(srcId, dbId, 'save', `${at('none', srcn, 'pt', true)} ${vb(srcn, 'pt', 'guarda', 'guardam')} as mudanças ${at('em', dbn, 'pt')}`, `${at('none', srcn, 'en', true)} ${vb(srcn, 'en', 'saves', 'save')} the changes ${at('em', dbn, 'en')}`, saysAction)
     }
     if (known) {
-      stepT(dbId, srcId, 'reply', both((l) => databaseReplyCaption(mode, res, dbn, srcn, l)), fetching ? { pt: 'aqui está', en: 'here you go' } : { pt: 'guardado!', en: 'saved!' })
+      stepT(dbId, srcId, 'reply', both((l) => databaseReplyCaption(mode, res[l], dbn, srcn, l)), fetching ? { pt: 'aqui está', en: 'here you go' } : { pt: 'guardado!', en: 'saved!' })
     } else if (fetching) {
       step(dbId, srcId, 'reply', `${at('none', dbn, 'pt', true)} ${vb(dbn, 'pt', 'entrega', 'entregam')} os dados ${at('para', srcn, 'pt')}`, `${at('none', dbn, 'en', true)} ${vb(dbn, 'en', 'hands', 'hand')} over the data ${at('para', srcn, 'en')}`, { pt: 'aqui está', en: 'here you go' })
     } else {
@@ -595,13 +727,12 @@ function requestFlow(plan: RequestPlan, use: { sec: boolean; send: boolean; queu
   }
   if (screen && sn) {
     step(`c:${api.id}`, `c:${screen.id}`, 'reply', `${at('none', an, 'pt', true)} ${vb(an, 'pt', 'devolve', 'devolvem')} a resposta ${at('para', sn, 'pt')}`, `${at('none', an, 'en', true)} ${vb(an, 'en', 'sends', 'send')} back the answer ${at('para', sn, 'en')}`, { pt: 'resposta!', en: 'answer!' })
-    if (known) stepT(`c:${screen.id}`, `c:${screen.id}`, 'show', both((l) => showCaption(mode, res, sn, l)), { pt: 'na tela!', en: 'on screen!' })
+    if (known) stepT(`c:${screen.id}`, `c:${screen.id}`, 'show', both((l) => showCaption(mode, res[l], sn, l)), { pt: 'na tela!', en: 'on screen!' })
     else step(`c:${screen.id}`, `c:${screen.id}`, 'show', `${at('none', sn, 'pt', true)} ${vb(sn, 'pt', 'mostra', 'mostram')} o resultado na tela`, `${at('none', sn, 'en', true)} ${vb(sn, 'en', 'shows', 'show')} the result on the screen`, { pt: 'na tela!', en: 'on screen!' })
   } else {
     step(`c:${api.id}`, 'person', 'reply', `${at('none', an, 'pt', true)} ${vb(an, 'pt', 'devolve', 'devolvem')} a resposta`, `${at('none', an, 'en', true)} ${vb(an, 'en', 'sends', 'send')} back the answer`, { pt: 'resposta!', en: 'answer!' })
   }
 
-  const title = { pt: `${cap(verb.pt)} ${res}`, en: `${cap(verb.en)} ${res}` }
   return {
     id: `request:${ep.method} ${ep.path}`,
     kind: 'request',
@@ -609,11 +740,11 @@ function requestFlow(plan: RequestPlan, use: { sec: boolean; send: boolean; queu
     // In words, not HTTP: what the person wants done, and who it passes through.
     summary: {
       pt: clip(
-        `O caminho de um pedido para ${verb.pt} ${res}: ${sn ? `${at('de', sn, 'pt')} ` : ''}até ${at('none', an, 'pt')}${svcn ? `, ${at('none', svcn, 'pt')}` : ''}${dbn ? ` e ${at('none', dbn, 'pt')}` : ''}, e de volta.`,
+        `O caminho de um pedido para ${verb.pt} ${res.pt}: ${sn ? `${at('de', sn, 'pt')} ` : ''}até ${at('none', an, 'pt')}${svcn ? `, ${at('none', svcn, 'pt')}` : ''}${dbn ? ` e ${at('none', dbn, 'pt')}` : ''}, e de volta.`,
         400,
       ),
       en: clip(
-        `How a request to ${verb.en} ${res} travels: ${sn ? `from ${at('none', sn, 'en')} ` : ''}to ${at('none', an, 'en')}${svcn ? `, ${at('none', svcn, 'en')}` : ''}${dbn ? ` and ${at('none', dbn, 'en')}` : ''}, and back.`,
+        `How a request to ${verb.en} ${res.en} travels: ${sn ? `from ${at('none', sn, 'en')} ` : ''}to ${at('none', an, 'en')}${svcn ? `, ${at('none', svcn, 'en')}` : ''}${dbn ? ` and ${at('none', dbn, 'en')}` : ''}, and back.`,
         400,
       ),
     },
@@ -1074,16 +1205,23 @@ export function buildFlows(input: FlowInput): Flow[] {
 
   // Request scenes: the endpoints whose chains reach the most, POST first; one per API part and kind
   // of action, so creating and listing the same thing can both be shown.
+  // Routes that only keep the site running, or whose words say nothing, are left out. Routes that name
+  // their thing come first, and signing up after what the system is for.
   const plans = input.endpoints
-    .map((ep) => planRequest(ctx, ep))
-    .filter((p): p is RequestPlan => p !== null)
-    .map((p) => ({
+    .filter((ep) => !isPlumbing(ep.path))
+    .flatMap((ep) => concreteRoutes(ep, ctx.details))
+    .map((ep) => ({ ep, meaning: meaningOf(ep.method, ep.path) }))
+    .filter(({ ep, meaning }) => meaning.word !== null || ROUTE_ACTIONS.has((routeWords(ep.path).pop() ?? '').toLowerCase()))
+    .map(({ ep, meaning }) => ({ plan: planRequest(ctx, ep), meaning }))
+    .filter((x): x is { plan: RequestPlan; meaning: Meaning } => x.plan !== null)
+    .map(({ plan: p, meaning }) => ({
       plan: p,
+      business: (meaning.word !== null ? 2 : 0) + (SIGNUP.has((routeWords(p.endpoint.path).pop() ?? '').toLowerCase()) ? 0 : 1),
       score:
         (p.screen ? 1 : 0) + (p.sec ? 1 : 0) + (p.svc ? 1 : 0) + (p.data ? 1 : 0) + (p.db ? 1 : 0) + (p.send ? 1 : 0) + (p.queue ? 1 : 0),
       method: { POST: 3, PUT: 2, PATCH: 2, GET: 1 }[p.endpoint.method] ?? 0,
     }))
-    .sort((a, b) => b.score - a.score || b.method - a.method)
+    .sort((a, b) => b.business - a.business || b.score - a.score || b.method - a.method)
   const usedApis = new Set<string>()
   let requests = 0
   for (const { plan } of plans) {

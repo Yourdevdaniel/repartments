@@ -55,6 +55,18 @@ describe('endpointsOf', () => {
     expect(routes('crm/urls.py', text)).toEqual(['ANY /leads/', 'ANY /ping/', 'ANY /users/'])
   })
 
+  it('leaves out a Django path that only mounts another urls.py, since it is not a route of its own', () => {
+    const text = [
+      'urlpatterns = [',
+      "  path('admin/', admin.site.urls),",
+      "  path('api/', include('contracts.urls')),",
+      "  re_path(r'^v2/', include(router.urls)),",
+      "  path('health/', views.health),",
+      ']',
+    ].join('\n')
+    expect(routes('config/urls.py', text)).toEqual(['ANY /admin/', 'ANY /health/'])
+  })
+
   it('reads Spring controllers, joining the class-level mapping', () => {
     const text = [
       '@RestController',

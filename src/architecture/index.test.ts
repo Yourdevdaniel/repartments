@@ -177,6 +177,26 @@ describe('buildModel on other inputs', () => {
     expect(model.components[0].entry).toBe(true)
     expect(model.externals.map((e) => [e.name, e.kind])).toEqual([['Banco de dados', 'database']])
   })
+
+  it('tells a Django route by the method the front-end calls it with', () => {
+    const model = buildModel({
+      repo: { owner: 'acme', name: 'contratos', branch: 'main', sha: 's', private: false },
+      tree: [
+        { path: 'backend/contracts/urls.py', type: 'blob' },
+        { path: 'backend/contracts/views.py', type: 'blob' },
+        { path: 'frontend/src/pages/NewContract.tsx', type: 'blob' },
+      ],
+      files: new Map([
+        ['backend/contracts/urls.py', "from django.urls import path\nfrom . import views\n\nurlpatterns = [\n  path('contracts/', views.contracts),\n  path('health/', views.health),\n]\n"],
+        ['backend/contracts/views.py', 'def contracts(request):\n    pass\n\ndef health(request):\n    pass\n'],
+        ['frontend/src/pages/NewContract.tsx', "export function NewContract() {\n  const save = () => fetch('/api/contracts/', { method: 'POST', body: JSON.stringify({ title }) })\n  return <button onClick={save}>Salvar</button>\n}\n"],
+      ]),
+      truncated: false,
+    })
+    const requests = model.flows.filter((f) => f.kind === 'request')
+    expect(requests.map((f) => f.id)).toEqual(['request:POST /contracts/'])
+    expect(requests[0].title.pt).toBe('Criar contracts')
+  })
 })
 
 describe('analyzeRepository', () => {

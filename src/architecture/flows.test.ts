@@ -96,21 +96,91 @@ describe('buildFlows: request scenes', () => {
   })
 
   it('picks POST before GET, and at most one scene per API part, three in all', () => {
-    const many = ['a', 'b', 'c', 'd'].map((x) => component(`api/${x}`, 'api'))
+    const many = ['leads', 'deals', 'tasks', 'notes'].map((x) => component(`api/${x}`, 'api'))
     const endpoints = [
-      endpoint('GET', '/a', 'api/a'),
-      endpoint('POST', '/a', 'api/a'),
-      endpoint('POST', '/b', 'api/b'),
-      endpoint('POST', '/c', 'api/c'),
-      endpoint('POST', '/d', 'api/d'),
+      endpoint('GET', '/leads', 'api/leads'),
+      endpoint('POST', '/leads', 'api/leads'),
+      endpoint('POST', '/deals', 'api/deals'),
+      endpoint('POST', '/tasks', 'api/tasks'),
+      endpoint('POST', '/notes', 'api/notes'),
     ]
     const flows = buildFlows({ components: many, dependencies: [], externals: [], endpoints, agents: [] })
-    expect(flows.map((f) => f.id)).toEqual(['request:POST /a', 'request:POST /b', 'request:POST /c'])
+    expect(flows.map((f) => f.id)).toEqual(['request:POST /leads', 'request:POST /deals', 'request:POST /tasks'])
   })
 
   it('leaves out the queue and e-mail when the step count would otherwise be too high', () => {
     const [flow] = buildFlows({ components, dependencies, externals, endpoints: [endpoint('POST', '/api/leads', 'backend/routes')], agents: [], fileDeps })
     expect(flow.steps.length).toBeLessThanOrEqual(MAX_STEPS)
+  })
+})
+
+describe('buildFlows: routes that do not say their method (Django, DRF)', () => {
+  const components = [component('frontend/pages', 'interface'), component('backend/core', 'logic')]
+  const dependencies = [dep('frontend/pages', 'backend/core')]
+  const externals = [ext('ext:postgresql', 'PostgreSQL', 'database', ['backend/core'])]
+  const any = (path: string) => endpoint('ANY', path, 'backend/core', 'backend/core/urls.py')
+  const noDetails: FlowDetails = { models: [], calls: new Map(), screens: new Map(), subjects: new Map(), tasks: [] }
+  const run = (paths: string[], details: FlowDetails = noDetails) =>
+    buildFlows({ components, dependencies, externals, endpoints: paths.map(any), agents: [], details }).filter((f) => f.kind === 'request')
+
+  it('leaves out the routes that keep the site running or only sign people in', () => {
+    const plumbing = ['/health/', '/csrf', '/admin/', '/api/auth/refresh/', '/auth/login/', '/api/auth/logout/', '/api/auth/me/', '/media/(?P<path>.*)', '/', '/status/', '/swagger/', '/api/auth/senha/esqueci/', '/api/auth/social/<str:provider>/', '/auth/conta/', '/webhooks/pix/']
+    expect(run(plumbing)).toEqual([])
+  })
+
+  it('leaves out a route whose words say nothing, like a short link', () => {
+    expect(run(['/f/<str:token>', '/api/v1/'])).toEqual([])
+  })
+
+  it('tells an action whose thing the route does not name by its verb alone, after the routes that name theirs', () => {
+    const flows = run(['/public/sign/<str:token>/', '/contracts/<int:id>/pdf/'])
+    expect(flows.map((f) => f.title)).toEqual([
+      { pt: 'Baixar contracts', en: 'Download contracts' },
+      { pt: 'Assinar', en: 'Sign' },
+    ])
+    expect(flows[1].steps.map((s) => s.text.pt).join(' | ')).toContain('o registro')
+  })
+
+  it('takes the method from the screens that call the route, so one route can be a creation and a list', () => {
+    const details: FlowDetails = {
+      ...noDetails,
+      calls: new Map([
+        ['POST /contracts/', { file: 'frontend/pages/New.tsx', sent: ['title'] }],
+        ['GET /contracts/', { file: 'frontend/pages/List.tsx', sent: [] }],
+      ]),
+    }
+    const flows = run(['/contracts/'], details)
+    expect(flows.map((f) => f.title.pt)).toEqual(['Criar contracts', 'Listar contracts'])
+    expect(flows.map((f) => f.id)).toEqual(['request:POST /contracts/', 'request:GET /contracts/'])
+    expect(flows[0].steps.map((s) => s.action)).toContain('save')
+    expect(flows[1].steps.map((s) => s.action)).toContain('fetch')
+  })
+
+  it('reads a route nobody calls as a list, or as one item when it ends in an id', () => {
+    expect(run(['/estudios']).map((f) => f.title.pt)).toEqual(['Listar estudios'])
+    expect(run(['/estudios/<int:pk>']).map((f) => f.title.pt)).toEqual(['Ver estudios'])
+    expect(run(['/aluno/meus-dados/']).map((f) => f.title)).toEqual([{ pt: 'Listar meus dados', en: 'List meus dados' }])
+  })
+
+  it('reads the action at the end of a route as what is done to the thing before it', () => {
+    const [flow] = run(['/reservas/<int:pk>/cancelar'])
+    expect(flow.title).toEqual({ pt: 'Cancelar reservas', en: 'Cancel reservas' })
+    expect(flow.steps.map((s) => s.action)).toContain('save')
+    expect(flow.steps.map((s) => s.text.pt).join(' ')).not.toMatch(/usar|cancelar cancelar/i)
+  })
+
+  it('tells a sign-up as creating an account, after the routes about what the system is for', () => {
+    expect(run(['/api/auth/register/', '/estudios/<int:pk>']).map((f) => f.title)).toEqual([
+      { pt: 'Ver estudios', en: 'View estudios' },
+      { pt: 'Criar conta', en: 'Create account' },
+    ])
+    expect(run(['/auth/aluno/cadastro/']).map((f) => f.title.pt)).toEqual(['Cadastrar aluno'])
+  })
+
+  it('agrees the Portuguese words in -ise, -ção and -dade as feminine', () => {
+    const details: FlowDetails = { ...noDetails, calls: new Map([['POST /analises/', { file: 'frontend/pages/New.tsx', sent: [] }]]) }
+    const [flow] = run(['/analises/'], details)
+    expect(flow.steps.map((s) => s.text.pt).join(' | ')).toContain('a nova analise')
   })
 })
 

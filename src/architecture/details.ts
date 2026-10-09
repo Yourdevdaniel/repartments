@@ -21,7 +21,10 @@ export type CallDetails = { file: string; sent: string[] }
 /** Everything the scenes can say beyond the graph. Any part may be empty when the code shows nothing. */
 export type FlowDetails = {
   models: DataModel[]
-  /** Front-end calls, keyed by the route they reach: "POST /leads". */
+  /**
+   * Front-end calls, keyed by the route they reach: "POST /leads". A route for any method (Django) is
+   * keyed by the method the call uses, so "POST /contracts/" and "GET /contracts/" can both be there.
+   */
   calls: Map<string, CallDetails>
   /** What each file's screen shows, with the screens it imports folded in. */
   screens: Map<string, ScreenDetails>

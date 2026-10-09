@@ -48,7 +48,10 @@ export function endpointsOf(path: string, text: string): RouteDef[] {
     }
     if (name === 'urls.py') {
       // Django: path('leads/', views.leads) and DRF's router.register(r'leads', …) → any method.
+      // path('api/', include(…)) only mounts another list of routes, so it is not a route itself.
       for (const m of code.matchAll(/\bre_?path\(\s*r?(['"])([^'"\n]*)\1|\bpath\(\s*r?(['"])([^'"\n]*)\3\s*,/g)) {
+        const after = code.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 40)
+        if (/^\s*,?\s*include\s*\(/.test(after)) continue
         add('ANY', m[2] ?? m[4] ?? '', m.index ?? 0)
       }
       for (const m of code.matchAll(/\.register\(\s*r?(['"])([^'"\n]*)\1/g)) {

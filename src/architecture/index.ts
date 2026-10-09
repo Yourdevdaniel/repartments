@@ -224,7 +224,9 @@ function flowDetailsOf(input: {
       for (const call of callsOf(path, text)) {
         const hit = matchCall(call.url, endpoints, call.method)
         if (!hit) continue
-        const key = `${hit.method} ${hit.path}`
+        // A route for any method (Django) is filed under the method the screen calls it with, so the
+        // scenes can tell a creation from a list on the same route.
+        const key = `${hit.method === 'ANY' ? call.method : hit.method} ${hit.path}`
         const sent = call.method === 'GET' ? [] : sentFieldsOf(text, call.line)
         const prev = calls.get(key)
         if (!prev || (prev.sent.length === 0 && sent.length > 0)) calls.set(key, { file: path, sent })
