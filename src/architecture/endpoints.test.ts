@@ -130,6 +130,23 @@ describe('callsOf', () => {
     expect(callsOf('src/api.ts', text).map((c) => `${c.method} ${c.url}`)).toEqual(['GET /api/leads', 'POST /api/leads', 'DELETE /leads/{param}'])
   })
 
+  it('reads calls through a wrapper called like fetch, and paths built by concatenation or without the leading slash', () => {
+    const text = [
+      'mutationFn: (id) => api(`/reservas/${id}/cancelar`, { method: "POST" }),',
+      'queryFn: () => api("/reservas/minhas"),',
+      "requests.get('/articles/' + slug)",
+      'ApiService.post(`articles/${slug}/comments`, { comment })',
+      "const id = params.get('id')",
+      "cache.get('articles')",
+    ].join('\n')
+    expect(callsOf('src/pages/MinhasReservas.jsx', text).map((c) => `${c.method} ${c.url}`)).toEqual([
+      'POST /reservas/{param}/cancelar',
+      'GET /reservas/minhas',
+      'GET /articles/{param}',
+      'POST /articles/{param}/comments',
+    ])
+  })
+
   it('reads nothing from a non-JavaScript file', () => {
     expect(callsOf('x.py', "requests.get('/x')")).toEqual([])
   })

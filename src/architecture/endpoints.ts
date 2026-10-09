@@ -157,21 +157,27 @@ export function callsOf(path: string, text: string): CallDef[] {
   const code = stripComments(text, 'slash')
   const line = lineOf(code)
   const out: CallDef[] = []
-  const add = (method: string, raw: string, at: number) => {
+  // `relative` is for an API client's own methods, whose paths may leave out the leading slash.
+  const add = (method: string, raw: string, at: number, joined: boolean, relative: boolean) => {
     let url = raw.replace(/\$\{[^}]*\}/g, '{param}')
     url = url.replace(/^https?:\/\/[^/]+/, '')
     url = url.replace(/^\{param\}(?=\/)/, '')
+    if (relative && /^[A-Za-z]/.test(url)) url = `/${url}`
     if (!url.startsWith('/')) return
+    // '/articles/' + slug: the rest of the path is a parameter.
+    if (joined) url = url.endsWith('/') ? `${url}{param}` : `${url}/{param}`
     out.push({ method: method.toUpperCase(), url, line: line(at) })
   }
-  for (const m of code.matchAll(/(?<![\w$.])(?:fetch|\$fetch|useFetch)\(\s*(?:(['"])([^'"\n]*)\1|`([^`\n]*)`)/g)) {
+  const URL_ARG = String.raw`\(\s*(?:(?<q>['"])([^'"\n]*)\k<q>|\x60([^\x60\n]*)\x60)(\s*\+)?`
+  // fetch, and wrappers called the same way: api('/x', { method: 'POST' }).
+  for (const m of code.matchAll(new RegExp(String.raw`(?<![\w$.])(?:fetch|\$fetch|useFetch|api|apiFetch|apiRequest|request|http|fetcher|callApi|fetchApi)` + URL_ARG, 'g'))) {
     const at = m.index ?? 0
     const window = code.slice(at, at + 300)
     const method = /method\s*:\s*['"](\w+)['"]/.exec(window)?.[1] ?? 'GET'
-    add(method, m[2] ?? m[3] ?? '', at)
+    add(method, m[2] ?? m[3] ?? '', at, !!m[4], false)
   }
-  for (const m of code.matchAll(/\b(?:axios|api|http|apiClient|httpClient|client|request|\w+Api|\w+Client|\w+Http)\.(get|post|put|patch|delete)\(\s*(?:(['"])([^'"\n]*)\2|`([^`\n]*)`)/g)) {
-    add(m[1], m[3] ?? m[4] ?? '', m.index ?? 0)
+  for (const m of code.matchAll(new RegExp(String.raw`\b(?:axios|api|http|apiClient|httpClient|client|request|requests|\w+Api|\w+Client|\w+Http|\w+Service)\.(get|post|put|patch|delete|del)` + URL_ARG, 'g'))) {
+    add(m[1] === 'del' ? 'delete' : m[1], m[3] ?? m[4] ?? '', m.index ?? 0, !!m[5], true)
   }
   return out
 }
