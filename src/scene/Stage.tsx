@@ -88,13 +88,16 @@ function CameraRig({
   const free = view.mode === 'building' && !view.entering
 
   const want = useMemo<Frame>(() => {
+    // Upright phones have no room to spare: the whole floor has to fit the width, so the caps below
+    // (tuned for wide screens, where the side panel takes the rest) don't apply there.
+    const upright = size.width < size.height
     if (inside?.layout.plan === 'office') {
       // A whole office floor seen from higher up, so the back row shows over the front row's low walls.
-      const fitW = Math.min(inside.layout.width + 0.6, OFFICE_WIDTH)
+      const fitW = upright ? inside.layout.width + 1.4 : Math.min(inside.layout.width + 0.6, OFFICE_WIDTH)
       return { target: new Vector3(0, 0.42, 0.05), az: 0.1, el: 0.56, fitW, fitH: inside.layout.depth * 0.85 + 1.6 }
     }
     if (inside) {
-      const fitW = Math.min(inside.layout.width + 0.8, INSIDE_WIDTH)
+      const fitW = upright ? inside.layout.width + 1.4 : Math.min(inside.layout.width + 0.8, INSIDE_WIDTH)
       return { target: new Vector3(0, 0.66, 0.1), az: 0.16, el: 0.22, fitW, fitH: 2.15 }
     }
     const entering = view.mode === 'building' ? flats.findIndex((f) => f.id === view.entering) : -1
@@ -110,7 +113,6 @@ function CameraRig({
     // Room for the roof and the street, plus the header and the hint at the bottom of the screen. A
     // phone held upright frames the tower tighter at the sides (the trees can go off screen) and
     // leaves more above and below, where its header and buttons stack up.
-    const upright = size.width < size.height
     return {
       target: new Vector3(0, height * 0.5, 0.6),
       az: 0.36,
