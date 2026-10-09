@@ -200,8 +200,10 @@ export function endpointsOf(path: string, text: string): RouteDef[] {
 
   if (lang === 'py') {
     // FastAPI and Flask: @app.get("/x"), @router.post("/x"), @bp.route("/x", methods=["POST"])
-    // The arguments run to the decorator's last ')', since a methods tuple `('POST',)` has parentheses of its own.
-    for (const m of code.matchAll(/@\w+\.(get|post|put|patch|delete|route)\(\s*(['"])([^'"\n]*)\2([^\n]*)\)/g)) {
+    // The arguments run to the ')' that ends the decorator, the one before the next decorator or the
+    // `def`: a methods tuple `('POST',)` has parentheses of its own, and FastAPI's arguments often run
+    // over several lines.
+    for (const m of code.matchAll(/@\w+\.(get|post|put|patch|delete|route)\(\s*(['"])([^'"\n]*)\2([\s\S]*?)\)[ \t]*\r?\n\s*(?=@|(?:async\s+)?def\b)/g)) {
       const at = m.index ?? 0
       if (m[1] !== 'route') {
         add(m[1], m[3], at)

@@ -12,7 +12,8 @@ import { agentsFrom, type AgentFile } from './agents'
 import { buildComponents, type ComponentFile } from './components'
 import { dataModelsOf, emailSubjectsOf, mergeScreenDetails, screenActionsOf, screenDetailsOf, sentFieldsOf, tasksOf, type ButtonCall, type CallDetails, type DataModel, type FlowDetails, type ScreenDetails } from './details'
 import { readFiles } from './fetch'
-import { callsOf, endpointsOf, matchCall, type RouteDef } from './endpoints'
+import { callsOf, endpointsOf, matchCall, routePath, type RouteDef } from './endpoints'
+import { mountsOf, prefixesOf, pythonImportedNames, type Mount } from './mounts'
 import { databaseLabelOf, externalsFrom, imagesOf, type Usage } from './externals'
 import { buildFlows } from './flows'
 import { AUTHORED_FILE, applyAuthored, parseAuthored } from './authored'
@@ -253,6 +254,50 @@ function flowDetailsOf(input: {
   return { models, calls, screens, subjects, tasks, actions }
 }
 
+/** The first and last lines of a Go function's body, or null when the file has no such function. */
+function funcLines(text: string, name: string): [number, number] | null {
+  const m = new RegExp(String.raw`\bfunc\s+${name}\s*\(`).exec(text)
+  if (!m) return null
+  const open = text.indexOf('{', m.index)
+  if (open < 0) return null
+  let depth = 0
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === '{') depth++
+    else if (text[i] === '}' && --depth === 0) {
+      const lineAt = (at: number) => text.slice(0, at).split('\n').length
+      return [lineAt(m.index), lineAt(i)]
+    }
+  }
+  return null
+}
+
+/**
+ * The file a mount points at. Django names the module; Python names a module or a router imported
+ * from one (`authentication.router`, `user.views.blueprint`, `tags_router`); JavaScript names an
+ * imported or required router.
+ */
+function mountedFile(src: string, text: string, m: Mount, resolver: ReturnType<typeof createResolver>): string | null {
+  const fileOf = (spec: string) => {
+    const res = resolver(src, spec)
+    return res && 'file' in res ? res.file : null
+  }
+  if (m.spec) return fileOf(m.spec)
+  if (!m.name) return null
+  if (langOf(src) === 'py') {
+    const [head, ...rest] = m.name.split('.')
+    const middle = rest.slice(0, -1).map((s) => `.${s}`).join('')
+    for (const mod of pythonImportedNames(text).get(head) ?? []) {
+      const file = fileOf(mod + middle)
+      if (file) return file
+    }
+    return null
+  }
+  const head = m.name.split('.')[0]
+  const required = new RegExp(String.raw`\b(?:const|let|var)\s+${head}\s*=\s*require\(\s*['"]([^'"]+)['"]`).exec(text)?.[1]
+  const spec = importedNames(text).get(head) ?? required
+  return spec ? fileOf(spec) : null
+}
+
 /**
  * The pages of the site or app: the ones its routers declare (React Router, Vue Router), with the file
  * of the component each shows, and the files that are pages by where they sit (Next.js, Expo Router,
@@ -355,6 +400,40 @@ function buildModelWith(input: SourceInput, progress: (stage: 'graph' | 'flows')
       routesOf.set(src, endpointsOf(src, files.get(src) ?? ''))
     } catch {
       routesOf.set(src, [])
+    }
+  }
+
+  // Route lists mounted under a prefix in another file get it: FastAPI's include_router, Flask's
+  // blueprints, Express's app.use, Django's include().
+  const mountTargets = new Map<string, { prefix: string; file: string }[]>()
+  for (const src of sources) {
+    try {
+      const text = files.get(src) ?? ''
+      const list = mountsOf(src, text)
+        .filter((m) => !m.func)
+        .map((m) => ({ prefix: m.prefix, file: mountedFile(src, text, m, resolver) }))
+        .filter((t): t is { prefix: string; file: string } => !!t.file && t.file !== src)
+      if (list.length) mountTargets.set(src, list)
+    } catch {
+      // A mount that can't be read leaves its routes without the prefix.
+    }
+  }
+  for (const [file, prefix] of prefixesOf(mountTargets)) {
+    if (!prefix) continue
+    routesOf.set(file, (routesOf.get(file) ?? []).map((r) => ({ ...r, path: routePath(prefix + (r.path === '/' ? '' : r.path)) })))
+  }
+  // Go hands a group to a function of another package: the routes that function registers get its prefix.
+  for (const src of sources) {
+    if (langOf(src) !== 'go') continue
+    for (const m of mountsOf(src, files.get(src) ?? '')) {
+      const res = m.spec && m.func ? resolver(src, m.spec) : null
+      if (!res || !('file' in res)) continue
+      const dir = dirOf(res.file)
+      for (const file of sources.filter((p) => dirOf(p) === dir && p.endsWith('.go'))) {
+        const within = funcLines(files.get(file) ?? '', m.func as string)
+        if (!within) continue
+        routesOf.set(file, (routesOf.get(file) ?? []).map((r) => (r.line >= within[0] && r.line <= within[1] ? { ...r, path: routePath(m.prefix + (r.path === '/' ? '' : r.path)) } : r)))
+      }
     }
   }
 

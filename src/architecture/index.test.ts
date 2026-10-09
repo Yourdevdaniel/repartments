@@ -243,6 +243,36 @@ describe('buildModel on other inputs', () => {
     expect(journey?.steps[1].text.pt).toBe('O usuário clica em “Cancelar” numa reserva')
   })
 
+  it('joins the prefix of a Go group passed to a register function in another package', () => {
+    const files = new Map([
+      ['go.mod', 'module github.com/x/conduit\n\ngo 1.21\n'],
+      ['hello.go', 'package main\n\nimport (\n\t"github.com/gin-gonic/gin"\n\t"github.com/x/conduit/users"\n)\n\nfunc main() {\n\tr := gin.Default()\n\tv1 := r.Group("/api")\n\tusers.UsersRegister(v1.Group("/users"))\n\tusers.UserRegister(v1.Group("/user"))\n}\n'],
+      ['users/routers.go', 'package users\n\nimport "github.com/gin-gonic/gin"\n\nfunc UsersRegister(router *gin.RouterGroup) {\n\trouter.POST("/", UsersRegistration)\n\trouter.POST("/login", UsersLogin)\n}\n\nfunc UserRegister(router *gin.RouterGroup) {\n\trouter.GET("/", UserRetrieve)\n}\n'],
+    ])
+    const model = buildModel({
+      repo: { owner: 'acme', name: 'conduit', branch: 'main', sha: 's', private: false },
+      tree: [...files.keys()].map((path) => ({ path, type: 'blob' as const })),
+      files,
+      truncated: false,
+    })
+    expect(model.endpoints.map((e) => `${e.method} ${e.path}`).sort()).toEqual(['GET /api/user', 'POST /api/users', 'POST /api/users/login'])
+  })
+
+  it('joins the prefixes of FastAPI routers mounted in other files', () => {
+    const files = new Map([
+      ['app/main.py', 'from fastapi import FastAPI\nfrom app.api.routes.api import router as api_router\n\napp = FastAPI()\napp.include_router(api_router, prefix="/api")\n'],
+      ['app/api/routes/api.py', 'from fastapi import APIRouter\nfrom app.api.routes import articles\n\nrouter = APIRouter()\nrouter.include_router(articles.router, prefix="/articles")\n'],
+      ['app/api/routes/articles.py', 'from fastapi import APIRouter\n\nrouter = APIRouter()\n\n@router.get("")\nasync def list_articles():\n    pass\n\n@router.get("/{slug}")\nasync def get_article(slug: str):\n    pass\n'],
+    ])
+    const model = buildModel({
+      repo: { owner: 'acme', name: 'conduit', branch: 'main', sha: 's', private: false },
+      tree: [...files.keys()].map((path) => ({ path, type: 'blob' as const })),
+      files,
+      truncated: false,
+    })
+    expect(model.endpoints.map((e) => `${e.method} ${e.path}`)).toEqual(['GET /api/articles', 'GET /api/articles/{slug}'])
+  })
+
   it('tells a Django route by the method the front-end calls it with', () => {
     const model = buildModel({
       repo: { owner: 'acme', name: 'contratos', branch: 'main', sha: 's', private: false },

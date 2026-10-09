@@ -43,6 +43,24 @@ describe('endpointsOf', () => {
     expect(routes('api/leads.py', text)).toEqual(['GET /leads/{lead_id}', 'POST /leads', 'GET /export', 'POST /export'])
   })
 
+  it('reads a decorator whose arguments run over several lines', () => {
+    const text = [
+      '@router.get(',
+      '    "/{username}",',
+      '    response_model=ProfileInResponse,',
+      '    name="profiles:get-profile",',
+      ')',
+      'async def retrieve_profile(): ...',
+      '@router.post(',
+      '    "/{username}/follow",',
+      '    status_code=status.HTTP_200_OK,',
+      ')',
+      '@other.decorator',
+      'async def follow(): ...',
+    ].join('\n')
+    expect(routes('app/api/routes/profiles.py', text)).toEqual(['GET /{username}', 'POST /{username}/follow'])
+  })
+
   it('reads Django urls.py paths and DRF router registrations', () => {
     const text = [
       'from django.urls import path, re_path',
