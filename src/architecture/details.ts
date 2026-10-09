@@ -6,6 +6,7 @@
  * timestamps never leave this file.
  */
 import { callsOf } from './endpoints'
+import { singularWord } from './words'
 import { joinList, lineOf, stripComments } from './text'
 
 export type Lang = 'pt' | 'en'
@@ -570,7 +571,7 @@ export function taskPhraseOf(queue: string | undefined): { pt: string; en: strin
 /** The singular of a route's word: "leads" → "lead", "categories" → "category", "statuses" → "status". */
 export function singularOf(word: string): string {
   const w = word.toLowerCase()
-  const irregular = IRREGULAR_PLURALS.get(w)
+  const irregular = IRREGULAR_PLURALS.get(w) ?? singularWord(w)
   if (irregular) return irregular
   if (w.length <= 3 || /(?:us|is)$/.test(w)) return w
   // Portuguese: "avaliacoes"/"avaliações" → "avaliacao"/"avaliação", "postagens" → "postagem".

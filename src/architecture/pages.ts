@@ -11,6 +11,7 @@
  * so the scenes can say "abre a página “Minhas reservas”" for the screen that makes a call.
  */
 import { lineOf, stripComments } from './text'
+import { accentuate } from './words'
 
 /** A page a router declares: its address, where, and the component it shows (by name, or by module for a lazy import). */
 export type PageRoute = { path: string; line: number; component: string | null; spec: string | null }
@@ -160,8 +161,8 @@ export function pageNameOf(page: { path: string; title: string | null; component
   const title = page.title?.replace(/^[^\p{L}\p{N}]+/u, '').trim()
   if (title && title.split(/\s+/).length <= 4) return title
   const fromComponent = page.component ? words(page.component) : ''
-  if (fromComponent) return fromComponent
+  if (fromComponent) return accentuate(fromComponent)
   const last = page.path.split('/').filter((s) => s && !s.startsWith(':')).pop()
-  if (last) return words(last)
+  if (last) return accentuate(words(last))
   return lang === 'pt' ? 'Início' : 'Home'
 }

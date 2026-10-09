@@ -8,6 +8,7 @@
  */
 import type { ExternalKind, Layer, Text } from '../shared/studio'
 import { humanField, type Lang } from './details'
+import { accentuate, readableWord } from './words'
 
 type Pair = { pt: string; en: string }
 type Named = { name: string; path: string; layer: Layer }
@@ -246,8 +247,8 @@ function segmentText(raw: string): Text | null {
     .map((w) => w.toLowerCase())
   if (words.length === 0) return null
   return {
-    pt: words.map((w) => DOMAIN.get(w)?.pt ?? humanField(w, 'pt')).join(' '),
-    en: words.map((w) => DOMAIN.get(w)?.en ?? w).join(' '),
+    pt: words.map((w) => DOMAIN.get(w)?.pt ?? (readableWord(w).pt !== w ? readableWord(w).pt : accentuate(humanField(w, 'pt')))).join(' '),
+    en: words.map((w) => DOMAIN.get(w)?.en ?? readableWord(w).en).join(' '),
   }
 }
 

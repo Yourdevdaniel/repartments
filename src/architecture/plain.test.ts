@@ -86,7 +86,7 @@ describe('plainPartName', () => {
   })
 
   it('names the screens of a route group after it, with "auth" as the sign-in screens', () => {
-    expect(plainPartName(part('app/app/(aluno)', 'interface'), [])).toEqual({ pt: 'Tela de aluno', en: 'Aluno screen' })
+    expect(plainPartName(part('app/app/(aluno)', 'interface'), [])).toEqual({ pt: 'Tela de aluno', en: 'Student screen' })
     expect(plainPartName(part('app/app/(auth)', 'interface'), [])).toEqual({ pt: 'Tela de acesso', en: 'Sign-in screen' })
   })
 
@@ -101,10 +101,15 @@ describe('plainPartName', () => {
     expect(plainPartName(screens, [rules, screens])).toEqual({ pt: 'Aplicativo', en: 'App' })
   })
 
+  it('translates a known English folder word and restores the accents of a Portuguese one', () => {
+    expect(plainPartName(part('backend/contracts', 'logic'), [])).toEqual({ pt: 'Regras de contratos', en: 'Contracts rules' })
+    expect(plainPartName(part('backend/midia', 'logic'), [])).toEqual({ pt: 'Regras de mídia', en: 'Media rules' })
+  })
+
   it('names Django commands and script folders by what they are', () => {
     expect(plainPartName(part('backend/core/management', 'logic'), [])).toEqual({ pt: 'Comandos', en: 'Commands' })
     expect(plainPartName(part('scripts', 'infra'), [])).toEqual({ pt: 'Rotinas', en: 'Scripts' })
-    expect(plainPartName(part('backend/contracts/management', 'logic'), [])).toEqual({ pt: 'Comandos de contracts', en: 'Contracts commands' })
+    expect(plainPartName(part('backend/contracts/management', 'logic'), [])).toEqual({ pt: 'Comandos de contratos', en: 'Contracts commands' })
   })
 
   it('keeps every name within 28 characters', () => {

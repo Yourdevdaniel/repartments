@@ -19,6 +19,7 @@ import { fieldList, humanField, modelForResource, plainLabel, singularOf, taskPh
 import { isPlural, nameWith, plainAgentName, plainExternalName, plainPartName, plainToolName, type Prep } from './plain'
 import type { Feature } from './features'
 import { componentOf } from '../shared/components'
+import { readableWord } from './words'
 
 export type FlowInput = {
   components: Component[]
@@ -299,10 +300,10 @@ function titled(verb: Text, res: Text | null): Text {
   return res ? { pt: `${cap(verb.pt)} ${res.pt}`, en: `${cap(verb.en)} ${res.en}` } : { pt: cap(verb.pt), en: cap(verb.en) }
 }
 
-/** A route word as people read it: "meus-dados" → "meus dados". */
+/** A route word as people read it: "meus-dados" → "meus dados", "contracts" → "contratos", "analises" → "análises". */
 function wordText(raw: string): Text {
   const w = raw.replace(/[^\p{L}\p{N}_-]/gu, '').replace(/[-_]+/g, ' ').trim()
-  return w ? { pt: w, en: w } : { pt: 'dados', en: 'data' }
+  return w ? readableWord(w) : { pt: 'dados', en: 'data' }
 }
 
 /** A route word that names a thing: not an action, and long enough to say something ("f" in "/f/:token" does not). */

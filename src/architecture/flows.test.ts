@@ -135,7 +135,7 @@ describe('buildFlows: routes that do not say their method (Django, DRF)', () => 
   it('tells an action whose thing the route does not name by its verb alone, after the routes that name theirs', () => {
     const flows = run(['/public/sign/<str:token>/', '/contracts/<int:id>/pdf/'])
     expect(flows.map((f) => f.title)).toEqual([
-      { pt: 'Baixar contracts', en: 'Download contracts' },
+      { pt: 'Baixar contratos', en: 'Download contracts' },
       { pt: 'Assinar', en: 'Sign' },
     ])
     expect(flows[1].steps.map((s) => s.text.pt).join(' | ')).toContain('o registro')
@@ -150,15 +150,15 @@ describe('buildFlows: routes that do not say their method (Django, DRF)', () => 
       ]),
     }
     const flows = run(['/contracts/'], details)
-    expect(flows.map((f) => f.title.pt)).toEqual(['Criar contracts', 'Listar contracts'])
+    expect(flows.map((f) => f.title.pt)).toEqual(['Criar contratos', 'Listar contratos'])
     expect(flows.map((f) => f.id)).toEqual(['request:POST /contracts/', 'request:GET /contracts/'])
     expect(flows[0].steps.map((s) => s.action)).toContain('save')
     expect(flows[1].steps.map((s) => s.action)).toContain('fetch')
   })
 
   it('reads a route nobody calls as a list, or as one item when it ends in an id', () => {
-    expect(run(['/estudios']).map((f) => f.title.pt)).toEqual(['Listar estudios'])
-    expect(run(['/estudios/<int:pk>']).map((f) => f.title.pt)).toEqual(['Ver estudios'])
+    expect(run(['/estudios']).map((f) => f.title.pt)).toEqual(['Listar estúdios'])
+    expect(run(['/estudios/<int:pk>']).map((f) => f.title.pt)).toEqual(['Ver estúdios'])
     expect(run(['/aluno/meus-dados/']).map((f) => f.title)).toEqual([{ pt: 'Listar meus dados', en: 'List meus dados' }])
   })
 
@@ -181,21 +181,21 @@ describe('buildFlows: routes that do not say their method (Django, DRF)', () => 
       details: { ...noDetails, calls },
     })
     expect(flows.map((f) => f.title)).toEqual([
-      { pt: 'Favoritar articles', en: 'Favorite articles' },
-      { pt: 'Deixar de seguir profiles', en: 'Unfollow profiles' },
+      { pt: 'Favoritar artigos', en: 'Favorite articles' },
+      { pt: 'Deixar de seguir perfis', en: 'Unfollow profiles' },
     ])
   })
 
   it('reads the action at the end of a route as what is done to the thing before it', () => {
     const [flow] = run(['/reservas/<int:pk>/cancelar'])
-    expect(flow.title).toEqual({ pt: 'Cancelar reservas', en: 'Cancel reservas' })
+    expect(flow.title).toEqual({ pt: 'Cancelar reservas', en: 'Cancel bookings' })
     expect(flow.steps.map((s) => s.action)).toContain('save')
     expect(flow.steps.map((s) => s.text.pt).join(' ')).not.toMatch(/usar|cancelar cancelar/i)
   })
 
   it('tells a sign-up as creating an account, after the routes about what the system is for', () => {
     expect(run(['/api/auth/register/', '/estudios/<int:pk>']).map((f) => f.title)).toEqual([
-      { pt: 'Ver estudios', en: 'View estudios' },
+      { pt: 'Ver estúdios', en: 'View studios' },
       { pt: 'Criar conta', en: 'Create account' },
     ])
     expect(run(['/auth/aluno/cadastro/']).map((f) => f.title.pt)).toEqual(['Cadastrar aluno'])
@@ -204,7 +204,7 @@ describe('buildFlows: routes that do not say their method (Django, DRF)', () => 
   it('agrees words in -cao and -sao, written without accents, as feminine', () => {
     const details: FlowDetails = { ...noDetails, calls: new Map([['POST /avaliacoes/', { file: 'frontend/pages/New.tsx', sent: [] }]]) }
     const [flow] = run(['/avaliacoes/'], details)
-    expect(flow.steps.map((s) => s.text.pt).join(' | ')).toContain('a nova avaliacao')
+    expect(flow.steps.map((s) => s.text.pt).join(' | ')).toContain('a nova avaliação')
   })
 
   it('agrees "foto" as feminine, though it ends in -o', () => {
@@ -216,7 +216,7 @@ describe('buildFlows: routes that do not say their method (Django, DRF)', () => 
   it('agrees the Portuguese words in -ise, -ção and -dade as feminine', () => {
     const details: FlowDetails = { ...noDetails, calls: new Map([['POST /analises/', { file: 'frontend/pages/New.tsx', sent: [] }]]) }
     const [flow] = run(['/analises/'], details)
-    expect(flow.steps.map((s) => s.text.pt).join(' | ')).toContain('a nova analise')
+    expect(flow.steps.map((s) => s.text.pt).join(' | ')).toContain('a nova análise')
   })
 })
 
@@ -244,7 +244,7 @@ describe('buildFlows: journeys through the pages', () => {
     const [journey] = run()
     expect(journey.kind).toBe('journey')
     expect(journey.id).toBe('journey:POST /reservas/<int:pk>/cancelar')
-    expect(journey.title).toEqual({ pt: 'O usuário cancela uma reserva', en: 'The user cancels a reserva' })
+    expect(journey.title).toEqual({ pt: 'O usuário cancela uma reserva', en: 'The user cancels a booking' })
     expect(journey.steps.map((s) => s.text.pt)).toEqual([
       'O usuário abre “Minhas reservas” nas páginas',
       'O usuário clica em “Cancelar” numa reserva',
@@ -332,7 +332,7 @@ describe('buildFlows: journeys through the pages', () => {
     })
     expect(journey.title.pt).toBe('O cliente paga um pedido')
     expect(journey.actors[0].name).toEqual({ pt: 'Cliente', en: 'Customer' })
-    expect(journey.title.en).toBe('The customer pays a pedido')
+    expect(journey.title.en).toBe('The customer pays an order')
     expect(journey.steps[0].text.pt).toBe('O cliente abre “Pedido” na tela de cliente')
     expectWellFormed(journey)
   })

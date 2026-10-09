@@ -111,7 +111,7 @@ describe('filePageOf: pages by where the file sits', () => {
 describe('pageNameOf', () => {
   it('prefers the screen title, then the component, then the path, and calls the root page the home page', () => {
     expect(pageNameOf({ path: '/minhas-reservas', title: 'Minhas reservas', component: 'MinhasReservas' })).toBe('Minhas reservas')
-    expect(pageNameOf({ path: '/estudio/agenda', title: null, component: 'AgendaEstudio' })).toBe('Agenda estudio')
+    expect(pageNameOf({ path: '/estudio/agenda', title: null, component: 'AgendaEstudio' })).toBe('Agenda estúdio')
     expect(pageNameOf({ path: '/estudio/minhas-salas', title: null, component: null })).toBe('Minhas salas')
     expect(pageNameOf({ path: '/', title: null, component: null })).toBe('Início')
     expect(pageNameOf({ path: '/articles/:slug', title: null, component: null })).toBe('Articles')
@@ -122,6 +122,6 @@ describe('pageNameOf', () => {
   })
 
   it('takes the component name over a title too long to be a page name, like a slogan', () => {
-    expect(pageNameOf({ path: '/', title: 'Seu próximo ensaio começa aqui', component: 'BuscaEstudios' })).toBe('Busca estudios')
+    expect(pageNameOf({ path: '/', title: 'Seu próximo ensaio começa aqui', component: 'BuscaEstudios' })).toBe('Busca estúdios')
   })
 })

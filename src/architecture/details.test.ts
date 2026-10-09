@@ -361,7 +361,7 @@ describe('modelForResource and singularOf', () => {
     expect(singularOf('addresses')).toBe('address')
     expect(singularOf('status')).toBe('status')
     // Portuguese plurals, with or without accents; English words that look alike stay English.
-    expect(singularOf('avaliacoes')).toBe('avaliacao')
+    expect(singularOf('avaliacoes')).toBe('avaliação')
     expect(singularOf('notificações')).toBe('notificação')
     expect(singularOf('postagens')).toBe('postagem')
     expect(singularOf('shoes')).toBe('shoe')
