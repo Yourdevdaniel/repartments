@@ -54,6 +54,50 @@ function devApi(): Plugin {
   }
 }
 
+/**
+ * In development, the studio's sign-in routes (`/api/auth/*`) run through the same code as the
+ * Vercel functions. Without GITHUB_CLIENT_ID in `.env.local`, "Sign in" borrows the GitHub CLI's
+ * token instead (`/api/auth/dev`), so the studio can be tried right away; that shortcut exists only
+ * here, only for requests from this machine, never in the deployed functions.
+ */
+function devAuth(): Plugin {
+  return {
+    name: 'repartments-dev-auth',
+    configureServer(server) {
+      const file = loadEnv('development', process.cwd(), '')
+      const env = {
+        GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID || file.GITHUB_CLIENT_ID,
+        GITHUB_OAUTH_SCOPE: process.env.GITHUB_OAUTH_SCOPE || file.GITHUB_OAUTH_SCOPE,
+      }
+      server.middlewares.use('/api/auth', async (req, res) => {
+        try {
+          const { handleAuth } = (await server.ssrLoadModule('/server/auth.ts')) as typeof import('./server/auth')
+          const chunks: Buffer[] = []
+          for await (const chunk of req) chunks.push(chunk as Buffer)
+          const headers = new Headers()
+          for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v)
+          // Mounted at /api/auth, so req.url is the rest of the path.
+          const request = new Request(new URL(`/api/auth${req.url ?? ''}`, `http://${req.headers.host ?? 'localhost'}`), {
+            method: req.method,
+            headers,
+            body: chunks.length && req.method !== 'GET' && req.method !== 'HEAD' ? Buffer.concat(chunks) : undefined,
+          })
+          // Only someone on this machine may borrow the CLI's token, even if the dev server is exposed with --host.
+          const local = /^(::1|127\.\d+\.\d+\.\d+|::ffff:127\.\d+\.\d+\.\d+)$/.test(req.socket.remoteAddress ?? '')
+          const response = await handleAuth(request, { env, devToken: local ? readToken : undefined })
+          res.statusCode = response.status
+          response.headers.forEach((value, key) => res.setHeader(key, value))
+          res.end(Buffer.from(await response.arrayBuffer()))
+        } catch (err) {
+          server.config.logger.error(String(err))
+          res.statusCode = 500
+          res.end()
+        }
+      })
+    },
+  }
+}
+
 /** The production security headers from vercel.json, so `vite preview` behaves like the real site. */
 const productionHeaders = Object.fromEntries(
   (JSON.parse(readFileSync(new URL('./vercel.json', import.meta.url), 'utf8')).headers[0].headers as { key: string; value: string }[]).map(
@@ -62,6 +106,6 @@ const productionHeaders = Object.fromEntries(
 )
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), devApi()],
+  plugins: [react(), tailwindcss(), devApi(), devAuth()],
   preview: { headers: productionHeaders },
 })
