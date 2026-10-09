@@ -9,6 +9,7 @@ import { exportAuthored } from '../architecture/authored'
 import type { ArchitectureModel, Flow } from '../shared/studio'
 import type { L, Lang } from '../ui/roles'
 import { authorPrompt, fixPrompt } from './authorPrompt'
+import { useDetailsMenu } from './lib/menu'
 import { saveBlob } from './store'
 
 const w = {
@@ -134,7 +135,7 @@ type MenuProps = {
 
 /** The "Script" menu in the workspace's bar. */
 export function AuthoredMenu({ model, flows, lang, showingAutomatic, onShowAutomatic, onImport, onRemoveImport }: MenuProps) {
-  const menu = useRef<HTMLDetailsElement>(null)
+  const menu = useDetailsMenu()
   const file = useRef<HTMLInputElement>(null)
   const [copied, copy] = useCopy()
   const [error, setError] = useState<string | null>(null)
@@ -142,7 +143,7 @@ export function AuthoredMenu({ model, flows, lang, showingAutomatic, onShowAutom
   const [viewing, setViewing] = useState(false)
   const [pasted, setPasted] = useState('')
   const close = () => {
-    menu.current?.removeAttribute('open')
+    menu.close()
     setPasting(false)
     setViewing(false)
   }
@@ -169,8 +170,8 @@ export function AuthoredMenu({ model, flows, lang, showingAutomatic, onShowAutom
   }
 
   return (
-    <details ref={menu} className="relative">
-      <summary className="flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-full bg-white/80 px-3.5 text-xs font-extrabold text-ink transition-colors hover:bg-white">
+    <details ref={menu.details} onToggle={menu.onToggle} className="relative">
+      <summary ref={menu.summary} role="button" aria-expanded={menu.open} className="flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-full bg-white/80 px-3.5 text-xs font-extrabold text-ink transition-colors hover:bg-white">
         📝 {w.script[lang]} <span className="font-bold text-ink-soft">· {(model.authored && !showingAutomatic && !refused(model) ? w.fromAuthor : w.fromCode)[lang]}</span>
       </summary>
       <div className={`absolute right-0 z-30 mt-2 ${viewing ? 'w-[min(34rem,calc(100vw-2rem))]' : 'w-72'} rounded-[22px] border border-white/80 bg-white p-2 shadow-[0_18px_50px_-22px_rgba(40,52,110,0.45)]`}>

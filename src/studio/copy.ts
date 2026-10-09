@@ -80,6 +80,10 @@ export const t = {
   },
   saveWithNames: { en: 'Save with the authors’ names', pt: 'Salvar com os nomes dos autores' },
   saveWithoutNames: { en: 'Save without names (Author 1, 2…)', pt: 'Salvar sem os nomes (Autor 1, 2…)' },
+  saveDeck: { en: 'Download PowerPoint', pt: 'Baixar PowerPoint' },
+  saveVideo: { en: 'Download video', pt: 'Baixar vídeo' },
+  saveJson: { en: 'Download file (.json)', pt: 'Baixar arquivo (.json)' },
+  saveJsonNote: { en: 'The .json file is for opening again here in the studio.', pt: 'O arquivo .json serve para abrir de novo aqui no estúdio.' },
   example: { en: 'See an example', pt: 'Ver um exemplo' },
   exampleLead: { en: 'A made-up CRM with an AI sales assistant, no sign-in needed.', pt: 'Um CRM de exemplo com assistente de vendas de IA, sem precisar entrar.' },
   offline: {
