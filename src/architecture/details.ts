@@ -5,6 +5,7 @@
  * templates), so a shape nobody wrote here yields nothing rather than a guess. Secrets, ids and
  * timestamps never leave this file.
  */
+import { callsOf } from './endpoints'
 import { joinList, lineOf, stripComments } from './text'
 
 export type Lang = 'pt' | 'en'
@@ -32,7 +33,14 @@ export type FlowDetails = {
   subjects: Map<string, string[]>
   /** Names of the queues that workers take tasks from. */
   tasks: string[]
+  /** The pages a person opens, by the file of the screen each shows: its address and its name. */
+  pages?: Map<string, { path: string; name: string }>
+  /** Buttons that call a route: the screen's file, the button's words, the route reached and whether it asks to confirm. */
+  actions?: ButtonCall[]
 }
+
+/** A button on a screen and the route it reaches, as the scenes use it. */
+export type ButtonCall = { file: string; button: string; method: string; path: string; confirm: boolean }
 
 /** Most items kept for one list of fields or buttons. */
 const LIST_LIMIT = 6
@@ -44,6 +52,16 @@ const SKIPPED = new Set(['id', 'createdat', 'updatedat', 'deletedat'])
 const SENSITIVE = new Set(['password', 'passwd', 'hash', 'salt', 'token', 'secret', 'otp', 'cpf', 'ssn', 'card'])
 const SCALAR_FIELD = /^\s*(\w+)\s+(?:String|Int|Float|Boolean|DateTime|Decimal|BigInt|Json|Bytes)\b/
 const SCREEN_EXTENSIONS = new Set(['tsx', 'jsx', 'vue', 'svelte', 'html'])
+
+/** A plain .js file that is a React screen: it imports React and holds JSX ("src/components/Login.js"). */
+function isJsxScreen(path: string, code: string): boolean {
+  return /\.m?js$/i.test(path) && /\bfrom\s+['"]react(?:-native)?['"]|\bReact\./.test(code) && /<[A-Za-z][\w.]*[\s>/]/.test(code)
+}
+
+/** A file that draws a screen, by its extension or, for a plain .js file, by its content. */
+function isScreen(path: string, code: string): boolean {
+  return SCREEN_EXTENSIONS.has(extOf(path)) || isJsxScreen(path, code)
+}
 const SEND_OBJECT = /JSON\.stringify\s*\(\s*\{|\b(?:axios|api|http)\.(?:post|put|patch)\s*\([^,)]*,\s*\{/
 
 const IRREGULAR_PLURALS = new Map([
@@ -365,14 +383,32 @@ function namesScreen(heading: string | null): heading is string {
   return !!heading && heading.split(' ').length <= 5 && !/[.!?…:]$/.test(heading) && !/^\d+[.)]?\s/.test(heading)
 }
 
+/**
+ * The screen's title from its headings: the first `<h1>` that names a screen. When its `<h1>` is an
+ * expression (`{estudio.nome}`) the title can't be read, and a section's `<h2>` ("Salas") would only
+ * mislead, so there is none; `<h2>`s count only when every `<h1>` is a sentence or there is no `<h1>`.
+ */
+function headingTitle(code: string): string | null {
+  for (const level of ['1', '2']) {
+    for (const m of code.matchAll(new RegExp(String.raw`<h${level}\b(?:[^>{]|\{[^{}]*\})*>([\s\S]*?)<\/h${level}>`, 'gi'))) {
+      if (/[{}]/.test(m[1])) {
+        if (level === '1') return null
+        continue
+      }
+      const text = literal(m[1])
+      if (namesScreen(text)) return text
+    }
+  }
+  return null
+}
+
 /** What a screen shows, from a component or page file. Anything that is not a screen gives nothing. */
 export function screenDetailsOf(path: string, text: string): ScreenDetails {
   const empty: ScreenDetails = { title: null, buttons: [], fields: [] }
-  if (!SCREEN_EXTENSIONS.has(extOf(path))) return empty
   const code = stripComments(text, 'slash')
-  const headings = [...code.matchAll(/<h[12]\b(?:[^>{]|\{[^{}]*\})*>([\s\S]*?)<\/h[12]>/gi)].map((m) => literal(m[1]))
+  if (!isScreen(path, code)) return empty
   const docTitle = /document\.title\s*=\s*(['"`])([^'"`]*)\1/.exec(code)
-  const title = headings.find(namesScreen) ?? literal(docTitle?.[2])
+  const title = headingTitle(code) ?? literal(docTitle?.[2])
 
   const buttons: string[] = []
   for (const m of code.matchAll(/<button\b(?:[^>{]|\{[^{}]*\})*>([\s\S]*?)<\/button>/gi)) addUnique(buttons, literal(m[1]))
@@ -393,6 +429,83 @@ export function screenDetailsOf(path: string, text: string): ScreenDetails {
     }
   }
   return { title, buttons, fields }
+}
+
+/** A button on a screen that makes a call: its words, its line, the call, and whether the screen asks "are you sure?" first. */
+export type ScreenAction = { button: string; line: number; method: string; url: string; confirm: boolean }
+
+/** Asking the person to confirm: `confirm(…)` in a browser, `Alert.alert(…)` in React Native. */
+const CONFIRM = /\b(?:window\.)?confirm\s*\(|\bAlert\.alert\s*\(/
+
+/** A named piece of code a handler can call: `const x = …`, `function x(…)`, a class method `x(…) {`. */
+const DECLARATION = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=|\bfunction\s+([A-Za-z_$][\w$]*)\s*\(|^\s*(?:async\s+)?([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/
+
+/** Elements a person presses: buttons, links and React Native's touchables. */
+const PRESSABLE = /<(button|Button|IconButton|\w+Button|TouchableOpacity|Pressable|a|Link)\b((?:[^>{]|\{(?:[^{}]|\{[^{}]*\})*\})*?)(\/>|>([\s\S]*?)<\/\1>)/g
+
+/** What happens on a press: the JSX handler or Vue's `@click`. */
+function handlerOf(attrs: string): string | null {
+  const jsx = /\bon(?:Click|Press)\s*=\s*\{((?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\}/.exec(attrs)?.[1]
+  return jsx ?? /@click(?:\.\w+)*\s*=\s*"([^"]*)"/.exec(attrs)?.[1] ?? null
+}
+
+/**
+ * The buttons of a screen that make a call, each with the call it makes. A button is linked to a call
+ * when its handler names the code that makes it (`cancelar.mutate(id)` for `const cancelar =
+ * useMutation(… api('/reservas/1/cancelar') …)`), or names a function that names it; a submit button
+ * takes its form's `onSubmit`. Only what the file itself shows: a call in another file is not followed.
+ */
+export function screenActionsOf(path: string, text: string): ScreenAction[] {
+  const code = stripComments(text, 'slash')
+  if (!isScreen(path, code)) return []
+  const calls = callsOf(path, text)
+  if (calls.length === 0) return []
+  const lines = code.split('\n')
+  const line = lineOf(code)
+
+  // Each declaration runs to the brace that closes the first one opened on its line, or is that one line.
+  const decls: { name: string; start: number; end: number }[] = []
+  let offset = 0
+  lines.forEach((l, i) => {
+    const m = DECLARATION.exec(l)
+    const name = m?.[1] ?? m?.[2] ?? m?.[3]
+    if (name && !/^(?:if|for|while|switch|catch|return)$/.test(name)) {
+      const brace = l.indexOf('{', (m?.index ?? 0) + (m?.[0].length ?? 0) - 1)
+      const end = brace < 0 ? i + 2 : line(closeOf(code, offset + brace)) + 1
+      decls.push({ name, start: i + 1, end: Math.max(end, i + 2) })
+    }
+    offset += l.length + 1
+  })
+  const bodyOf = (d: { start: number; end: number }) => lines.slice(d.start - 1, d.end - 1).join('\n')
+  const holderOf = (ln: number) => decls.filter((d) => d.start <= ln && ln < d.end).pop() ?? null
+  const mentions = (body: string, name: string) => new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])`).test(body)
+
+  const out: ScreenAction[] = []
+  for (const m of code.matchAll(PRESSABLE)) {
+    const attrs = m[2]
+    const label = literal(attrOf(attrs, 'title')) ?? literal(attrOf(attrs, 'aria-label')) ?? literal(m[4])
+    // "×" or "+" says nothing a caption can quote.
+    if (!label || !/\p{L}/u.test(label)) continue
+    let handler = handlerOf(attrs)
+    if (handler === null && /\btype\s*=\s*["']submit["']/.test(attrs)) {
+      const before = code.slice(0, m.index ?? 0)
+      const forms = [...before.matchAll(/\bonSubmit\s*=\s*\{((?:[^{}]|\{[^{}]*\})*)\}|@submit(?:\.\w+)*\s*=\s*"([^"]*)"/g)]
+      const last = forms[forms.length - 1]
+      handler = last ? (last[1] ?? last[2] ?? null) : null
+    }
+    if (!handler) continue
+    const used = decls.filter((d) => mentions(handler as string, d.name))
+    for (const call of calls) {
+      const holder = holderOf(call.line)
+      if (!holder) continue
+      const direct = used.includes(holder)
+      const through = !direct && used.find((d) => d !== holder && mentions(bodyOf(d), holder.name))
+      if (!direct && !through) continue
+      const confirm = CONFIRM.test(handler) || CONFIRM.test(bodyOf(holder)) || (!!through && CONFIRM.test(bodyOf(through)))
+      out.push({ button: label, line: line(m.index ?? 0), method: call.method, url: call.url, confirm })
+    }
+  }
+  return out
 }
 
 /** One screen made of several files: the first title found, and every button and field, once each. */

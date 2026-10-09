@@ -292,6 +292,7 @@ export function readingTime(text: Text): number {
 const KIND_LABEL: Record<Flow['kind'], { name: Text; color: string }> = {
   authored: { name: { en: "Author's script", pt: 'Roteiro do autor' }, color: '#7c5cff' },
   features: { name: { en: 'Features', pt: 'Funcionalidades' }, color: '#e05d8c' },
+  journey: { name: { en: 'Journey', pt: 'Jornada' }, color: '#d9480f' },
   agent: { name: { en: 'AI agent', pt: 'Agente de IA' }, color: '#a855f7' },
   request: { name: { en: 'Request', pt: 'Pedido' }, color: '#2f8fe6' },
   job: { name: { en: 'Background', pt: 'Segundo plano' }, color: '#37814a' },

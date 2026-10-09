@@ -191,6 +191,58 @@ describe('buildModel on other inputs', () => {
     expect(model.components.map((c) => c.label?.pt).join(' | ')).not.toContain('OBJETO')
   })
 
+  it('reads the pages of a React Router site and tells the journey of a button that cancels', () => {
+    const page = [
+      "import { useMutation, useQuery } from '@tanstack/react-query'",
+      "import { api } from '../api/client'",
+      'export default function MinhasReservas() {',
+      "  const { data } = useQuery({ queryFn: () => api('/reservas/minhas') })",
+      '  const cancelar = useMutation({',
+      '    mutationFn: (id) => api(`/reservas/${id}/cancelar`, { method: "POST" }),',
+      '  })',
+      '  return (<main><h1>Minhas reservas</h1>',
+      '    {data?.map((r) => <button key={r.id} onClick={() => cancelar.mutate(r.id)}>Cancelar</button>)}',
+      '  </main>)',
+      '}',
+    ].join('\n')
+    const app = [
+      "import { Route, Routes } from 'react-router-dom'",
+      "import MinhasReservas from './pages/MinhasReservas'",
+      "import Busca from './pages/Busca'",
+      'export default function App() {',
+      '  return <Routes>',
+      '    <Route path="/" element={<Busca />} />',
+      '    <Route path="/minhas-reservas" element={<Protegida><MinhasReservas /></Protegida>} />',
+      '  </Routes>',
+      '}',
+    ].join('\n')
+    const files = new Map([
+      ['frontend/package.json', '{"dependencies":{"react":"18.3.1","react-router-dom":"6.26.0"}}'],
+      ['frontend/src/App.jsx', app],
+      ['frontend/src/pages/MinhasReservas.jsx', page],
+      ['frontend/src/pages/Busca.jsx', 'export default function Busca() {\n  return <main><h1>Encontre um estúdio</h1></main>\n}\n'],
+      ['frontend/src/api/client.js', 'export function api(path, options) {\n  return fetch(`/api${path}`, options).then((r) => r.json())\n}\n'],
+      ['backend/requirements.txt', 'Django==5.1\n'],
+      ['backend/core/urls.py', "from django.urls import path\nfrom . import views\n\nurlpatterns = [\n  path('reservas/minhas', views.minhas),\n  path('reservas/<int:pk>/cancelar', views.cancelar),\n]\n"],
+      ['backend/core/views.py', 'from .models import Reserva\n\ndef minhas(request):\n    pass\n\ndef cancelar(request, pk):\n    pass\n'],
+      ['backend/core/models.py', 'from django.db import models\n\nclass Reserva(models.Model):\n    status = models.CharField(max_length=20)\n'],
+    ])
+    const model = buildModel({
+      repo: { owner: 'acme', name: 'studio', branch: 'main', sha: 's', private: false },
+      tree: [...files.keys()].map((path) => ({ path, type: 'blob' as const })),
+      files,
+      truncated: false,
+    })
+    expect(model.pages).toEqual([
+      { path: '/', name: 'Encontre um estúdio', file: 'frontend/src/pages/Busca.jsx', source: { file: 'frontend/src/App.jsx', line: 6 } },
+      { path: '/minhas-reservas', name: 'Minhas reservas', file: 'frontend/src/pages/MinhasReservas.jsx', source: { file: 'frontend/src/App.jsx', line: 7 } },
+    ])
+    const journey = model.flows.find((f) => f.kind === 'journey')
+    expect(journey?.title.pt).toBe('O usuário cancela uma reserva')
+    expect(journey?.steps[0].text.pt).toContain('“Minhas reservas”')
+    expect(journey?.steps[1].text.pt).toBe('O usuário clica em “Cancelar” numa reserva')
+  })
+
   it('tells a Django route by the method the front-end calls it with', () => {
     const model = buildModel({
       repo: { owner: 'acme', name: 'contratos', branch: 'main', sha: 's', private: false },
@@ -206,9 +258,10 @@ describe('buildModel on other inputs', () => {
       ]),
       truncated: false,
     })
-    const requests = model.flows.filter((f) => f.kind === 'request')
-    expect(requests.map((f) => f.id)).toEqual(['request:POST /contracts/'])
-    expect(requests[0].title.pt).toBe('Criar contracts')
+    // The "Salvar" button makes the creation a journey, which takes the place of its request scene.
+    const scenes = model.flows.filter((f) => f.kind === 'request' || f.kind === 'journey')
+    expect(scenes.map((f) => f.id)).toEqual(['journey:POST /contracts/'])
+    expect(scenes[0].title.pt).toBe('O usuário cria um contract')
   })
 })
 

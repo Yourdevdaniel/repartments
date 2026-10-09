@@ -7,6 +7,7 @@ import {
   mergeScreenDetails,
   modelForResource,
   plainLabel,
+  screenActionsOf,
   screenDetailsOf,
   sentFieldsOf,
   singularOf,
@@ -186,6 +187,10 @@ describe('screenDetailsOf', () => {
     expect(screenDetailsOf('frontend/src/Landing.tsx', '<h1>Seu trabalho merece mais que um print.</h1><h2>1. DO OBJETO</h2>').title).toBeNull()
   })
 
+  it('has no title when its main heading is an expression, rather than taking a section heading', () => {
+    expect(screenDetailsOf('src/pages/EstudioDetalhe.jsx', '<main><h1>{estudio.nome}</h1><h2>Salas</h2></main>').title).toBeNull()
+  })
+
   it('reads the value of a submit input as a button, and a name attribute when there is no other label', () => {
     const page = '<form><input name="company_name" /><input type="submit" value="Enviar" /><input type="hidden" name="token" /></form>'
     expect(screenDetailsOf('site/index.html', page)).toEqual({ title: null, buttons: ['Enviar'], fields: ['nome da empresa'] })
@@ -357,5 +362,61 @@ describe('modelForResource and singularOf', () => {
     expect(singularOf('status')).toBe('status')
     expect(singularOf('people')).toBe('person')
     expect(singularOf('api')).toBe('api')
+  })
+})
+
+describe('screenActionsOf', () => {
+  it('links a button to the call its handler makes, through a mutation or a function', () => {
+    const page = [
+      'export default function MinhasReservas() {',
+      '  const { data } = useQuery({ queryFn: () => api("/reservas/minhas") })',
+      '  const cancelar = useMutation({',
+      '    mutationFn: (id) => api(`/reservas/${id}/cancelar`, { method: "POST" }),',
+      '  })',
+      '  async function excluir(id) {',
+      '    if (!window.confirm("Excluir mesmo?")) return',
+      '    await api.delete(`/reservas/${id}`)',
+      '  }',
+      '  return (<table>',
+      '    <button onClick={() => setAvaliando(r.id)}>Avaliar</button>',
+      '    <button className="perigo" onClick={() => cancelar.mutate(r.id)}>Cancelar</button>',
+      '    <button onClick={() => excluir(r.id)}>Excluir</button>',
+      '  </table>)',
+      '}',
+    ].join('\n')
+    expect(screenActionsOf('frontend/src/pages/MinhasReservas.jsx', page)).toEqual([
+      { button: 'Cancelar', line: 12, method: 'POST', url: '/reservas/{param}/cancelar', confirm: false },
+      { button: 'Excluir', line: 13, method: 'DELETE', url: '/reservas/{param}', confirm: true },
+    ])
+  })
+
+  it('links a submit button to the form handler, and a React Native button by its title', () => {
+    const form = [
+      'function Novo() {',
+      '  const salvar = async (e) => {',
+      "    await axios.post('/api/leads', { name })",
+      '  }',
+      '  return <form onSubmit={salvar}><input name="name" /><button type="submit">Salvar lead</button></form>',
+      '}',
+    ].join('\n')
+    expect(screenActionsOf('src/pages/Novo.tsx', form)).toEqual([{ button: 'Salvar lead', line: 5, method: 'POST', url: '/api/leads', confirm: false }])
+    const native = [
+      'export default function Pedido() {',
+      '  const pagar = () => api.post(`/pedidos/${id}/pagar`)',
+      '  return <Button title="Pagar" onPress={pagar} />',
+      '}',
+    ].join('\n')
+    expect(screenActionsOf('app/app/(cliente)/pedido.tsx', native)).toEqual([{ button: 'Pagar', line: 3, method: 'POST', url: '/pedidos/{param}/pagar', confirm: false }])
+  })
+
+  it('leaves out buttons whose text is only a symbol', () => {
+    const page = ['export function Fotos() {', '  const apagar = (id) => api.delete(`/fotos/${id}`)', '  return <button onClick={() => apagar(f.id)}>×</button>', '}'].join('\n')
+    expect(screenActionsOf('src/pages/Fotos.jsx', page)).toEqual([])
+  })
+
+  it('reads screens written in plain .js files when they hold JSX', () => {
+    const page = "import React from 'react'\nexport default function Login() {\n  return <div><h1>Sign in</h1><button onClick={go}>Sign in</button></div>\n}\n"
+    expect(screenDetailsOf('src/components/Login.js', page).title).toBe('Sign in')
+    expect(screenDetailsOf('src/utils/format.js', 'export const x = (a) => a < 2 && a > 1').title).toBeNull()
   })
 })

@@ -284,12 +284,18 @@ export type FlowStep = {
  */
 export type Flow = {
   id: string
-  kind: 'authored' | 'features' | 'request' | 'agent' | 'job' | 'overview' | 'commit' | 'activity'
+  kind: 'authored' | 'features' | 'journey' | 'request' | 'agent' | 'job' | 'overview' | 'commit' | 'activity'
   title: Text
   summary: Text
   actors: Actor[]
   steps: FlowStep[]
 }
+
+/**
+ * A page a person opens: its address, its name as people read it, the file of the screen it shows
+ * (null when the router names a component the analysis could not find), and where it is declared.
+ */
+export type Page = { path: string; name: string; file: string | null; source: { file: string; line: number } }
 
 export type ArchitectureModel = {
   version: 1
@@ -312,6 +318,8 @@ export type ArchitectureModel = {
   externals: External[]
   endpoints: Endpoint[]
   agents: Agent[]
+  /** The pages of the site or app, from its router or from where its files sit (Next.js, Expo Router). */
+  pages?: Page[]
   /** The presentation's scenes, most telling first. */
   flows: Flow[]
   /**

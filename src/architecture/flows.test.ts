@@ -177,10 +177,95 @@ describe('buildFlows: routes that do not say their method (Django, DRF)', () => 
     expect(run(['/auth/aluno/cadastro/']).map((f) => f.title.pt)).toEqual(['Cadastrar aluno'])
   })
 
+  it('agrees "foto" as feminine, though it ends in -o', () => {
+    const details: FlowDetails = { ...noDetails, calls: new Map([['POST /fotos/', { file: 'frontend/pages/New.tsx', sent: [] }]]) }
+    const [flow] = run(['/fotos/'], details)
+    expect(flow.steps.map((s) => s.text.pt).join(' | ')).toContain('a nova foto')
+  })
+
   it('agrees the Portuguese words in -ise, -ção and -dade as feminine', () => {
     const details: FlowDetails = { ...noDetails, calls: new Map([['POST /analises/', { file: 'frontend/pages/New.tsx', sent: [] }]]) }
     const [flow] = run(['/analises/'], details)
     expect(flow.steps.map((s) => s.text.pt).join(' | ')).toContain('a nova analise')
+  })
+})
+
+describe('buildFlows: journeys through the pages', () => {
+  const page = 'frontend/src/pages/MinhasReservas.jsx'
+  const components = [component('frontend/src/pages', 'interface'), component('backend/core', 'logic')]
+  const dependencies = [dep('frontend/src/pages', 'backend/core')]
+  const externals = [ext('ext:postgresql', 'PostgreSQL', 'database', ['backend/core']), ext('ext:smtp', 'SMTP', 'email', ['backend/core'])]
+  const endpoints = [endpoint('ANY', '/reservas/<int:pk>/cancelar', 'backend/core', 'backend/core/urls.py'), endpoint('ANY', '/reservas/minhas', 'backend/core', 'backend/core/urls.py')]
+  const details: FlowDetails = {
+    models: [],
+    calls: new Map([
+      ['POST /reservas/<int:pk>/cancelar', { file: page, sent: [] }],
+      ['GET /reservas/minhas', { file: page, sent: [] }],
+    ]),
+    screens: new Map([[page, { title: 'Minhas reservas', buttons: ['Avaliar', 'Cancelar'], fields: [] }]]),
+    subjects: new Map(),
+    tasks: [],
+    pages: new Map([[page, { path: '/minhas-reservas', name: 'Minhas reservas' }]]),
+    actions: [{ file: page, button: 'Cancelar', method: 'POST', path: '/reservas/<int:pk>/cancelar', confirm: true }],
+  }
+  const run = (d: FlowDetails = details) => buildFlows({ components, dependencies, externals, endpoints, agents: [], details: d })
+
+  it('tells the person cancelling: the page, the button, the confirmation, the request, the database and the screen', () => {
+    const [journey] = run()
+    expect(journey.kind).toBe('journey')
+    expect(journey.id).toBe('journey:POST /reservas/<int:pk>/cancelar')
+    expect(journey.title).toEqual({ pt: 'O usuário cancela uma reserva', en: 'The user cancels a reserva' })
+    expect(journey.steps.map((s) => s.text.pt)).toEqual([
+      'O usuário abre “Minhas reservas” nas páginas',
+      'O usuário clica em “Cancelar” numa reserva',
+      'As páginas perguntam se o usuário tem certeza',
+      'O usuário confirma',
+      'As páginas pedem para as regras do negócio cancelar a reserva',
+      'As regras do negócio cancelam a reserva no banco de dados',
+      'O banco de dados confirma para as regras do negócio: a reserva foi cancelada',
+      'As regras do negócio enviam o e-mail usando o serviço de e-mail',
+      'As regras do negócio devolvem a resposta para as páginas',
+      'As páginas mostram que a reserva foi cancelada',
+    ])
+    expect(journey.steps[1].say).toEqual({ pt: 'Cancelar', en: 'Cancelar' })
+    expectWellFormed(journey)
+  })
+
+  it('leaves the route of a journey out of the request scenes, and keeps the others', () => {
+    const ids = run().map((f) => f.id)
+    expect(ids).toContain('request:GET /reservas/minhas')
+    expect(ids).not.toContain('request:POST /reservas/<int:pk>/cancelar')
+  })
+
+  it('makes no journey of a button that only reads, and none without buttons', () => {
+    const reading: FlowDetails = { ...details, actions: [{ file: page, button: 'Atualizar', method: 'GET', path: '/reservas/minhas', confirm: false }] }
+    expect(run(reading).some((f) => f.kind === 'journey')).toBe(false)
+    expect(run({ ...details, actions: [] }).some((f) => f.kind === 'journey')).toBe(false)
+  })
+
+  it('names the person after the group of screens the page sits in', () => {
+    const group = 'app/app/(cliente)/pedido.tsx'
+    const parts = [component('app/app/(cliente)', 'interface'), component('backend/core', 'logic')]
+    const d: FlowDetails = {
+      ...details,
+      calls: new Map([['POST /pedidos/<int:pk>/pagar', { file: group, sent: [] }]]),
+      screens: new Map(),
+      pages: new Map([[group, { path: '/pedido', name: 'Pedido' }]]),
+      actions: [{ file: group, button: 'Pagar', method: 'POST', path: '/pedidos/<int:pk>/pagar', confirm: false }],
+    }
+    const [journey] = buildFlows({
+      components: parts,
+      dependencies: [dep('app/app/(cliente)', 'backend/core')],
+      externals,
+      endpoints: [endpoint('ANY', '/pedidos/<int:pk>/pagar', 'backend/core', 'backend/core/urls.py')],
+      agents: [],
+      details: d,
+    })
+    expect(journey.title.pt).toBe('O cliente paga um pedido')
+    expect(journey.actors[0].name).toEqual({ pt: 'Cliente', en: 'Customer' })
+    expect(journey.title.en).toBe('The customer pays a pedido')
+    expect(journey.steps[0].text.pt).toBe('O cliente abre “Pedido” na tela de cliente')
+    expectWellFormed(journey)
   })
 })
 

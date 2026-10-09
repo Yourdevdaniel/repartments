@@ -5,12 +5,12 @@
  * `analyzeRepository` does the GitHub reads and then calls `buildModel`, which is pure: the same tree
  * and file texts always give the same model, so it can be tested with small fixtures.
  */
-import type { Agent, ArchitectureModel, Component, Dependency, Endpoint, External, Text } from '../shared/studio'
+import type { Agent, ArchitectureModel, Component, Dependency, Endpoint, External, Page, Text } from '../shared/studio'
 import { componentOf, dirOf } from '../shared/components'
 import type { GitHubClient } from '../github/client'
 import { agentsFrom, type AgentFile } from './agents'
 import { buildComponents, type ComponentFile } from './components'
-import { dataModelsOf, emailSubjectsOf, mergeScreenDetails, screenDetailsOf, sentFieldsOf, tasksOf, type CallDetails, type DataModel, type FlowDetails, type ScreenDetails } from './details'
+import { dataModelsOf, emailSubjectsOf, mergeScreenDetails, screenActionsOf, screenDetailsOf, sentFieldsOf, tasksOf, type ButtonCall, type CallDetails, type DataModel, type FlowDetails, type ScreenDetails } from './details'
 import { readFiles } from './fetch'
 import { callsOf, endpointsOf, matchCall, type RouteDef } from './endpoints'
 import { databaseLabelOf, externalsFrom, imagesOf, type Usage } from './externals'
@@ -19,6 +19,7 @@ import { AUTHORED_FILE, applyAuthored, parseAuthored } from './authored'
 import { featuresOf, README } from './features'
 import { indefiniteArticle, nameWith, plainAgentName, plainExternalName, plainLayerName, screenPartName, subjectOf } from './plain'
 import { importsOf } from './imports'
+import { filePageOf, importedNames, pageNameOf, pageRootsOf, pageRoutesOf } from './pages'
 import { normalizePath, createResolver } from './resolve'
 import { isTestPath, selectFiles, type TreeEntry } from './select'
 import { basenameOf, clip, count, joinList, langOf } from './text'
@@ -190,6 +191,7 @@ function flowDetailsOf(input: {
   const screens = new Map<string, ScreenDetails>()
   const subjects = new Map<string, string[]>()
   const calls = new Map<string, CallDetails>()
+  const actions: ButtonCall[] = []
 
   for (const [path, text] of files) {
     try {
@@ -237,8 +239,53 @@ function flowDetailsOf(input: {
     } catch {
       // A call that can't be read is not matched to its screen.
     }
+    try {
+      if (!isTestPath(path)) {
+        for (const a of screenActionsOf(path, text)) {
+          const hit = matchCall(a.url, endpoints, a.method)
+          if (hit) actions.push({ file: path, button: a.button, method: hit.method === 'ANY' ? a.method : hit.method, path: hit.path, confirm: a.confirm })
+        }
+      }
+    } catch {
+      // A button whose handler can't be read is told as a plain request.
+    }
   }
-  return { models, calls, screens, subjects, tasks }
+  return { models, calls, screens, subjects, tasks, actions }
+}
+
+/**
+ * The pages of the site or app: the ones its routers declare (React Router, Vue Router), with the file
+ * of the component each shows, and the files that are pages by where they sit (Next.js, Expo Router,
+ * Nuxt). Each is named by its screen's title, else its component or its address; one per address.
+ */
+function pagesOf(sources: string[], files: Map<string, string>, resolver: ReturnType<typeof createResolver>): Page[] {
+  const roots = pageRootsOf(files)
+  const out: Page[] = []
+  const add = (path: string, file: string | null, component: string | null, source: { file: string; line: number }) => {
+    if (out.some((p) => p.path === path)) return
+    // The page's own heading: a heading from a component it imports names a section, not the page.
+    const own = file ? screenDetailsOf(file, files.get(file) ?? '').title : null
+    const name = pageNameOf({ path, title: own, component })
+    out.push({ path, name, file, source })
+  }
+  for (const src of sources) {
+    if (isTestPath(src)) continue
+    const text = files.get(src) ?? ''
+    try {
+      const routes = pageRoutesOf(src, text)
+      const names = routes.length ? importedNames(text) : new Map<string, string>()
+      for (const r of routes) {
+        const spec = r.spec ?? (r.component ? names.get(r.component) : undefined)
+        const res = spec ? resolver(src, spec) : null
+        add(r.path, res && 'file' in res && files.has(res.file) ? res.file : null, r.component, { file: src, line: r.line })
+      }
+      const address = filePageOf(src, roots)
+      if (address !== null) add(address, src, null, { file: src, line: 1 })
+    } catch {
+      // A router that can't be read adds no pages.
+    }
+  }
+  return out
 }
 
 /** A README or an HTML page: read for what the system does, not as code. */
@@ -390,6 +437,14 @@ function buildModelWith(input: SourceInput, progress: (stage: 'graph' | 'flows')
 
   progress('flows')
   const details = flowDetailsOf({ files, targetsOf, compOf, endpoints })
+  const pages = pagesOf(sources, files, resolver)
+  details.pages = new Map()
+  for (const p of pages) {
+    if (!p.file || details.pages.has(p.file)) continue
+    details.pages.set(p.file, { path: p.path, name: p.name })
+    const screen = details.screens.get(p.file)
+    if (screen && !screen.title) details.screens.set(p.file, { ...screen, title: p.name })
+  }
   const parts = withAgentNames(components, agents)
   const told = featuresOf(read, input.repo.description ?? null)
   const flows = buildFlows({ components: parts, dependencies, externals, endpoints, agents, fileDeps, details, features: told.features })
@@ -412,6 +467,7 @@ function buildModelWith(input: SourceInput, progress: (stage: 'graph' | 'flows')
     externals,
     endpoints,
     agents,
+    ...(pages.length ? { pages } : {}),
     flows,
   }
   // The author's script, imported or at the repo's root, has the last word (authored.ts).

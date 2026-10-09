@@ -426,12 +426,15 @@ function both(build: (lang: Lang) => string): Text {
   return { pt: build('pt'), en: build('en') }
 }
 
+/** Feminine words that end in -o. */
+const FEMININE_IN_O = new Set(['foto', 'moto', 'tribo', 'libido'])
+
 /**
  * Portuguese words ending in "a", "-ção", "-são", "-dade", "-gem", "-ise" or "-tude" are feminine
  * ("tarefa", "reserva", "análise"); the rest are taken as masculine.
  */
 function feminine(word: string): boolean {
-  return /(?:a|ção|são|dade|gem|ise|tude)$/i.test(word)
+  return /(?:a|ção|são|dade|gem|ise|tude)$/i.test(word) || FEMININE_IN_O.has(word.toLowerCase())
 }
 
 /** "um lead", "uma tarefa" in Portuguese; "a lead", "an order" in English. */
@@ -751,6 +754,243 @@ function requestFlow(plan: RequestPlan, use: { sec: boolean; send: boolean; queu
     actors,
     steps,
   }
+}
+
+/** Who the person of a journey is, when the page's folder or address says it ("(cliente)", "/aluno/…"). */
+const ROLES = new Map<string, Text>([
+  ['cliente', { pt: 'Cliente', en: 'Customer' }],
+  ['clientes', { pt: 'Cliente', en: 'Customer' }],
+  ['customer', { pt: 'Cliente', en: 'Customer' }],
+  ['aluno', { pt: 'Aluno', en: 'Student' }],
+  ['alunos', { pt: 'Aluno', en: 'Student' }],
+  ['student', { pt: 'Aluno', en: 'Student' }],
+  ['professor', { pt: 'Professor', en: 'Teacher' }],
+  ['teacher', { pt: 'Professor', en: 'Teacher' }],
+  ['paciente', { pt: 'Paciente', en: 'Patient' }],
+  ['patient', { pt: 'Paciente', en: 'Patient' }],
+  ['vendedor', { pt: 'Vendedor', en: 'Seller' }],
+  ['seller', { pt: 'Vendedor', en: 'Seller' }],
+  ['motorista', { pt: 'Motorista', en: 'Driver' }],
+  ['driver', { pt: 'Motorista', en: 'Driver' }],
+  ['organizador', { pt: 'Organizador', en: 'Organizer' }],
+  ['org', { pt: 'Organizador', en: 'Organizer' }],
+  ['admin', { pt: 'Administrador', en: 'Admin' }],
+])
+
+function roleOf(file: string, pagePath: string | null): Text | null {
+  const words = [...file.split('/'), ...(pagePath ?? '').split('/')].map((s) => s.replace(/^\((.*)\)$/, '$1').toLowerCase())
+  for (const w of words) {
+    const role = ROLES.get(w)
+    if (role) return role
+  }
+  return null
+}
+
+/** A Portuguese verb for one subject or many: "cancelar" → "cancela"/"cancelam", "conferir" → "confere", "concluir" → "conclui". */
+function presentPt(verb: string, plural: boolean): string {
+  const [head, ...rest] = verb.split(' ')
+  const stem = head.slice(0, -2)
+  const v = /uir$/.test(head) ? stem + (plural ? 'em' : 'i') : /ar$/.test(head) ? stem + (plural ? 'am' : 'a') : stem + (plural ? 'em' : 'e')
+  return [v, ...rest].join(' ')
+}
+
+/** An English verb for one subject or many: "cancel" → "cancels", "sign up" → "signs up", "publish" → "publishes". */
+function presentEn(verb: string, plural: boolean): string {
+  if (plural) return verb
+  const [head, ...rest] = verb.split(' ')
+  return [/(?:s|sh|ch|x|z)$/.test(head) ? `${head}es` : `${head}s`, ...rest].join(' ')
+}
+
+/** Participles that are not the verb plus "-ado"/"-ido". */
+const PT_PARTICIPLES = new Map([['pagar', 'pag'], ['aceitar', 'aceit']])
+const EN_PARTICIPLES = new Map([['pay', 'paid'], ['send', 'sent'], ['cancel', 'cancelled'], ['sync', 'synced']])
+
+/** "a reserva foi cancelada": the participle agreeing with the thing. */
+function participlePt(verb: string, sing: string): string {
+  const [head, ...rest] = verb.split(' ')
+  const end = ending(sing)
+  const irregular = PT_PARTICIPLES.get(head)
+  const v = irregular ? irregular + end : /uir$/.test(head) ? `${head.slice(0, -2)}íd${end}` : /ar$/.test(head) ? `${head.slice(0, -2)}ad${end}` : `${head.slice(0, -2)}id${end}`
+  return [v, ...rest].join(' ')
+}
+
+function participleEn(verb: string): string {
+  const [head, ...rest] = verb.split(' ')
+  const v = EN_PARTICIPLES.get(head) ?? (head.endsWith('e') ? `${head}d` : head.endsWith('y') && !/[aeiou]y$/.test(head) ? `${head.slice(0, -1)}ied` : `${head}ed`)
+  return [v, ...rest].join(' ')
+}
+
+/** A speech bubble of at most three words. */
+function bubble(text: string): string {
+  const words = text.split(/\s+/)
+  return words.length <= 3 ? text : `${words.slice(0, 2).join(' ')}…`
+}
+
+/** Everything a journey scene is made of: the request it ends in, the button, the page and the person. */
+type JourneyPlan = { plan: RequestPlan; meaning: Meaning; button: string; confirm: boolean; page: string | null; role: Text | null }
+
+/**
+ * One journey: the person opens the page, presses the button (and confirms, when the screen asks),
+ * the screen asks the system, the system does it in the database and tells by e-mail, and the
+ * screen shows it done. Told in the person's steps, so a client sees the path of their own action.
+ */
+function journeyFlow(j: JourneyPlan, use: { sec: boolean; send: boolean }): Flow {
+  const { plan, meaning, button, confirm, page, role } = j
+  const { endpoint: ep, api, known } = plan
+  const screen = plan.screen as Component
+  const sec = use.sec ? plan.sec : null
+  const svc = plan.svc
+  const fetching = meaning.mode === 'list' || meaning.mode === 'one'
+  const send = use.send && !fetching ? plan.send : null
+  const dbSvc = plan.db
+  const verb = meaning.verb
+  const sing = singularOf(meaning.res.pt)
+  const singEn = singularOf(meaning.res.en)
+  const person: Actor = role ? { ...PERSON, name: role } : PERSON
+  const p = { pt: `O ${person.name.pt.toLowerCase()}`, en: `The ${person.name.en.toLowerCase()}` }
+  const sn = nameOf(screen)
+  const an = nameOf(api)
+  const secn = sec ? nameOf(sec) : null
+  const svcn = svc ? nameOf(svc) : null
+  const src = svc ?? api
+  const srcn = nameOf(src)
+  const dbn = dbSvc ? serviceName(dbSvc) : null
+  const sendn = send ? serviceName(send) : null
+  const ref = { file: ep.file, line: ep.line }
+  const oneItem = /[:{<[$]/.test(ep.path.split('/').filter(Boolean).pop() ?? '') || ROUTE_ACTIONS.has((routeWords(ep.path).pop() ?? '').toLowerCase())
+  const thing = { pt: meaning.mode === 'create' ? oneOf(sing, 'pt') : theOne(sing, 'pt'), en: meaning.mode === 'create' ? oneOf(singEn, 'en') : `the ${singEn}` }
+  const done = { pt: participlePt(verb.pt, sing), en: participleEn(verb.en) }
+
+  const actors: Actor[] = [person, componentActor(screen), componentActor(api)]
+  if (sec) actors.push(componentActor(sec))
+  if (svc) actors.push(componentActor(svc))
+  if (dbSvc) actors.push(externalActor(dbSvc))
+  if (send) actors.push(externalActor(send))
+
+  const steps: FlowStep[] = []
+  const step = (from: string, to: string, action: StepAction, text: Text, say: Text, at?: { file: string; line: number }) =>
+    steps.push({ from, to, action, text, say, ...(at ? { ref: at } : {}) })
+  const sc = (l: Lang) => at('none', sn, l, true)
+  const scId = `c:${screen.id}`
+  const apiId = `c:${api.id}`
+  const srcId = `c:${src.id}`
+
+  const titled = !!page && !sn.pt.toLowerCase().includes(page.toLowerCase())
+  step('person', scId, 'ask', {
+    pt: titled ? `${p.pt} abre “${page}” ${at('em', sn, 'pt')}` : `${p.pt} abre ${at('none', sn, 'pt')}`,
+    en: titled ? `${p.en} opens “${page}” ${at('em', sn, 'en')}` : `${p.en} opens ${at('none', sn, 'en')}`,
+  }, { pt: 'abrir', en: 'open' })
+  step('person', scId, 'ask', {
+    pt: oneItem ? `${p.pt} clica em “${button}” ${feminine(sing) ? 'numa' : 'num'} ${sing}` : `${p.pt} clica em “${button}”`,
+    en: oneItem ? `${p.en} clicks “${button}” on ${oneOf(singEn, 'en')}` : `${p.en} clicks “${button}”`,
+  }, { pt: bubble(button), en: bubble(button) })
+  if (confirm) {
+    step(scId, 'person', 'ask', {
+      pt: `${sc('pt')} ${vb(sn, 'pt', 'pergunta', 'perguntam')} se ${p.pt.toLowerCase()} tem certeza`,
+      en: `${sc('en')} ${vb(sn, 'en', 'asks', 'ask')} if ${p.en.toLowerCase()} is sure`,
+    }, { pt: 'certeza?', en: 'sure?' })
+    step('person', scId, 'reply', { pt: `${p.pt} confirma`, en: `${p.en} confirms` }, { pt: 'sim!', en: 'yes!' })
+  }
+  step(scId, apiId, 'ask', {
+    pt: `${sc('pt')} ${vb(sn, 'pt', 'pede', 'pedem')} ${at('para', an, 'pt')} ${verb.pt} ${thing.pt}`,
+    en: `${sc('en')} ${vb(sn, 'en', 'asks', 'ask')} ${at('none', an, 'en')} to ${verb.en} ${thing.en}`,
+  }, { pt: 'pedido!', en: 'request!' }, ref)
+  if (sec && secn) {
+    step(apiId, `c:${sec.id}`, 'check', { pt: `${at('none', secn, 'pt', true)} ${vb(secn, 'pt', 'confere', 'conferem')} se ${p.pt.toLowerCase()} pode fazer isso`, en: `${at('none', secn, 'en', true)} ${vb(secn, 'en', 'checks', 'check')} if ${p.en.toLowerCase()} may do it` }, { pt: 'pode?', en: 'allowed?' })
+    step(`c:${sec.id}`, apiId, 'reply', { pt: `${at('none', secn, 'pt', true)} ${vb(secn, 'pt', 'libera', 'liberam')} o pedido`, en: `${at('none', secn, 'en', true)} ${vb(secn, 'en', 'lets', 'let')} the request through` }, { pt: 'liberado', en: 'approved' })
+  }
+  if (svc && svcn) {
+    step(apiId, `c:${svc.id}`, 'call', { pt: `${at('none', an, 'pt', true)} ${vb(an, 'pt', 'passa', 'passam')} o trabalho ${at('para', svcn, 'pt')}`, en: `${at('none', an, 'en', true)} ${vb(an, 'en', 'hands', 'hand')} the work ${at('para', svcn, 'en')}` }, { pt: 'sua vez', en: 'your turn' })
+  }
+  if (dbSvc && dbn) {
+    const dbId = `e:${dbSvc.id}`
+    if (fetching) {
+      step(srcId, dbId, 'fetch', { pt: `${at('none', srcn, 'pt', true)} ${vb(srcn, 'pt', 'procura', 'procuram')} ${theOne(sing, 'pt')} ${at('em', dbn, 'pt')}`, en: `${at('none', srcn, 'en', true)} ${vb(srcn, 'en', 'looks up', 'look up')} the ${singEn} ${at('em', dbn, 'en')}` }, { pt: 'os dados?', en: 'the data?' })
+      step(dbId, srcId, 'reply', { pt: `${at('none', dbn, 'pt', true)} ${vb(dbn, 'pt', 'devolve', 'devolvem')} ${theOne(sing, 'pt')} ${at('para', srcn, 'pt')}`, en: `${at('none', dbn, 'en', true)} ${vb(dbn, 'en', 'returns', 'return')} the ${singEn} ${at('para', srcn, 'en')}` }, { pt: 'aqui está', en: 'here you go' })
+    } else {
+      step(srcId, dbId, 'save', {
+        pt: `${at('none', srcn, 'pt', true)} ${presentPt(verb.pt, isPlural(srcn.pt, 'pt'))} ${theOne(sing, 'pt')} ${at('em', dbn, 'pt')}`,
+        en: `${at('none', srcn, 'en', true)} ${presentEn(verb.en, isPlural(srcn.en, 'en'))} the ${singEn} ${at('em', dbn, 'en')}`,
+      }, { pt: 'guardar', en: 'save' })
+      step(dbId, srcId, 'reply', {
+        pt: `${at('none', dbn, 'pt', true)} ${vb(dbn, 'pt', 'confirma', 'confirmam')} ${at('para', srcn, 'pt')}: ${theOne(sing, 'pt')} foi ${done.pt}`,
+        en: `${at('none', dbn, 'en', true)} ${vb(dbn, 'en', 'confirms', 'confirm')} ${at('para', srcn, 'en')}: the ${singEn} was ${done.en}`,
+      }, { pt: 'feito!', en: 'done!' })
+    }
+  }
+  if (send && sendn) {
+    const what = SENT[send.kind] ?? { pt: 'os dados', en: 'the data' }
+    const subject = known?.subject
+    step(`c:${src.id}`, `e:${send.id}`, 'send', {
+      pt: `${at('none', srcn, 'pt', true)} ${vb(srcn, 'pt', 'envia', 'enviam')} ${subject ? `o e-mail “${subject}”` : what.pt} usando ${at('none', sendn, 'pt')}`,
+      en: `${at('none', srcn, 'en', true)} ${vb(srcn, 'en', 'sends', 'send')} ${subject ? `the e-mail “${subject}”` : what.en} using ${at('none', sendn, 'en')}`,
+    }, { pt: 'enviado!', en: 'sent!' })
+  }
+  if (svc && svcn) {
+    step(`c:${svc.id}`, apiId, 'reply', { pt: `${at('none', svcn, 'pt', true)} ${vb(svcn, 'pt', 'devolve', 'devolvem')} o resultado ${at('para', an, 'pt')}`, en: `${at('none', svcn, 'en', true)} ${vb(svcn, 'en', 'returns', 'return')} the result ${at('para', an, 'en')}` }, { pt: 'pronto', en: 'done' })
+  }
+  step(apiId, scId, 'reply', { pt: `${at('none', an, 'pt', true)} ${vb(an, 'pt', 'devolve', 'devolvem')} a resposta ${at('para', sn, 'pt')}`, en: `${at('none', an, 'en', true)} ${vb(an, 'en', 'sends', 'send')} back the answer ${at('para', sn, 'en')}` }, { pt: 'resposta!', en: 'answer!' })
+  step(scId, scId, 'show', fetching
+    ? { pt: `${sc('pt')} ${vb(sn, 'pt', 'mostra', 'mostram')} ${theOne(sing, 'pt')}`, en: `${sc('en')} ${vb(sn, 'en', 'shows', 'show')} the ${singEn}` }
+    : { pt: `${sc('pt')} ${vb(sn, 'pt', 'mostra', 'mostram')} que ${theOne(sing, 'pt')} foi ${done.pt}`, en: `${sc('en')} ${vb(sn, 'en', 'shows', 'show')} that the ${singEn} was ${done.en}` },
+    { pt: 'pronto!', en: 'done!' })
+
+  return {
+    id: `journey:${ep.method} ${ep.path}`,
+    kind: 'journey',
+    title: { pt: `${p.pt} ${presentPt(verb.pt, false)} ${oneOf(sing, 'pt')}`, en: `${p.en} ${presentEn(verb.en, false)} ${oneOf(singEn, 'en')}` },
+    summary: {
+      pt: clip(`O caminho de quem usa o sistema para ${verb.pt} ${oneOf(sing, 'pt')}: ${page ? `da página “${page}”` : `${at('de', sn, 'pt')}`}, pelo botão “${button}”, até ${at('none', dbn ?? srcn, 'pt')}, e de volta.`, 400),
+      en: clip(`The path of a person who wants to ${verb.en} ${oneOf(singEn, 'en')}: from ${page ? `the “${page}” page` : at('none', sn, 'en')}, through the “${button}” button, to ${at('none', dbn ?? srcn, 'en')}, and back.`, 400),
+    },
+    actors,
+    steps,
+  }
+}
+
+/** Builds a journey, dropping the security check and then the e-mail until it fits the limits. */
+function fitJourney(j: JourneyPlan): Flow {
+  let flow = journeyFlow(j, { sec: true, send: true })
+  for (const o of [{ sec: false, send: true }, { sec: false, send: false }]) {
+    if (flow.actors.length <= MAX_ACTORS && flow.steps.length <= MAX_STEPS) break
+    flow = journeyFlow(j, o)
+  }
+  return flow
+}
+
+/**
+ * The journeys worth telling: buttons whose route does something to a thing (cancel, pay, approve,
+ * sign up first, then delete, then create or change). Reading is not a journey. At most two, one per route.
+ */
+function journeyPlans(ctx: Ctx, endpoints: Endpoint[]): JourneyPlan[] {
+  const out: (JourneyPlan & { rank: number; key: string })[] = []
+  for (const action of ctx.details?.actions ?? []) {
+    if (isPlumbing(action.path)) continue
+    const found = endpoints.find((e) => e.path === action.path && (e.method === action.method || e.method === 'ANY'))
+    const screen = componentOf(action.file, ctx.components)
+    if (!found || !screen) continue
+    const ep = { ...found, method: action.method }
+    const key = `${ep.method} ${ep.path}`
+    if (out.some((j) => j.key === key)) continue
+    const meaning = meaningOf(ep.method, ep.path)
+    const last = (routeWords(ep.path).pop() ?? '').toLowerCase()
+    const named = ROUTE_ACTIONS.has(last) || SIGNUP.has(last)
+    if (!named && (meaning.mode === 'list' || meaning.mode === 'one')) continue
+    const plan = planRequest(ctx, ep)
+    if (!plan) continue
+    const pageInfo = ctx.details?.pages?.get(action.file) ?? null
+    out.push({
+      plan: { ...plan, screen },
+      meaning,
+      button: action.button,
+      confirm: action.confirm,
+      page: pageInfo?.name ?? ctx.details?.screens.get(action.file)?.title ?? null,
+      role: roleOf(action.file, pageInfo?.path ?? null),
+      rank: named ? 3 : meaning.mode === 'delete' ? 2 : 1,
+      key,
+    })
+  }
+  return out.sort((a, b) => b.rank - a.rank).slice(0, 2)
 }
 
 /** Builds a request scene, dropping optional parts until it fits the actor and step limits. */
@@ -1197,6 +1437,11 @@ export function buildFlows(input: FlowInput): Flow[] {
   const features = featuresFlow(ctx, input.features ?? [])
   if (features) flows.push(features)
 
+  // Journeys come right after: a client follows their own action from the page to the database.
+  const journeys = journeyPlans(ctx, input.endpoints)
+  for (const j of journeys) flows.push(fitJourney(j))
+  const told = new Set(journeys.map((j) => `${j.plan.endpoint.method} ${j.plan.endpoint.path}`))
+
   for (const agent of input.agents.slice(0, 2)) {
     const comp = ctx.byId.get(agent.component)
     if (agent.component && !comp) continue
@@ -1210,6 +1455,7 @@ export function buildFlows(input: FlowInput): Flow[] {
   const plans = input.endpoints
     .filter((ep) => !isPlumbing(ep.path))
     .flatMap((ep) => concreteRoutes(ep, ctx.details))
+    .filter((ep) => !told.has(`${ep.method} ${ep.path}`))
     .map((ep) => ({ ep, meaning: meaningOf(ep.method, ep.path) }))
     .filter(({ ep, meaning }) => meaning.word !== null || ROUTE_ACTIONS.has((routeWords(ep.path).pop() ?? '').toLowerCase()))
     .map(({ ep, meaning }) => ({ plan: planRequest(ctx, ep), meaning }))
