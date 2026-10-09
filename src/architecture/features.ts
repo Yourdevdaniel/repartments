@@ -270,7 +270,11 @@ export function buttonsOf(path: string, text: string): Feature[] {
     if (name === 'input') label = attr(attrs, 'value') ?? ''
     else if (!selfClosing) {
       const close = text.toLowerCase().indexOf(`</${name}`, end)
-      if (close > end && close - end < 2000) label = visibleText(text.slice(end + 1, close))
+      const inner = close > end && close - end < 2000 ? text.slice(end + 1, close) : ''
+      // A clickable box that holds a form or other controls (a modal closed by a click outside) is not
+      // a button: its "label" would be every word inside it.
+      if (name !== 'button' && /<(?:form|button|input|select|textarea)\b/i.test(inner)) continue
+      label = visibleText(inner)
     }
     label = cleanLabel(label)
     if (!hasWords(label)) label = cleanLabel(attr(attrs, 'aria-label') ?? attr(attrs, 'title') ?? '')

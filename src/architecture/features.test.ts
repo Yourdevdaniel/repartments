@@ -139,6 +139,20 @@ A small tool for moving data in and out of a spreadsheet.
 })
 
 describe('buttonsOf', () => {
+  it('does not take a clickable box that holds a form, like a modal closed by a click outside, for a button', () => {
+    const modal = [
+      '<div className="modal-fundo" onClick={onFechar}>',
+      '  <div className="modal" onClick={(e) => e.stopPropagation()}>',
+      '    <form onSubmit={enviar}>',
+      '      <label>Nota<select value={nota} /></label>',
+      '      <button type="submit">Enviar avaliação</button>',
+      '    </form>',
+      '  </div>',
+      '</div>',
+    ].join('\n')
+    expect(buttonsOf('src/components/ModalAvaliar.jsx', modal).map((f) => f.label)).toEqual(['Enviar avaliação'])
+  })
+
   it('reads a JSX button whose handler contains "=>" without breaking the tag', () => {
     const tsx = `export function Nav() {
   return (
