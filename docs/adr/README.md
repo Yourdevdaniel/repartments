@@ -15,6 +15,7 @@ Cada decisão que muda a forma do sistema fica registrada aqui, no formato [MADR
 | [0009](0009-funcionalidades-pelo-readme-e-pela-interface.md) | O que o sistema faz vem do README e da interface, não só da arquitetura | Aceito |
 | [0010](0010-roteiro-do-autor.md) | Roteiro do autor: um repartments.json escrito pela IA do cliente, sem LLM no estúdio | Aceito |
 | [0011](0011-privacidade-e-lgpd.md) | Privacidade e LGPD: política no site, aviso no login, salvar sem nomes e registro das operações | Aceito |
+| [0012](0012-jornadas-pelos-botoes.md) | Jornadas do cliente lidas dos botões e das páginas, por leitura estática no mesmo arquivo | Aceito |
 
 Para uma decisão nova, copie o modelo abaixo para `NNNN-titulo-curto.md` e adicione a linha na tabela.
 

@@ -210,6 +210,7 @@ O repositório vira um prédio em que **cada andar é uma cena**:
 - **Conheça o sistema** (térreo): um guia visita as partes principais e cada uma diz, numa frase, o que faz.
 - **O que dá para fazer**: as funcionalidades do projeto, lidas do README, dos botões das telas e dos comandos, cada uma encenada como um pedido da pessoa e a resposta da parte que a atende ([ADR 0009](adr/0009-funcionalidades-pelo-readme-e-pela-interface.md)).
 - **Como o agente decide**: a mensagem chega, o agente lê as instruções, pergunta ao modelo de IA, escolhe entre as ferramentas, usa a que precisa e responde.
+- **Jornadas**: o que o cliente faz no sistema, passo a passo: abre a página, aperta o botão, confirma, o sistema faz e a tela mostra que deu certo (por exemplo, "O usuário cancela uma reserva"). O estúdio também lista as páginas do site, lidas dos roteadores e de onde os arquivos ficam ([detalhes](analise.md#jornadas), [ADR 0012](adr/0012-jornadas-pelos-botoes.md)).
 - **Pedidos** ("Criar leads", "Ver clientes", "Cancelar reservas"…): a tela pede, a segurança confere, as regras trabalham, o banco guarda ou entrega, o e-mail sai, a resposta aparece na tela. Rotas que só mantêm o site de pé (verificação de saúde, admin, login, token, webhooks) não viram cena; numa rota do Django, que não diz o método, vale o que a tela faz com ela ou a ação no fim do endereço ([detalhes](analise.md#quais-rotas-viram-pedido)).
 - **Tarefas em segundo plano**, quando há fila.
 
