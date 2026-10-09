@@ -174,6 +174,18 @@ describe('screenDetailsOf', () => {
     expect(details.fields).toEqual(['Responsável'])
   })
 
+  it('takes as title the first heading that names a screen, not a sentence, a numbered clause or an expression', () => {
+    const page = [
+      'const doc = `<h2>${escape(section.title)}</h2>`',
+      '<h1>Seu trabalho merece mais que um print.</h1>',
+      '<div className="document-body"><h2>1. DO OBJETO</h2><h2>2. DO PAGAMENTO</h2></div>',
+      '<h1>Que acordo você quer colocar no papel?</h1>',
+      '<h2>Meus contratos</h2>',
+    ].join('\n')
+    expect(screenDetailsOf('frontend/src/App.tsx', page).title).toBe('Meus contratos')
+    expect(screenDetailsOf('frontend/src/Landing.tsx', '<h1>Seu trabalho merece mais que um print.</h1><h2>1. DO OBJETO</h2>').title).toBeNull()
+  })
+
   it('reads the value of a submit input as a button, and a name attribute when there is no other label', () => {
     const page = '<form><input name="company_name" /><input type="submit" value="Enviar" /><input type="hidden" name="token" /></form>'
     expect(screenDetailsOf('site/index.html', page)).toEqual({ title: null, buttons: ['Enviar'], fields: ['nome da empresa'] })

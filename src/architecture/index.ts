@@ -20,7 +20,7 @@ import { featuresOf, README } from './features'
 import { indefiniteArticle, nameWith, plainAgentName, plainExternalName, plainLayerName, screenPartName, subjectOf } from './plain'
 import { importsOf } from './imports'
 import { normalizePath, createResolver } from './resolve'
-import { selectFiles, type TreeEntry } from './select'
+import { isTestPath, selectFiles, type TreeEntry } from './select'
 import { basenameOf, clip, count, joinList, langOf } from './text'
 
 export type { TreeEntry } from './select'
@@ -140,7 +140,8 @@ function titledScreens(components: Component[], files: Map<string, string>): Com
     if (c.layer !== 'interface' || subjectOf(c.path)) return c
     const titles = new Set<string>()
     for (const [path, text] of files) {
-      if (componentOf(path, components)?.id !== c.id) continue
+      // A test renders made-up screens: its headings name nothing in the app.
+      if (isTestPath(path) || componentOf(path, components)?.id !== c.id) continue
       try {
         const title = screenDetailsOf(path, text).title
         if (title) titles.add(title.trim())
@@ -202,10 +203,12 @@ function flowDetailsOf(input: {
       // Same for queue names.
     }
     try {
-      const own = screenDetailsOf(path, text)
-      const imported = (targetsOf.get(path) ?? []).map((t) => screenDetailsOf(t, files.get(t) ?? ''))
-      const merged = mergeScreenDetails([own, ...imported])
-      if (merged.title || merged.buttons.length || merged.fields.length) screens.set(path, merged)
+      if (!isTestPath(path)) {
+        const own = screenDetailsOf(path, text)
+        const imported = (targetsOf.get(path) ?? []).map((t) => screenDetailsOf(t, files.get(t) ?? ''))
+        const merged = mergeScreenDetails([own, ...imported])
+        if (merged.title || merged.buttons.length || merged.fields.length) screens.set(path, merged)
+      }
     } catch {
       // A screen that can't be read keeps the scene's wording.
     }

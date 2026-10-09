@@ -178,6 +178,19 @@ describe('buildModel on other inputs', () => {
     expect(model.externals.map((e) => [e.name, e.kind])).toEqual([['Banco de dados', 'database']])
   })
 
+  it('does not name a screens part after a heading in one of its test files', () => {
+    const model = buildModel({
+      repo: { owner: 'acme', name: 'contratos', branch: 'main', sha: 's', private: false },
+      tree: [{ path: 'frontend/src/App.tsx', type: 'blob' }, { path: 'frontend/src/App.test.tsx', type: 'blob' }],
+      files: new Map([
+        ['frontend/src/App.tsx', 'export function App() {\n  return <main><button onClick={go}>Novo contrato</button></main>\n}\n'],
+        ['frontend/src/App.test.tsx', "it('renders', () => {\n  render(<section><h2>DO OBJETO</h2></section>)\n})\n"],
+      ]),
+      truncated: false,
+    })
+    expect(model.components.map((c) => c.label?.pt).join(' | ')).not.toContain('OBJETO')
+  })
+
   it('tells a Django route by the method the front-end calls it with', () => {
     const model = buildModel({
       repo: { owner: 'acme', name: 'contratos', branch: 'main', sha: 's', private: false },

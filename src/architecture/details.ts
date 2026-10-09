@@ -357,14 +357,22 @@ export function dataModelsOf(path: string, text: string): DataModel[] {
   })
 }
 
+/**
+ * A heading that names a screen ("Leads", "Meus contratos"): a few words, not a sentence ("Seu trabalho
+ * merece mais que um print."), a question or a numbered clause of a document shown on it ("1. DO OBJETO").
+ */
+function namesScreen(heading: string | null): heading is string {
+  return !!heading && heading.split(' ').length <= 5 && !/[.!?…:]$/.test(heading) && !/^\d+[.)]?\s/.test(heading)
+}
+
 /** What a screen shows, from a component or page file. Anything that is not a screen gives nothing. */
 export function screenDetailsOf(path: string, text: string): ScreenDetails {
   const empty: ScreenDetails = { title: null, buttons: [], fields: [] }
   if (!SCREEN_EXTENSIONS.has(extOf(path))) return empty
   const code = stripComments(text, 'slash')
-  const heading = /<h[12]\b(?:[^>{]|\{[^{}]*\})*>([\s\S]*?)<\/h[12]>/i.exec(code)
+  const headings = [...code.matchAll(/<h[12]\b(?:[^>{]|\{[^{}]*\})*>([\s\S]*?)<\/h[12]>/gi)].map((m) => literal(m[1]))
   const docTitle = /document\.title\s*=\s*(['"`])([^'"`]*)\1/.exec(code)
-  const title = literal(heading?.[1]) ?? literal(docTitle?.[2])
+  const title = headings.find(namesScreen) ?? literal(docTitle?.[2])
 
   const buttons: string[] = []
   for (const m of code.matchAll(/<button\b(?:[^>{]|\{[^{}]*\})*>([\s\S]*?)<\/button>/gi)) addUnique(buttons, literal(m[1]))
