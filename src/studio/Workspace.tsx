@@ -278,7 +278,10 @@ export function Workspace({ source, lang }: { source: Source; lang: Lang }) {
         </div>
       </div>
 
-      {tab === 'present' && model && !showingAutomatic && analysis.state !== 'running' && <AuthoredNotice model={model} lang={lang} />}
+      {/* A refused script is answered on any tab: the "Roteiro" menu it was pasted in is on all of them. */}
+      {model && !showingAutomatic && analysis.state !== 'running' && (tab === 'present' || model.authored?.problems.some((p) => p.level === 'error')) && (
+        <AuthoredNotice model={model} lang={lang} />
+      )}
 
       <div className="relative min-h-0 flex-1">
         {analysis.state === 'running' ? (
