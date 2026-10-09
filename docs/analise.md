@@ -52,8 +52,8 @@ Cada import vira um **arquivo do repositório** ou um **pacote**:
 
 ## 4. Rotas e chamadas (`endpoints.ts`)
 
-- Rotas declaradas em Express, Fastify, Hono, Koa, NestJS, FastAPI, Flask, Django (`urls.py`, routers do DRF), Spring, Laravel, Rails, Next.js (`pages/api`, `app/**/route.ts`) e funções da Vercel (`api/`).
-- Chamadas do front (`fetch`, `axios`, `$fetch`, `useFetch`…) são casadas com as rotas, normalizando parâmetros (`:id`, `{id}`, `<int:id>`, `[id]`, `${x}`), origem, query e um `/api` na frente. Uma chamada casada vira conexão **tela → API**, mesmo entre linguagens diferentes.
+- Rotas declaradas em Express, Fastify, Hono, Koa, NestJS, FastAPI, Flask, Django (`urls.py`, routers do DRF), Spring, Laravel, Rails, Next.js (`pages/api`, `app/**/route.ts`) e funções da Vercel (`api/`). No Django, `path('api/', include(...))` só monta outra lista de rotas e não vira rota; as rotas do Django e do DRF não dizem o método e ficam como `ANY`.
+- Chamadas do front (`fetch`, `axios`, `$fetch`, `useFetch`…) são casadas com as rotas, normalizando parâmetros (`:id`, `{id}`, `<int:id>`, `[id]`, `${x}`), origem, query e um `/api` na frente. Uma chamada casada vira conexão **tela → API**, mesmo entre linguagens diferentes. Para uma rota `ANY`, a chamada fica guardada com o método dela (`POST /contracts/`, `GET /contracts/`), e é assim que as cenas sabem se a tela cria ou lista (seção 7).
 
 ## 5. Serviços de fora (`externals.ts`)
 
@@ -80,11 +80,32 @@ Até 6 cenas, com no máximo 7 participantes e 14 passos cada, nesta ordem:
 
 0. **O que dá para fazer**, antes de todas, se a seção 10 achou 2 ou mais funcionalidades: cada funcionalidade com nome vira um pedido da pessoa (“Passo a passo”) e a resposta da parte que a atende; a que só tem uma frase vira um passo de “mostrar”.
 1. **Como o agente decide** (até 2 agentes): a mensagem chega, o agente lê as instruções, pergunta ao modelo, escolhe entre as ferramentas, usa até duas, pergunta de novo se houver laço e responde.
-2. **Pedidos** (até 3 rotas, as de cadeia mais longa, preferindo criar e listar): a pessoa usa a tela, a tela pede à API, a segurança confere, a API passa às regras, as regras buscam ou guardam no banco, e-mails e tarefas saem, a resposta volta e aparece na tela.
+2. **Pedidos** (até 3 rotas, as de cadeia mais longa, preferindo criar e listar): a pessoa usa a tela, a tela pede à API, a segurança confere, a API passa às regras, as regras buscam ou guardam no banco, e-mails e tarefas saem, a resposta volta e aparece na tela. Quais rotas entram e como cada uma vira cena está logo abaixo, em "Quais rotas viram pedido".
 3. **Tarefas em segundo plano**, se houver fila: alguém deixa a tarefa, o trabalhador pega e conclui.
 4. **Visão geral**, só se nada acima foi encontrado.
 
 Cada passo tem legenda (uma frase curta em português e inglês), balão (uma a três palavras), ação (pedir, conferir, buscar, guardar, pensar, decidir, usar ferramenta, responder, mostrar, enfileirar, enviar) e, quando dá, o arquivo e a linha de onde veio. Verbos das rotas viram palavras: `GET` lista ou vê, `POST` cria, `PUT/PATCH` atualiza, `DELETE` apaga.
+
+### Quais rotas viram pedido
+
+```mermaid
+flowchart TD
+  R[rota] --> P{"encanamento?<br/>health, csrf, admin, login, token,<br/>webhook, docs, /, padrão coringa"}
+  P -- sim --> X[fica de fora]
+  P -- não --> M{"diz o método?"}
+  M -- sim --> S[uma cena com esse método]
+  M -- "não (ANY)" --> C{"alguma tela chama?"}
+  C -- sim --> S2["uma cena por método chamado<br/>(POST e GET viram criar e listar)"]
+  C -- não --> W{"a última palavra é uma ação?<br/>cancelar, enviar, exportar, cadastro…"}
+  W -- sim --> A[a ação sobre a palavra de antes]
+  W -- não --> L[listar, ou ver um, se termina num id]
+```
+
+- **Fica de fora** o que só mantém o site de pé ou só faz entrar: `health`, `ping`, `csrf`, `/admin/`, `/media/`, `/static/`, `login`, `logout`, `me`, `refresh`, `token`, senha, tudo sob `auth` que não seja cadastro, webhooks (quem chama é um serviço de fora, não a pessoa), documentação da API, a raiz `/` e padrões coringa (`(?P<path>.*)`, `*`). Também fica de fora a rota cujas palavras não nomeiam nada (`/f/<token>`).
+- **Ações no fim da rota** dizem o que é feito com a palavra de antes: `/reservas/<id>/cancelar` é "Cancelar reservas", `/contracts/<id>/send/` é "Enviar contracts", `/analises/<id>/exportar/` é "Exportar analises". As ações conhecidas: cancelar, confirmar, recusar, aceitar, aprovar, enviar, publicar, assinar, arquivar, concluir, pagar, retirar, sincronizar, conferir, exportar e baixar (`pdf`, `csv`), em português e inglês. Ação sem palavra de antes vira só o verbo ("Assinar"), e a legenda fala em "registro".
+- **Cadastro:** `/auth/register/` é "Criar conta"; `/auth/aluno/cadastro/` é "Cadastrar aluno". Vem depois das rotas sobre o que o sistema faz.
+- **Ordem:** primeiro as rotas que nomeiam a coisa, depois as de só verbo; dentro disso, as de cadeia mais longa e, no empate, criar antes de listar. Uma cena de leitura e uma de escrita por parte da API.
+- Palavras com hífen viram palavras soltas ("meus-dados" → "meus dados"), e as terminadas em -ção, -são, -dade, -gem, -ise e -tude concordam no feminino ("a nova analise").
 
 No navegador, a apresentação acrescenta a cena de abertura **"Conheça o sistema"** (`src/studio/present/intro.ts`) e os commits viram cenas próprias (`src/studio/works/scenes.ts`, [ADR 0005](adr/0005-commits-como-cenas.md)).
 
@@ -93,7 +114,7 @@ No navegador, a apresentação acrescenta a cena de abertura **"Conheça o siste
 Para as legendas dizerem o que a pessoa vê e faz, e não só "a API chama o serviço", o analisador também lê, do próprio código:
 
 - **Modelos de dados** (Prisma, Django, SQLAlchemy, Mongoose, TypeORM, Sequelize): os campos de cada entidade, sem ids, datas automáticas e nada sensível (senhas, tokens, chaves, CPF, cartão).
-- **Telas**: o título (`<h1>`), os botões e os rótulos dos campos (`<label>`, `placeholder`, `aria-label`), juntando a tela com os componentes que ela importa.
+- **Telas**: o título, os botões e os rótulos dos campos (`<label>`, `placeholder`, `aria-label`), juntando a tela com os componentes que ela importa. O título é o primeiro `<h1>` ou `<h2>` que nomeia uma tela: até cinco palavras, sem ser frase ou pergunta e sem ser cláusula numerada ("1. DO OBJETO", de um contrato mostrado na tela); sem nenhum assim, vale o `document.title`. Arquivos de teste não contam: eles desenham telas de mentira.
 - **O que a tela envia** (`JSON.stringify({ … })`, `axios.post(url, { … })`), o **assunto dos e-mails** e o nome das **filas**.
 - Nomes de campos viram palavras ("companyName" → "empresa"), com um dicionário de termos comuns em português.
 
@@ -105,7 +126,7 @@ Quem assiste não programa, então nenhum nome de pasta, de função, de marca o
 
 | Participante | Nome simples | Nome do código |
 |---|---|---|
-| Parte do sistema | O papel dela pela camada ("Telas", "Recepção", "Porteiro", "Regras do negócio", "Bastidores", "Arquivo"), com o assunto da pasta quando há um ("Recepção de pedidos", "Regras de leads"). Pastas genéricas (`routes`, `services`, `pages`…) não dão assunto. Uma parte de telas sem assunto que tem uma tela só leva o título dela ("Tela de leads"); uma parte de agente sem assunto que tem um agente só leva o assunto do nome do agente (`support` → "Assistente de atendimento"). Nomes repetidos ganham a pasta de cima ou um número; até 28 caracteres. | "Backend Routes" |
+| Parte do sistema | O papel dela pela camada ("Telas", "Recepção", "Porteiro", "Regras do negócio", "Bastidores", "Arquivo"), com o assunto da pasta quando há um ("Recepção de pedidos", "Regras de leads"). Pastas genéricas (`routes`, `services`, `pages`…) não dão assunto; um grupo de rotas do Expo Router ou do Next.js dá ("(aluno)" → "Tela de aluno", "(auth)" → "Tela de acesso"). `management/` e `commands/` são "Comandos", `scripts/` é "Rotinas". Uma parte de telas sem assunto que tem uma tela só leva o título dela ("Tela de leads"); uma parte de agente sem assunto que tem um agente só leva o assunto do nome do agente (`support` → "Assistente de atendimento"). Quando partes na raiz de um app dividem o nome dele ("Site", "Aplicativo", "Servidor"), as telas ficam com o nome e as outras ganham o papel nele ("Configuração do site", "Regras do aplicativo"). Os demais nomes repetidos ganham a pasta de cima ou um número; até 28 caracteres. | "Backend Routes" |
 | Ferramenta da IA | O verbo e os substantivos traduzidos: `search_leads` → "Buscar leads", `schedule_call` → "Agendar ligação". | `search_leads` |
 | Serviço de fora | O tipo de serviço: "Banco de dados", "Fila de tarefas", "Serviço de e-mail", "Modelo de IA". A marca vai para a nota ("PostgreSQL guarda os dados do sistema."). | "PostgreSQL", "gpt-4o-mini" |
 
@@ -144,3 +165,6 @@ Limites: um README fraco dá uma cena fraca; o texto vem no idioma do autor, sem
 - Agentes que montam o prompt em tempo de execução, registram ferramentas por reflexão ou chamam a API do modelo com `fetch` cru podem aparecer incompletos ou não aparecer.
 - Resolução de Java, Kotlin, Ruby, PHP e C# é aproximada; Go só pelo `go.mod` da raiz.
 - Chamadas HTTP só são lidas em arquivos JS/TS/Vue/Svelte.
+- Uma rota `ANY` que nenhuma tela chama e cuja última palavra não é uma ação vira "listar": o estúdio não lê a view do Django para saber se ela também cria.
+- As palavras das rotas não ganham acento nem tradução ("analises", "contracts"); o roteiro do autor resolve.
+- Rotas declaradas na pasta do projeto Django (a da `settings.py`) aparecem com o nome dela, "Configuração de …".
