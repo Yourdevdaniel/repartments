@@ -703,6 +703,15 @@ const merge = (base: Text, patch?: Partial<Text>): Text => ({ en: patch?.en?.tri
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const lowerFirst = (s: string) => s.charAt(0).toLocaleLowerCase() + s.slice(1)
+const upperFirst = (s: string) => s.charAt(0).toLocaleUpperCase() + s.slice(1)
+
+/** Whether a new name keeps its own capitals: a sigla or brand after the first letter ("CRM", "WhatsApp"). */
+export function keepsCase(to: string): boolean {
+  return /\p{Lu}/u.test(Array.from(to).slice(1).join(''))
+}
+
+/** Whether the text before `at` ends a sentence (or is nothing), so the word at `at` opens one. */
+const opensSentence = (s: string, at: number) => /(^|[.!?]\s+)$/.test(s.slice(0, at))
 
 type Gender = 'o' | 'a' | 'os' | 'as'
 /** Portuguese articles, alone or joined to a preposition, by preposition and gender. */
@@ -736,16 +745,17 @@ function agree(verb: string, plural: boolean): string {
 
 /**
  * Swaps whole-word mentions of each participant in a sentence. A name written with a lower-case
- * first letter mid-sentence ("o banco de dados") is swapped too; it stays lower-case when the new
- * name is a plain one, and keeps its own capitals when it's a proper name ("o PostgreSQL"). In
- * Portuguese, the article in front follows the new name ("pelos bastidores" → "pelo Carteiro").
+ * first letter mid-sentence ("o banco de dados") is swapped too. A plain new name is lower-case
+ * mid-sentence and capital where it opens a sentence ("As regras" → "As regras de leads" at the
+ * start, "as regras de leads" inside); a proper name keeps its own capitals ("o PostgreSQL"). In
+ * Portuguese, the article in front follows the new name ("pelos bastidores" → "pelo carteiro").
  */
 function rename(text: string, names: { from: string; to: string; plain: boolean }[], lang: 'en' | 'pt' = 'en'): string {
   let out = text
   for (const { from, to, plain } of names) {
     if (!from || from === to) continue
     const lower = lowerFirst(from)
-    const swap = (w: string) => (w === from ? to : plain ? lowerFirst(to) : to)
+    const shape = (opens: boolean) => (plain ? (opens ? upperFirst(to) : lowerFirst(to)) : to)
     for (const w of lower !== from ? [from, lower] : [from]) {
       if (lang === 'pt') {
         const gender = ptGender(to)
@@ -760,10 +770,11 @@ function rename(text: string, names: { from: string; to: string; plain: boolean 
         out = out.replace(articled, (_, article: string) => {
           const form = PT_FORMS[PT_ARTICLE.get(article.toLowerCase()) ?? ''][gender]
           const cased = article[0] !== article[0].toLowerCase() ? form[0].toUpperCase() + form.slice(1) : form
-          return `${cased} ${swap(w)}`
+          // After an article the name is never the first word of a sentence.
+          return `${cased} ${shape(false)}`
         })
       }
-      out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(w)}(?![\\p{L}\\p{N}])`, 'gu'), swap(w))
+      out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(w)}(?![\\p{L}\\p{N}])`, 'gu'), (_m: string, at: number, s: string) => shape(opensSentence(s, at)))
     }
   }
   return out
@@ -776,6 +787,20 @@ function usesCode(a: Actor, naming: Naming): boolean {
 }
 
 /**
+ * An actor's note with the plain names: the code's name (its technical name) swapped for the plain
+ * one, and, for an AI model, the provider left out ("gpt-4o-mini, de OpenAI, responde…" →
+ * "Modelo de IA, responde…"). A note of an actor that shows the code's name stays as it is.
+ */
+function plainNote(a: Actor, name: Text, naming: Naming): Text {
+  if (!a.technical || usesCode(a, naming)) return a.note
+  const one = (lang: 'en' | 'pt') => {
+    const text = a.kind === 'llm' ? a.note[lang].replace(/, (?:de|from) [^,]+,/, ',') : a.note[lang]
+    return rename(text, [{ from: a.technical![lang], to: name[lang], plain: !keepsCase(name[lang]) }], lang)
+  }
+  return { en: one('en'), pt: one('pt') }
+}
+
+/**
  * The flows with the presenter's changes applied (hidden scenes kept, flagged by `hidden`): the
  * chosen naming first, then renames by hand. Captions, titles and bubbles follow the new names,
  * unless a caption was rewritten by hand.
@@ -785,11 +810,19 @@ export function applyEdits(flows: Flow[], edits: ScriptEdits): Flow[] {
   return flows.map((f) => {
     // The code's names win over renames by hand: a rename is a plainer word for the same part, and
     // whoever chose the code's names wants those.
-    const actors = f.actors.map((a) => ({ ...a, name: usesCode(a, naming) ? a.technical! : merge(a.name, edits.actors[actorKey(a)]) }))
+    const actors = f.actors.map((a) => {
+      const name = usesCode(a, naming) ? a.technical! : merge(a.name, edits.actors[actorKey(a)])
+      return { ...a, name, note: plainNote(a, name, naming) }
+    })
     // Longest names first, so "Backend Routes" is swapped before a shorter name inside it.
     const swaps = (lang: 'en' | 'pt') =>
       f.actors
-        .map((a, i) => ({ from: a.name[lang], to: actors[i].name[lang], plain: !usesCode(a, naming) && !edits.actors[actorKey(a)]?.[lang]?.trim() }))
+        .map((a, i) => {
+          // A rename by hand reads as a plain word unless it keeps capitals of its own ("CRM").
+          const to = actors[i].name[lang]
+          const byHand = !!edits.actors[actorKey(a)]?.[lang]?.trim()
+          return { from: a.name[lang], to, plain: !usesCode(a, naming) && (!byHand || !keepsCase(to)) }
+        })
         .filter(({ from, to }) => from !== to)
         .sort((a, b) => b.from.length - a.from.length)
     const en = swaps('en')
@@ -814,7 +847,7 @@ export function renameParts(text: Text, parts: { id: string; label?: Text }[], e
     parts
       .flatMap((c) => {
         const to = edits.actors[c.id]?.[lang]?.trim()
-        return c.label && to ? [{ from: c.label[lang], to, plain: false }] : []
+        return c.label && to ? [{ from: c.label[lang], to, plain: !keepsCase(to) }] : []
       })
       .sort((a, b) => b.from.length - a.from.length)
   return { en: rename(text.en, swaps('en')), pt: rename(text.pt, swaps('pt'), 'pt') }

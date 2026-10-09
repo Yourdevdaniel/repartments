@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { crmFixture } from '../architecture/fixtures'
 import { buildModel } from '../architecture/index'
-import { NO_EDITS } from '../scene/tour'
+import { CODE, NO_EDITS } from '../scene/tour'
 import type { CommitDetail } from '../shared/studio'
-import { presentationFile, withoutAuthors } from './store'
+import { parsePresentation, presentationFile, withoutAuthors } from './store'
 
 function commit(sha: string, name: string, login: string | null, body = ''): CommitDetail {
   return {
@@ -55,5 +55,24 @@ describe('presentationFile', () => {
     const file = presentationFile(model, NO_EDITS, commits, { lang: 'pt' })
     expect(file.commits[0].author).toEqual({ name: 'Autor 1', login: null, avatarUrl: null })
     expect(JSON.stringify(file.commits)).not.toContain('Ana Souza')
+  })
+})
+
+describe('parsePresentation', () => {
+  const model = buildModel({ ...crmFixture, generatedAt: '2026-10-08T00:00:00Z' })
+
+  it('keeps the naming switches the presentation was saved with', () => {
+    const text = JSON.stringify(presentationFile(model, { ...NO_EDITS, naming: CODE }, []))
+    expect(parsePresentation(text)!.edits.naming).toEqual(CODE)
+  })
+
+  it('ignores a naming that is missing a switch or has a value other than plain or code', () => {
+    const file = JSON.parse(JSON.stringify(presentationFile(model, NO_EDITS, [])))
+    file.edits.naming = { parts: 'code', tools: 'loud', services: 'plain' }
+    expect(parsePresentation(JSON.stringify(file))!.edits.naming).toBeUndefined()
+    file.edits.naming = { parts: 'code', tools: 'plain' }
+    expect(parsePresentation(JSON.stringify(file))!.edits.naming).toBeUndefined()
+    file.edits.naming = 'code'
+    expect(parsePresentation(JSON.stringify(file))!.edits.naming).toBeUndefined()
   })
 })

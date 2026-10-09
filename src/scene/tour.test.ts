@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Actor, Flow, FlowStep } from '../shared/studio'
 import { flagAt, propAt, sample } from './story'
-import { actorKey, applyEdits, buildTour, CODE, NO_EDITS, readingTime, renameParts } from './tour'
+import { actorKey, applyEdits, buildTour, CODE, keepsCase, NO_EDITS, readingTime, renameParts } from './tour'
 
 const t = (en: string, pt = en) => ({ en, pt })
 const actor = (id: string, kind: Actor['kind'], name: string, component: string | null = null): Actor => ({
@@ -184,8 +184,34 @@ describe('applyEdits', () => {
       ],
     }
     const [edited] = applyEdits([flow], { ...NO_EDITS, actors: { [actorKey(worker)]: { pt: 'Carteiro' } } })
-    expect(edited.steps[0].text.pt).toBe('A tarefa é pega pelo Carteiro na fila')
-    expect(edited.steps[1].text.pt).toBe('O Carteiro guarda o resultado; nada fica com o Carteiro')
+    expect(edited.steps[0].text.pt).toBe('A tarefa é pega pelo carteiro na fila')
+    expect(edited.steps[1].text.pt).toBe('O carteiro guarda o resultado; nada fica com o carteiro')
+  })
+
+  it('keeps a plain renamed part capital only where it opens a sentence', () => {
+    const bot: Actor = { ...actor('bot', 'worker', 'Assistant', 'backend/bot'), name: t('Assistant', 'Assistente de atendimento') }
+    const flow: Flow = {
+      ...request,
+      actors: [...request.actors, bot],
+      steps: [
+        { ...step('bot', 'bot', 'think', 'x'), text: t('x', 'Assistente de atendimento responde ao cliente') },
+        { ...step('bot', 'bot', 'think', 'x'), text: t('x', 'O assistente de atendimento responde. Ao cliente, o Assistente de atendimento responde') },
+      ],
+    }
+    const [edited] = applyEdits([flow], { ...NO_EDITS, actors: { [actorKey(bot)]: { pt: 'Assistente de vendas' } } })
+    expect(edited.steps[0].text.pt).toBe('Assistente de vendas responde ao cliente')
+    expect(edited.steps[1].text.pt).toBe('O assistente de vendas responde. Ao cliente, o assistente de vendas responde')
+  })
+
+  it('keeps the capitals of a sigla or brand typed by hand', () => {
+    const api = request.actors.find((a) => a.id === 'api')!
+    const flow: Flow = {
+      ...request,
+      steps: [step('screen', 'api', 'ask', 'The screen asks Leads API'), step('api', 'service', 'call', 'Leads API replies to the service')],
+    }
+    const [edited] = applyEdits([flow], { ...NO_EDITS, actors: { [actorKey(api)]: { en: 'CRM' } } })
+    expect(edited.steps[0].text.en).toBe('The screen asks CRM')
+    expect(edited.steps[1].text.en).toBe('CRM replies to the service')
   })
 
   it('turns the verb after a renamed subject to the new number, and leaves other words alone', () => {
@@ -199,8 +225,8 @@ describe('applyEdits', () => {
       ],
     }
     const [edited] = applyEdits([flow], { ...NO_EDITS, actors: { [actorKey(screen)]: { pt: 'Tela de leads' } } })
-    expect(edited.steps[0].text.pt).toBe('A Tela de leads mostra a lista. A Tela de leads lê a resposta')
-    expect(edited.steps[1].text.pt).toBe('A Tela de leads de leads somem')
+    expect(edited.steps[0].text.pt).toBe('A tela de leads mostra a lista. A tela de leads lê a resposta')
+    expect(edited.steps[1].text.pt).toBe('A tela de leads de leads somem')
   })
 
   it('carries a rename into the captions, whole words only, unless the caption was rewritten', () => {
@@ -210,7 +236,7 @@ describe('applyEdits', () => {
       steps: [step('screen', 'api', 'ask', 'The screen asks Leads API'), step('api', 'service', 'call', 'Leads APIs are many')],
     }
     const [edited] = applyEdits([flow], { ...NO_EDITS, actors: { [actorKey(api)]: { en: 'Front desk' } } })
-    expect(edited.steps[0].text.en).toBe('The screen asks Front desk')
+    expect(edited.steps[0].text.en).toBe('The screen asks front desk')
     expect(edited.steps[1].text.en).toBe('Leads APIs are many')
     const [kept] = applyEdits([flow], { ...NO_EDITS, actors: { [actorKey(api)]: { en: 'Front desk' } }, steps: { [`${flow.id}#0`]: { en: 'My own words' } } })
     expect(kept.steps[0].text.en).toBe('My own words')
@@ -240,6 +266,39 @@ describe('applyEdits', () => {
     expect(renamed.actors.find((a) => a.id === 'api')!.name.pt).toBe('Backend Routes')
   })
 
+  it('swaps the code names in the notes for the plain ones, and leaves out the AI provider', () => {
+    const model: Actor = { ...actor('m', 'llm', 'AI model'), name: t('AI model', 'Modelo de IA'), technical: t('gpt-4o-mini'), external: 'ext:openai', note: { pt: 'gpt-4o-mini, de OpenAI, responde e decide.', en: 'gpt-4o-mini, from OpenAI, answers and decides.' } }
+    const flow: Flow = { ...request, actors: [...request.actors, model], steps: [] }
+    const [plain] = applyEdits([flow], NO_EDITS)
+    const note = plain.actors.find((a) => a.id === 'm')!.note
+    expect(note.pt).toBe('Modelo de IA, responde e decide.')
+    expect(note.en).toBe('AI model, answers and decides.')
+    expect(JSON.stringify(plain.actors.map((x) => x.note))).not.toMatch(/gpt-4o-mini|OpenAI/)
+  })
+
+  it('keeps the note of an actor that shows the code name', () => {
+    const model: Actor = { ...actor('m', 'llm', 'AI model'), name: t('AI model', 'Modelo de IA'), technical: t('gpt-4o-mini'), external: 'ext:openai', note: { pt: 'gpt-4o-mini, de OpenAI, responde e decide.', en: 'gpt-4o-mini, from OpenAI, answers and decides.' } }
+    const flow: Flow = { ...request, actors: [...request.actors, model], steps: [] }
+    const [code] = applyEdits([flow], { ...NO_EDITS, naming: CODE })
+    const note = code.actors.find((a) => a.id === 'm')!.note
+    expect(note.pt).toBe('gpt-4o-mini, de OpenAI, responde e decide.')
+    expect(note.en).toBe('gpt-4o-mini, from OpenAI, answers and decides.')
+  })
+
+  it('swaps the code names in the notes of tools, databases and queues when they are plain', () => {
+    const tool: Actor = { ...actor('tool', 'tool', 'Find leads'), name: t('Find leads'), technical: t('search_leads'), note: { en: 'search_leads looks up the leads.', pt: 'search_leads busca os leads.' } }
+    const db: Actor = { ...actor('db', 'database', 'Database', null), name: t('Database', 'Banco de dados'), technical: t('PostgreSQL'), note: { en: 'PostgreSQL keeps the system data.', pt: 'PostgreSQL guarda os dados do sistema.' } }
+    const queue: Actor = { ...actor('queue', 'queue', 'Job queue', null), name: t('Job queue', 'Fila de tarefas'), technical: t('BullMQ'), note: { en: 'BullMQ keeps tasks to do later.', pt: 'BullMQ guarda tarefas para serem feitas depois.' } }
+    const flow: Flow = { ...request, actors: [...request.actors, tool, queue], steps: [] }
+    const flowDb: Flow = { ...flow, actors: flow.actors.map((a) => (a.id === 'db' ? db : a)) }
+    const [edited] = applyEdits([flowDb], NO_EDITS)
+    const notes = Object.fromEntries(edited.actors.map((a) => [a.id, a.note]))
+    expect(notes.db).toEqual({ en: 'Database keeps the system data.', pt: 'Banco de dados guarda os dados do sistema.' })
+    expect(notes.tool).toEqual({ en: 'Find leads looks up the leads.', pt: 'Find leads busca os leads.' })
+    expect(notes.queue).toEqual({ en: 'Job queue keeps tasks to do later.', pt: 'Fila de tarefas guarda tarefas para serem feitas depois.' })
+    expect(JSON.stringify(edited.actors.map((x) => x.note))).not.toMatch(/PostgreSQL|BullMQ|search_leads/)
+  })
+
   it('ignores blank edits', () => {
     const [edited] = applyEdits([request], { ...NO_EDITS, titles: { [request.id]: { pt: '   ' } } })
     expect(edited.title.pt).toBe('Criar leads')
@@ -255,10 +314,26 @@ describe('renameParts', () => {
 
   it('calls the parts what the presenter renamed them to', () => {
     const edits = { ...NO_EDITS, actors: { agent: { pt: 'Assistente de vendas', en: 'Sales assistant' } } }
-    expect(renameParts(summary, parts, edits)).toEqual({ en: 'The Sales assistant chooses between 3 tools.', pt: 'O Assistente de vendas escolhe entre 3 ferramentas.' })
+    expect(renameParts(summary, parts, edits)).toEqual({ en: 'The sales assistant chooses between 3 tools.', pt: 'O assistente de vendas escolhe entre 3 ferramentas.' })
   })
 
   it('leaves the text alone without renames', () => {
     expect(renameParts(summary, parts, NO_EDITS)).toEqual(summary)
+  })
+
+  it('keeps the capitals of a sigla typed as the new name', () => {
+    const edits = { ...NO_EDITS, actors: { agent: { pt: 'CRM', en: 'CRM' } } }
+    expect(renameParts(summary, parts, edits)).toEqual({ en: 'The CRM chooses between 3 tools.', pt: 'O CRM escolhe entre 3 ferramentas.' })
+  })
+})
+
+describe('keepsCase', () => {
+  it('is true only when a capital letter follows the first character', () => {
+    expect(keepsCase('CRM')).toBe(true)
+    expect(keepsCase('WhatsApp')).toBe(true)
+    expect(keepsCase('Leads API')).toBe(true)
+    expect(keepsCase('Recepção')).toBe(false)
+    expect(keepsCase('Front desk')).toBe(false)
+    expect(keepsCase('a')).toBe(false)
   })
 })

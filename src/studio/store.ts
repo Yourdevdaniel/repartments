@@ -12,7 +12,7 @@
  * wrapped, and the studio works without it, just forgetting on reload.
  */
 import type { ArchitectureModel, CommitDetail, FileStatus, Flow } from '../shared/studio'
-import { NO_EDITS, type ScriptEdits } from '../scene/tour'
+import { NO_EDITS, type Naming, type ScriptEdits } from '../scene/tour'
 
 const modelKey = (owner: string, repo: string) => `studio:model:${owner.toLowerCase()}/${repo.toLowerCase()}`
 const editsKey = (owner: string, repo: string) => `studio:edits:${owner.toLowerCase()}/${repo.toLowerCase()}`
@@ -174,6 +174,17 @@ function isFlow(f: Flow): boolean {
   )
 }
 
+/** The naming switches of an opened file, if all three are there and each is plain or code; else nothing. */
+function readNaming(v: unknown): Naming | undefined {
+  if (!v || typeof v !== 'object') return undefined
+  const x = v as Record<keyof Naming, unknown>
+  const choice = (k: keyof Naming): 'plain' | 'code' | null => (x[k] === 'plain' || x[k] === 'code' ? x[k] : null)
+  const parts = choice('parts')
+  const tools = choice('tools')
+  const services = choice('services')
+  return parts && tools && services ? { parts, tools, services } : undefined
+}
+
 /** Reads an opened file: the presentation, or null if it isn't one of ours. */
 export function parsePresentation(text: string): PresentationFile | null {
   if (text.length > 8_000_000) return null
@@ -181,11 +192,13 @@ export function parsePresentation(text: string): PresentationFile | null {
     const file = JSON.parse(text) as PresentationFile
     if (file?.kind !== 'repartments-presentation' || file.version !== 1 || !isModel(file.model)) return null
     const e = file.edits ?? NO_EDITS
+    const naming = readNaming(e.naming)
     const edits: ScriptEdits = {
       actors: typeof e.actors === 'object' && e.actors ? e.actors : {},
       steps: typeof e.steps === 'object' && e.steps ? e.steps : {},
       titles: typeof e.titles === 'object' && e.titles ? e.titles : {},
       hidden: isList(e.hidden) ? e.hidden.filter((h) => typeof h === 'string') : [],
+      ...(naming ? { naming } : {}),
     }
     return { ...file, edits, commits: cleanCommits(file.commits) }
   } catch {

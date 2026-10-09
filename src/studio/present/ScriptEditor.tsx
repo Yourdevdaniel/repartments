@@ -6,7 +6,7 @@
  */
 import { useEffect, useMemo, useRef } from 'react'
 import type { Actor, Flow } from '../../shared/studio'
-import { NO_EDITS, type ScriptEdits } from '../../scene/tour'
+import { applyEdits, NO_EDITS, type ScriptEdits } from '../../scene/tour'
 import type { Lang } from '../../ui/roles'
 import { PromptPanel } from '../Authored'
 
@@ -58,12 +58,24 @@ export function ScriptEditor({
     if (d && !d.open) d.showModal()
   }, [])
 
-  /** Each participant once, however many scenes it appears in. */
+  /**
+   * The text each field shows when it has no edit of its own: the generated script with the chosen
+   * names applied, but the captions and titles still as generated. Saved edits stay relative to the
+   * generated text (keys come from `flows`), so only what is shown changes.
+   */
+  const base = useMemo(() => applyEdits(flows, { ...edits, steps: {}, titles: {} }), [flows, edits])
+
+  /** Each participant once, however many scenes it appears in, with the name it shows now. */
   const people = useMemo(() => {
-    const seen = new Map<string, Actor>()
-    for (const f of flows) for (const a of f.actors) if (!seen.has(keyOf(a))) seen.set(keyOf(a), a)
-    return [...seen]
-  }, [flows, keyOf])
+    const seen = new Map<string, { key: string; shown: Actor['name'] }>()
+    flows.forEach((f, fi) =>
+      f.actors.forEach((a, ai) => {
+        const key = keyOf(a)
+        if (!seen.has(key)) seen.set(key, { key, shown: base[fi].actors[ai].name })
+      }),
+    )
+    return [...seen.values()]
+  }, [flows, base, keyOf])
 
   const patch = (group: 'actors' | 'steps' | 'titles', key: string, value: string) =>
     onChange({ ...edits, [group]: { ...edits[group], [key]: { ...edits[group][key], [lang]: value } } })
@@ -97,17 +109,18 @@ export function ScriptEditor({
           <h3 className="text-sm font-extrabold">{w.people[lang]}</h3>
           <p className="text-xs text-ink-soft">{w.peopleLead[lang]}</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            {people.map(([key, a]) => (
+            {people.map(({ key, shown }) => (
               <label key={key} className="grid gap-1 text-[11px] font-bold text-ink-soft">
-                <span className="truncate">{a.name[lang]}</span>
-                <input className={field} value={edits.actors[key]?.[lang] ?? a.name[lang]} onChange={(e) => patch('actors', key, e.target.value)} />
+                <span className="truncate">{shown[lang]}</span>
+                <input className={field} value={edits.actors[key]?.[lang] ?? shown[lang]} onChange={(e) => patch('actors', key, e.target.value)} />
               </label>
             ))}
           </div>
 
           <h3 className="mt-6 text-sm font-extrabold">{w.scenes[lang]}</h3>
           <div className="mt-2 grid gap-3">
-            {flows.map((f) => {
+            {flows.map((f, fi) => {
+              const shown = base[fi]
               const hidden = edits.hidden.includes(f.id)
               return (
                 <section key={f.id} className={`rounded-2xl border border-ink/10 bg-white/70 p-3 ${hidden ? 'opacity-60' : ''}`}>
@@ -122,10 +135,10 @@ export function ScriptEditor({
                   </label>
                   <label className="mt-2 grid gap-1 text-[11px] font-bold text-ink-soft">
                     {w.sceneTitle[lang]}
-                    <input className={`${field} font-extrabold`} value={edits.titles[f.id]?.[lang] ?? f.title[lang]} onChange={(e) => patch('titles', f.id, e.target.value)} />
+                    <input className={`${field} font-extrabold`} value={edits.titles[f.id]?.[lang] ?? shown.title[lang]} onChange={(e) => patch('titles', f.id, e.target.value)} />
                   </label>
                   <ol className="mt-2 grid gap-1.5">
-                    {f.steps.map((s, i) => {
+                    {shown.steps.map((s, i) => {
                       const key = `${f.id}#${i}`
                       return (
                         <li key={key}>
