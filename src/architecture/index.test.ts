@@ -241,6 +241,9 @@ describe('buildModel on other inputs', () => {
     expect(journey?.title.pt).toBe('O usuário cancela uma reserva')
     expect(journey?.steps[0].text.pt).toContain('“Minhas reservas”')
     expect(journey?.steps[1].text.pt).toBe('O usuário clica em “Cancelar” numa reserva')
+    // The summary names the pages a person goes through, leaving out the home page.
+    expect(model.summary.pt).toContain('Quem usa passa por 2 páginas, como “Minhas reservas”.')
+    expect(model.summary.en).toContain('People go through 2 pages, such as “Minhas reservas”.')
   })
 
   it('joins the prefix of a Go group passed to a register function in another package', () => {

@@ -96,7 +96,10 @@ function entryFilesOf(path: string, text: string): string[] {
  * plain names, outside services by what they do, and the first agent's choices. No language names,
  * brands or model ids, since the people watching don't code.
  */
-function summaryOf(repoName: string, components: Component[], externals: External[], agents: Agent[], about: string | null = null): Text {
+/** Pages that only let a person in or are the home page say little about what the system offers. */
+const DOOR_PAGE = /^\/?$|login|logout|entrar|sair|registr|cadastr|signin|signup|sign-in|sign-up|register|senha|password|recuperar|esqueci/i
+
+function summaryOf(repoName: string, components: Component[], externals: External[], agents: Agent[], about: string | null = null, pages: Page[] = []): Text {
   const layers = LAYER_ORDER.filter((l) => components.some((c) => c.layer === l) && l !== 'tests').slice(0, 5)
   const kinds = [...new Set(externals.map((e) => e.kind))].slice(0, 4)
   const agent = agents[0]
@@ -119,6 +122,13 @@ function summaryOf(repoName: string, components: Component[], externals: Externa
   } else if (!about) {
     pt.push(`O ${repoName} é um sistema.`)
     en.push(`The ${repoName} is a system.`)
+  }
+  // The pages a person goes through, three that say what the system offers.
+  const shown = pages.filter((p) => !DOOR_PAGE.test(p.path)).sort((a, b) => Number(a.path.includes(':')) - Number(b.path.includes(':'))).slice(0, 3)
+  if (shown.length) {
+    const names = shown.map((p) => `“${p.name}”`)
+    pt.push(`Quem usa passa por ${count(pages.length, 'página', 'páginas')}, como ${joinList(names, 'pt')}.`)
+    en.push(`People go through ${count(pages.length, 'page', 'pages')}, such as ${joinList(names, 'en')}.`)
   }
   if (kinds.length) {
     pt.push(`Usa ${joinList(kinds.map((k) => indefiniteArticle(plainExternalName(k).pt, 'pt')), 'pt')}.`)
@@ -547,7 +557,7 @@ function buildModelWith(input: SourceInput, progress: (stage: 'graph' | 'flows')
       truncated: input.truncated,
       languages: languagesOf(sources),
     },
-    summary: summaryOf(input.repo.name, parts, externals, agents, told.about),
+    summary: summaryOf(input.repo.name, parts, externals, agents, told.about, pages),
     components: parts,
     dependencies,
     externals,
