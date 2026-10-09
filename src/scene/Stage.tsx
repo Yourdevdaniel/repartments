@@ -1,6 +1,6 @@
 import { ContactShadows, PerformanceMonitor, useGLTF } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { OrthographicCamera as OrthoCam, Vector3 } from 'three'
 import { Interior } from './Interior'
 import { Manager, Pedestrians, Traffic } from './Life'
@@ -377,12 +377,18 @@ type Props = {
   onMoved: (moved: boolean) => void
   /** Which building on the owner's street this is (0 = the first). */
   lot: number
+  /** When this changes, the stories start again from their first step (a presentation entering a scene). */
+  restart?: string | number | null
 }
 
-export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption, recenter, onMoved, lot }: Props) {
+export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption, recenter, onMoved, lot, restart }: Props) {
   const hood = useMemo(() => neighborhood(owner, lot), [owner, lot])
   const reduce = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, [])
   const time = useMemo<StoryTime>(() => ({ current: reduce ? 9 : 0, paused: reduce }), [reduce])
+  // Before the next frame draws, so the new scene never shows a moment from the middle of its story.
+  useLayoutEffect(() => {
+    if (restart !== undefined && restart !== null && !reduce) time.current = 0
+  }, [restart, reduce, time])
   const inside = view.mode === 'inside' ? (flats.find((f) => f.id === view.id) ?? null) : null
   // Sharp on capable screens, softer when the frame rate drops (PerformanceMonitor below).
   const [dpr, setDpr] = useState(() => Math.min(window.devicePixelRatio || 1, 1.5))
