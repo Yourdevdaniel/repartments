@@ -9,7 +9,9 @@ flowchart LR
   C --> D[resolve.ts<br/>import → arquivo ou pacote]
   D --> E[components.ts<br/>partes e camadas]
   E --> F[endpoints.ts<br/>rotas e chamadas HTTP]
-  F --> G[externals.ts<br/>bancos, IA, e-mail…]
+  F --> N[mounts.ts<br/>prefixos montados]
+  N --> Q[pages.ts<br/>páginas do site]
+  Q --> G[externals.ts<br/>bancos, IA, e-mail…]
   G --> H[agents.ts<br/>agentes de IA]
   H --> P[plain.ts<br/>nomes simples]
   P --> J[features.ts<br/>o que dá para fazer]
@@ -54,6 +56,63 @@ Cada import vira um **arquivo do repositório** ou um **pacote**:
 
 - Rotas declaradas em Express, Fastify, Hono, Koa, NestJS, FastAPI, Flask, Django (`urls.py`, routers do DRF), Spring, Laravel, Rails, Next.js (`pages/api`, `app/**/route.ts`) e funções da Vercel (`api/`). No Django, `path('api/', include(...))` só monta outra lista de rotas e não vira rota; as rotas do Django e do DRF não dizem o método e ficam como `ANY`.
 - Chamadas do front (`fetch`, `axios`, `$fetch`, `useFetch`…) são casadas com as rotas, normalizando parâmetros (`:id`, `{id}`, `<int:id>`, `[id]`, `${x}`), origem, query e um `/api` na frente. Uma chamada casada vira conexão **tela → API**, mesmo entre linguagens diferentes. Para uma rota `ANY`, a chamada fica guardada com o método dela (`POST /contracts/`, `GET /contracts/`), e é assim que as cenas sabem se a tela cria ou lista (seção 7).
+- Também são lidas como `fetch` as chamadas por wrappers (`api(url, { method })`, também sem a barra inicial) e por objetos de serviço (`ApiService.post('articles/…')`, `requests.get('/articles/' + slug)`, em que a parte somada vira parâmetro).
+- Formas de declarar rotas que passaram a ser lidas:
+  - **Flask:** `methods=` em tupla. **Spring:** `@RequestMapping(method = POST)`.
+  - **Laravel:** `Route::resource` e `apiResource` (com `only`/`except` e aninhados), `Route::match` e o prefixo de `Route::group` e de `Route::prefix()->group()`.
+  - **Rails:** `resources` e `resource` com aninhamento (`:article_slug`), `member`/`collection`, `scope` e `namespace`. `devise_for` fica de fora: é login.
+  - **Django:** `url()` e `re_path` com regex.
+  - **Go:** gin, echo, chi, fiber e gorilla/mux, com grupos.
+  - Decoradores Python com argumentos em várias linhas. Rotas de arquivos de teste ficam de fora.
+
+### Prefixos montados em outro arquivo (`mounts.ts`)
+
+Muitas vezes a rota é declarada num arquivo e o prefixo é dado em outro. O estúdio lê onde o prefixo é montado e o junta à rota:
+
+- **FastAPI:** `include_router(x.router, prefix=…)`.
+- **Flask:** `register_blueprint(bp, url_prefix=…)`.
+- **Express:** `app.use('/api', router)`.
+- **Django:** `include()`.
+- **Go:** `pkg.Register(v1.Group("/x"))`; valem só as rotas da função que recebe o grupo.
+
+Os prefixos se juntam pela cadeia: um roteador montado dentro de outro leva os dois prefixos.
+
+### Medição com o corpus RealWorld
+
+A mesma API (Conduit, 19 rotas) existe em vários stacks, o que serve de régua. Rotas lidas, antes → depois desta etapa:
+
+| Stack | Antes | Depois |
+|---|---|---|
+| Express | 19 | 19 |
+| NestJS | 19 | 19 |
+| Spring | 19 | 19 |
+| Flask | 7 | 19 |
+| Laravel | 10 | 19 |
+| FastAPI | 0 | 19 |
+| Rails | 3 | 17 |
+| Go | 0 | 17 |
+| Django | 2 | 16 |
+
+O que ainda falta: Rails e Go não leem login e cadastro (`devise_for` no Rails; o Go registra essas rotas em outro lugar), e o Django não lê `GET/PUT/DELETE /articles/:slug`, que vêm de um ViewSet.
+
+## 4.1. Páginas (`pages.ts`)
+
+As páginas do site vêm de duas fontes.
+
+**Roteadores no código**, só em arquivos que importam um roteador:
+
+- `<Route path element>` do React Router: pega o componente mais de dentro de um elemento embrulhado (`<Protegida><MinhasReservas/></Protegida>` → `MinhasReservas`) e ignora `*` e `Navigate`.
+- Objetos de rota (`createBrowserRouter`, Vue Router), inclusive com import preguiçoso (`() => import('./X.vue')`).
+
+**Arquivos que são páginas pelo lugar onde ficam**, só embaixo da pasta de um `package.json` que usa `next`, `expo-router` ou `nuxt`:
+
+- **Next.js:** `pages/` (sem `pages/api`, `_app`, `_document`, `_error`) e `app/**/page.*`.
+- **Expo Router:** `app/` (sem `_layout` e `+not-found`; grupos `(x)` somem do endereço).
+- **Nuxt:** `pages/*.vue`.
+
+**Nome** da página, nesta ordem: o título da própria página, se tiver até 4 palavras (sem o emoji do começo); o nome do componente em palavras (`MinhasReservas` → "Minhas reservas"); a última palavra do endereço. A raiz é "Início".
+
+O modelo ganha `pages` (`{ path, name, file, source }`). A página empresta o nome a uma tela sem título, e as peças que ela importa contam como mostradas nela.
 
 ## 5. Serviços de fora (`externals.ts`)
 
@@ -79,12 +138,34 @@ O mapa desenha esse grafo (`src/studio/map/AgentGraph.tsx`) e a apresentação e
 Até 6 cenas, com no máximo 7 participantes e 14 passos cada, nesta ordem:
 
 0. **O que dá para fazer**, antes de todas, se a seção 10 achou 2 ou mais funcionalidades: cada funcionalidade com nome vira um pedido da pessoa (“Passo a passo”) e a resposta da parte que a atende; a que só tem uma frase vira um passo de “mostrar”.
-1. **Como o agente decide** (até 2 agentes): a mensagem chega, o agente lê as instruções, pergunta ao modelo, escolhe entre as ferramentas, usa até duas, pergunta de novo se houver laço e responde.
-2. **Pedidos** (até 3 rotas, as de cadeia mais longa, preferindo criar e listar): a pessoa usa a tela, a tela pede à API, a segurança confere, a API passa às regras, as regras buscam ou guardam no banco, e-mails e tarefas saem, a resposta volta e aparece na tela. Quais rotas entram e como cada uma vira cena está logo abaixo, em "Quais rotas viram pedido".
-3. **Tarefas em segundo plano**, se houver fila: alguém deixa a tarefa, o trabalhador pega e conclui.
-4. **Visão geral**, só se nada acima foi encontrado.
+1. **Jornadas**, logo depois de "O que dá para fazer" e antes dos pedidos (veja "Jornadas" abaixo).
+2. **Como o agente decide** (até 2 agentes): a mensagem chega, o agente lê as instruções, pergunta ao modelo, escolhe entre as ferramentas, usa até duas, pergunta de novo se houver laço e responde.
+3. **Pedidos** (até 3 rotas, as de cadeia mais longa, preferindo criar e listar): a pessoa usa a tela, a tela pede à API, a segurança confere, a API passa às regras, as regras buscam ou guardam no banco, e-mails e tarefas saem, a resposta volta e aparece na tela. Quais rotas entram e como cada uma vira cena está logo abaixo, em "Quais rotas viram pedido".
+4. **Tarefas em segundo plano**, se houver fila: alguém deixa a tarefa, o trabalhador pega e conclui.
+5. **Visão geral**, só se nada acima foi encontrado.
 
 Cada passo tem legenda (uma frase curta em português e inglês), balão (uma a três palavras), ação (pedir, conferir, buscar, guardar, pensar, decidir, usar ferramenta, responder, mostrar, enfileirar, enviar) e, quando dá, o arquivo e a linha de onde veio. Verbos das rotas viram palavras: `GET` lista ou vê, `POST` cria, `PUT/PATCH` atualiza, `DELETE` apaga.
+
+### Jornadas
+
+Uma jornada conta o que a pessoa faz numa página, do botão até o resultado (`flows.ts`, funções `journeyPlans` e `journeyFlow`; os botões vêm de `screenActionsOf`, em `details.ts`).
+
+**Do botão à chamada**, por leitura no mesmo arquivo:
+
+- O handler cita a declaração que faz a chamada (`cancelar.mutate(id)` para `const cancelar = useMutation(... api('/reservas/1/cancelar') ...)`) ou uma função que a cita.
+- O botão de submit pega o `onSubmit` do formulário; no Vue, vale o `@click`.
+- **Botão** é qualquer elemento com `onClick`, `onPress`, `@click` ou `type=submit`. O texto vem de `title`, `label`, `titulo`, `rotulo`, `texto`, `text`, `aria-label`, `accessibilityLabel` ou do texto de dentro; botão só com símbolo ("×") fica de fora.
+- **Confirmação:** `confirm()`, `Alert.alert()`, `confirmar()` e `perguntar()` viram "a tela pergunta se tem certeza" e "o usuário confirma".
+
+**Quais viram jornada:** a rota com palavra de ação (cancelar, pagar, aprovar, seguir, favoritar…) ou o cadastro primeiro, depois apagar, depois criar ou mudar. Ler não é jornada. São no máximo 2, uma por rota e uma por botão, logo depois de "O que dá para fazer", e a rota contada como jornada não volta como pedido.
+
+**Quem faz:** a pessoa ganha o papel que a pasta ou o endereço da página diz (`(cliente)` → Cliente; também aluno, professor, paciente, vendedor, motorista, organizador, admin).
+
+**Título:** botão de várias palavras é o título ("Sair da turma"); botão de uma palavra vira "O usuário cancela uma reserva".
+
+**Passos:** abre a página → clica no botão (numa reserva, quando a rota é de um item) → [a tela pergunta / o usuário confirma] → a tela pede → [o porteiro confere] → [passa às regras] → as regras fazem no banco → o banco confirma → [e-mail] → resposta → a tela mostra que deu certo. Para caber no limite de passos, sai primeiro o porteiro, depois o e-mail.
+
+Exemplo real (repositório Studio, do autor), "O usuário cancela uma reserva": abre “Minhas reservas” nas páginas, clica em “Cancelar” numa reserva, as páginas pedem para as regras do negócio cancelar a reserva, as regras do negócio cancelam a reserva no banco de dados, o banco confirma: a reserva foi cancelada, as páginas mostram que a reserva foi cancelada.
 
 ### Quais rotas viram pedido
 
@@ -103,6 +184,7 @@ flowchart TD
 
 - **Fica de fora** o que só mantém o site de pé ou só faz entrar: `health`, `ping`, `csrf`, `/admin/`, `/media/`, `/static/`, `login`, `logout`, `me`, `refresh`, `token`, senha, tudo sob `auth` que não seja cadastro, webhooks (quem chama é um serviço de fora, não a pessoa), documentação da API, a raiz `/` e padrões coringa (`(?P<path>.*)`, `*`). Também fica de fora a rota cujas palavras não nomeiam nada (`/f/<token>`).
 - **Ações no fim da rota** dizem o que é feito com a palavra de antes: `/reservas/<id>/cancelar` é "Cancelar reservas", `/contracts/<id>/send/` é "Enviar contracts", `/analises/<id>/exportar/` é "Exportar analises". As ações conhecidas: cancelar, confirmar, recusar, aceitar, aprovar, enviar, publicar, assinar, arquivar, concluir, pagar, retirar, sincronizar, conferir, exportar e baixar (`pdf`, `csv`), em português e inglês. Ação sem palavra de antes vira só o verbo ("Assinar"), e a legenda fala em "registro".
+- **Seguir, favoritar e curtir** são ações, e o `DELETE` delas desfaz ("Deixar de seguir", "Desfavoritar"). Um `GET` numa palavra no singular é ver um ("Ver perfil").
 - **Cadastro:** `/auth/register/` é "Criar conta"; `/auth/aluno/cadastro/` é "Cadastrar aluno". Vem depois das rotas sobre o que o sistema faz.
 - **Ordem:** primeiro as rotas que nomeiam a coisa, depois as de só verbo; dentro disso, as de cadeia mais longa e, no empate, criar antes de listar. Uma cena de leitura e uma de escrita por parte da API.
 - Palavras com hífen viram palavras soltas ("meus-dados" → "meus dados"), e as terminadas em -ção, -são, -dade, -gem, -ise e -tude concordam no feminino ("a nova analise").
@@ -168,3 +250,7 @@ Limites: um README fraco dá uma cena fraca; o texto vem no idioma do autor, sem
 - Uma rota `ANY` que nenhuma tela chama e cuja última palavra não é uma ação vira "listar": o estúdio não lê a view do Django para saber se ela também cria.
 - As palavras das rotas não ganham acento nem tradução ("analises", "contracts"); o roteiro do autor resolve.
 - Rotas declaradas na pasta do projeto Django (a da `settings.py`) aparecem com o nome dela, "Configuração de …".
+- A jornada só segue chamadas do próprio arquivo (ou de uma função dele), não um handler importado de outro arquivo.
+- Texto de botão vindo de variável não é lido.
+- Rotas aninhadas do React Router com caminho relativo ficam sem o pai.
+- No Rails, `resources :a, :b do` não aninha os filhos.
