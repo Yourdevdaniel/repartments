@@ -1081,8 +1081,8 @@ function agentFlow(ctx: Ctx, agent: Agent, nTools: number): Flow {
   if (caller) actors.push(componentActor(caller))
   // What it does, for the people watching: its instructions are told in the "think" step, and its
   // code name is its technical name.
-  const toolCount = tools.length ? ` e escolhe entre ${count(tools.length, 'ferramenta', 'ferramentas')}` : ''
-  const toolCountEn = tools.length ? ` and picks among ${count(tools.length, 'tool', 'tools')}` : ''
+  const toolCount = agent.tools.length ? ` e escolhe entre ${count(agent.tools.length, 'ferramenta', 'ferramentas')}` : ''
+  const toolCountEn = agent.tools.length ? ` and picks among ${count(agent.tools.length, 'tool', 'tools')}` : ''
   actors.push({
     id: agentActorId,
     name: S,
