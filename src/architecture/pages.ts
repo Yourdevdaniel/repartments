@@ -157,7 +157,8 @@ function words(raw: string): string {
 /** The name of a page as people read it: its screen's short title, else its component's name, else its address. */
 export function pageNameOf(page: { path: string; title: string | null; component: string | null }, lang: 'pt' | 'en' = 'pt'): string {
   // A title of five words or more is a slogan ("Seu próximo ensaio começa aqui"), not the page's name.
-  if (page.title && page.title.split(/\s+/).length <= 4) return page.title
+  const title = page.title?.replace(/^[^\p{L}\p{N}]+/u, '').trim()
+  if (title && title.split(/\s+/).length <= 4) return title
   const fromComponent = page.component ? words(page.component) : ''
   if (fromComponent) return fromComponent
   const last = page.path.split('/').filter((s) => s && !s.startsWith(':')).pop()

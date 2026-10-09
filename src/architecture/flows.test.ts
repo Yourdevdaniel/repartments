@@ -162,6 +162,30 @@ describe('buildFlows: routes that do not say their method (Django, DRF)', () => 
     expect(run(['/aluno/meus-dados/']).map((f) => f.title)).toEqual([{ pt: 'Listar meus dados', en: 'List meus dados' }])
   })
 
+  it('reads a route named by a singular word as one thing to see, not a list', () => {
+    expect(run(['/perfil']).map((f) => f.title.pt)).toEqual(['Ver perfil'])
+    expect(run(['/api/feed']).map((f) => f.title.pt)).toEqual(['Ver feed'])
+  })
+
+  it('reads following and favouriting as actions, and their DELETE as undoing them', () => {
+    const calls = new Map([
+      ['POST /articles/:slug/favorite', { file: 'frontend/pages/Article.tsx', sent: [] }],
+      ['DELETE /profiles/:username/follow', { file: 'frontend/pages/Profile.tsx', sent: [] }],
+    ])
+    const flows = buildFlows({
+      components: [...components, component('backend/social', 'logic')],
+      dependencies: [...dependencies, dep('frontend/pages', 'backend/social')],
+      externals,
+      endpoints: [endpoint('ANY', '/articles/:slug/favorite', 'backend/core'), endpoint('ANY', '/profiles/:username/follow', 'backend/social')],
+      agents: [],
+      details: { ...noDetails, calls },
+    })
+    expect(flows.map((f) => f.title)).toEqual([
+      { pt: 'Favoritar articles', en: 'Favorite articles' },
+      { pt: 'Deixar de seguir profiles', en: 'Unfollow profiles' },
+    ])
+  })
+
   it('reads the action at the end of a route as what is done to the thing before it', () => {
     const [flow] = run(['/reservas/<int:pk>/cancelar'])
     expect(flow.title).toEqual({ pt: 'Cancelar reservas', en: 'Cancel reservas' })
@@ -175,6 +199,12 @@ describe('buildFlows: routes that do not say their method (Django, DRF)', () => 
       { pt: 'Criar conta', en: 'Create account' },
     ])
     expect(run(['/auth/aluno/cadastro/']).map((f) => f.title.pt)).toEqual(['Cadastrar aluno'])
+  })
+
+  it('agrees words in -cao and -sao, written without accents, as feminine', () => {
+    const details: FlowDetails = { ...noDetails, calls: new Map([['POST /avaliacoes/', { file: 'frontend/pages/New.tsx', sent: [] }]]) }
+    const [flow] = run(['/avaliacoes/'], details)
+    expect(flow.steps.map((s) => s.text.pt).join(' | ')).toContain('a nova avaliacao')
   })
 
   it('agrees "foto" as feminine, though it ends in -o', () => {
@@ -205,7 +235,7 @@ describe('buildFlows: journeys through the pages', () => {
     screens: new Map([[page, { title: 'Minhas reservas', buttons: ['Avaliar', 'Cancelar'], fields: [] }]]),
     subjects: new Map(),
     tasks: [],
-    pages: new Map([[page, { path: '/minhas-reservas', name: 'Minhas reservas' }]]),
+    pages: new Map([[page, { path: '/minhas-reservas', name: 'Minhas reservas', file: page }]]),
     actions: [{ file: page, button: 'Cancelar', method: 'POST', path: '/reservas/<int:pk>/cancelar', confirm: true }],
   }
   const run = (d: FlowDetails = details) => buildFlows({ components, dependencies, externals, endpoints, agents: [], details: d })
@@ -243,6 +273,45 @@ describe('buildFlows: journeys through the pages', () => {
     expect(run({ ...details, actions: [] }).some((f) => f.kind === 'journey')).toBe(false)
   })
 
+  it('tells a button inside a piece of the screen from the page that shows it', () => {
+    const piece = 'frontend/src/components/Comentarios.jsx'
+    const parts = [component('frontend/src/pages', 'interface'), component('frontend/src/components', 'interface'), component('backend/core', 'logic')]
+    const d: FlowDetails = {
+      ...details,
+      calls: new Map([['POST /comentarios/', { file: piece, sent: [] }]]),
+      screens: new Map(),
+      pages: new Map([[piece, { path: '/posts/:id', name: 'Post', file: 'frontend/src/pages/Post.jsx' }]]),
+      actions: [{ file: piece, button: 'Comentar', method: 'POST', path: '/comentarios/', confirm: false }],
+    }
+    const [journey] = buildFlows({
+      components: parts,
+      dependencies: [dep('frontend/src/pages', 'frontend/src/components'), dep('frontend/src/components', 'backend/core')],
+      externals,
+      endpoints: [endpoint('ANY', '/comentarios/', 'backend/core', 'backend/core/urls.py')],
+      agents: [],
+      details: d,
+    })
+    expect(journey.steps[0].text.pt).toBe('O usuário abre “Post” nas páginas')
+    expect(journey.actors[1].id).toBe('c:frontend/src/pages')
+  })
+
+  it('tells one journey per button, even when the button can reach two routes', () => {
+    const d: FlowDetails = {
+      ...details,
+      actions: [
+        { file: page, button: 'Cancelar', method: 'POST', path: '/reservas/<int:pk>/cancelar', confirm: false },
+        { file: page, button: 'Cancelar', method: 'DELETE', path: '/reservas/minhas', confirm: false },
+      ],
+    }
+    expect(run(d).filter((f) => f.kind === 'journey')).toHaveLength(1)
+  })
+
+  it('takes a button of several words as the title of its journey', () => {
+    const d: FlowDetails = { ...details, actions: [{ file: page, button: 'Sair da reserva', method: 'POST', path: '/reservas/<int:pk>/cancelar', confirm: false }] }
+    const [journey] = run(d)
+    expect(journey.title).toEqual({ pt: 'Sair da reserva', en: 'Sair da reserva' })
+  })
+
   it('names the person after the group of screens the page sits in', () => {
     const group = 'app/app/(cliente)/pedido.tsx'
     const parts = [component('app/app/(cliente)', 'interface'), component('backend/core', 'logic')]
@@ -250,7 +319,7 @@ describe('buildFlows: journeys through the pages', () => {
       ...details,
       calls: new Map([['POST /pedidos/<int:pk>/pagar', { file: group, sent: [] }]]),
       screens: new Map(),
-      pages: new Map([[group, { path: '/pedido', name: 'Pedido' }]]),
+      pages: new Map([[group, { path: '/pedido', name: 'Pedido', file: group }]]),
       actions: [{ file: group, button: 'Pagar', method: 'POST', path: '/pedidos/<int:pk>/pagar', confirm: false }],
     }
     const [journey] = buildFlows({

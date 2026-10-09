@@ -33,8 +33,11 @@ export type FlowDetails = {
   subjects: Map<string, string[]>
   /** Names of the queues that workers take tasks from. */
   tasks: string[]
-  /** The pages a person opens, by the file of the screen each shows: its address and its name. */
-  pages?: Map<string, { path: string; name: string }>
+  /**
+   * The pages a person opens, by the file of the screen each shows, and by the files of the pieces it
+   * imports: the page's address, its name and its own file.
+   */
+  pages?: Map<string, { path: string; name: string; file: string }>
   /** Buttons that call a route: the screen's file, the button's words, the route reached and whether it asks to confirm. */
   actions?: ButtonCall[]
 }
@@ -434,14 +437,17 @@ export function screenDetailsOf(path: string, text: string): ScreenDetails {
 /** A button on a screen that makes a call: its words, its line, the call, and whether the screen asks "are you sure?" first. */
 export type ScreenAction = { button: string; line: number; method: string; url: string; confirm: boolean }
 
-/** Asking the person to confirm: `confirm(…)` in a browser, `Alert.alert(…)` in React Native. */
-const CONFIRM = /\b(?:window\.)?confirm\s*\(|\bAlert\.alert\s*\(/
+/** Asking the person to confirm: `confirm(…)` in a browser, `Alert.alert(…)` in React Native, an app's own `confirmar(…)`. */
+const CONFIRM = /\b(?:window\.)?confirm\s*\(|\bAlert\.alert\s*\(|\b(?:confirmar|perguntar|askConfirm|confirmAction)\s*\(/
 
 /** A named piece of code a handler can call: `const x = …`, `function x(…)`, a class method `x(…) {`. */
 const DECLARATION = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=|\bfunction\s+([A-Za-z_$][\w$]*)\s*\(|^\s*(?:async\s+)?([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/
 
-/** Elements a person presses: buttons, links and React Native's touchables. */
-const PRESSABLE = /<(button|Button|IconButton|\w+Button|TouchableOpacity|Pressable|a|Link)\b((?:[^>{]|\{(?:[^{}]|\{[^{}]*\})*\})*?)(\/>|>([\s\S]*?)<\/\1>)/g
+/** An opening tag, with its attributes and whether it closes itself; only those with a press handler or a submit type count. */
+const OPEN_TAG = /<([A-Za-z][\w.]*)\b((?:[^>{]|\{(?:[^{}]|\{[^{}]*\})*\})*?)(\/?)>/g
+
+/** Attributes an app's own button takes its words from: `title`, `label`, `titulo`, `rotulo`, `texto`. */
+const LABEL_ATTRS = ['title', 'label', 'titulo', 'rotulo', 'texto', 'text', 'aria-label', 'accessibilityLabel']
 
 /** What happens on a press: the JSX handler or Vue's `@click`. */
 function handlerOf(attrs: string): string | null {
@@ -481,9 +487,13 @@ export function screenActionsOf(path: string, text: string): ScreenAction[] {
   const mentions = (body: string, name: string) => new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])`).test(body)
 
   const out: ScreenAction[] = []
-  for (const m of code.matchAll(PRESSABLE)) {
+  for (const m of code.matchAll(OPEN_TAG)) {
     const attrs = m[2]
-    const label = literal(attrOf(attrs, 'title')) ?? literal(attrOf(attrs, 'aria-label')) ?? literal(m[4])
+    if (!/\bon(?:Click|Press)\s*=|@click|\btype\s*=\s*["']submit["']/.test(attrs)) continue
+    const after = (m.index ?? 0) + m[0].length
+    const close = m[3] ? -1 : code.indexOf(`</${m[1]}>`, after)
+    const inner = close < 0 ? null : code.slice(after, close)
+    const label = LABEL_ATTRS.map((a) => literal(attrOf(attrs, a))).find(Boolean) ?? literal(inner)
     // "×" or "+" says nothing a caption can quote.
     if (!label || !/\p{L}/u.test(label)) continue
     let handler = handlerOf(attrs)
@@ -563,6 +573,11 @@ export function singularOf(word: string): string {
   const irregular = IRREGULAR_PLURALS.get(w)
   if (irregular) return irregular
   if (w.length <= 3 || /(?:us|is)$/.test(w)) return w
+  // Portuguese: "avaliacoes"/"avaliações" → "avaliacao"/"avaliação", "postagens" → "postagem".
+  // English words in -oes ("shoes") have no c or s before it.
+  const pt = /([cçs])(õ|o)es$/.exec(w)
+  if (pt) return `${w.slice(0, -pt[0].length)}${pt[1]}${pt[2] === 'õ' ? 'ão' : 'ao'}`
+  if (/gens$/.test(w)) return `${w.slice(0, -4)}gem`
   if (/ies$/.test(w)) return `${w.slice(0, -3)}y`
   if (/(?:sses|xes|ches|shes|uses)$/.test(w)) return w.slice(0, -2)
   if (/s$/.test(w) && !/ss$/.test(w)) return w.slice(0, -1)

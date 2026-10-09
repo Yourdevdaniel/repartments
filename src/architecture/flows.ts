@@ -191,11 +191,9 @@ function serviceUsedBy(ctx: Ctx, ids: string[], kinds: ExternalKind[]): External
 
 /** How a method reads in a sentence: "criar", "listar", "ver"… and the English. */
 function verbOf(method: string, path: string): { pt: string; en: string } {
-  const last = path.split('/').filter(Boolean).pop() ?? ''
-  const hasId = /[:{<[$]/.test(last)
   switch (method) {
     case 'GET':
-      return hasId ? { pt: 'ver', en: 'view' } : { pt: 'listar', en: 'list' }
+      return readsOne(path) ? { pt: 'ver', en: 'view' } : { pt: 'listar', en: 'list' }
     case 'POST':
       return { pt: 'criar', en: 'create' }
     case 'PUT':
@@ -258,10 +256,16 @@ const SIGNUP = new Set(['register', 'registro', 'cadastro', 'cadastrar', 'signup
 /** Words that name only where sign-up lives, not who signs up. */
 const SIGNUP_PLACES = new Set(['auth', 'account', 'accounts', 'conta', 'contas', 'user', 'users', 'usuarios'])
 
-/** Last words of a route that name what it does to the thing before it: "/reservas/:id/cancelar". */
-const ROUTE_ACTIONS = new Map<string, { verb: Text; mode: Mode }>(
+/**
+ * Last words of a route that name what it does to the thing before it: "/reservas/:id/cancelar". Some
+ * are undone by a DELETE on the same route: "/profiles/:u/follow" is following, or no longer following.
+ */
+const ROUTE_ACTIONS = new Map<string, { verb: Text; mode: Mode; undo?: Text }>(
   (
     [
+      [['follow', 'seguir'], { pt: 'seguir', en: 'follow' }, 'update', { pt: 'deixar de seguir', en: 'unfollow' }],
+      [['favorite', 'favourite', 'favoritar'], { pt: 'favoritar', en: 'favorite' }, 'update', { pt: 'desfavoritar', en: 'unfavorite' }],
+      [['like', 'curtir'], { pt: 'curtir', en: 'like' }, 'update', { pt: 'descurtir', en: 'unlike' }],
       [['cancelar', 'cancel'], { pt: 'cancelar', en: 'cancel' }, 'update'],
       [['confirmar', 'confirm'], { pt: 'confirmar', en: 'confirm' }, 'update'],
       [['recusar', 'rejeitar', 'reject', 'decline'], { pt: 'recusar', en: 'reject' }, 'update'],
@@ -278,8 +282,8 @@ const ROUTE_ACTIONS = new Map<string, { verb: Text; mode: Mode }>(
       [['verificar', 'verify', 'validar', 'validate'], { pt: 'conferir', en: 'check' }, 'one'],
       [['exportar', 'export'], { pt: 'exportar', en: 'export' }, 'one'],
       [['baixar', 'download', 'pdf', 'csv'], { pt: 'baixar', en: 'download' }, 'one'],
-    ] as [string[], Text, Mode][]
-  ).flatMap(([words, verb, mode]) => words.map((w) => [w, { verb, mode }] as [string, { verb: Text; mode: Mode }])),
+    ] as [string[], Text, Mode, Text?][]
+  ).flatMap(([words, verb, mode, undo]) => words.map((w) => [w, { verb, mode, ...(undo ? { undo } : {}) }] as [string, { verb: Text; mode: Mode; undo?: Text }])),
 )
 
 /**
@@ -323,7 +327,8 @@ function meaningOf(method: string, path: string): Meaning {
   const action = ROUTE_ACTIONS.get(last)
   if (action) {
     const res = before ? wordText(before) : null
-    return { verb: action.verb, mode: action.mode, res: res ?? SOME_RECORD, word: before ?? null, title: titled(action.verb, res) }
+    const verb = method === 'DELETE' && action.undo ? action.undo : action.verb
+    return { verb, mode: action.mode, res: res ?? SOME_RECORD, word: before ?? null, title: titled(verb, res) }
   }
   const verb = verbOf(method, path)
   const word = namesThing(words[words.length - 1]) ? resourceOf(path) : null
@@ -351,12 +356,21 @@ function concreteRoutes(ep: Endpoint, details: FlowDetails | null): Endpoint[] {
   return [{ ...ep, method: METHOD_OF_MODE[mode] }]
 }
 
-function modeOf(method: string, path: string): Mode {
+/**
+ * A GET reads one thing when the route ends in an id ("/leads/:id") or is named by a singular word
+ * ("/user", "/perfil", "/feed"); a plural word ("/leads") is a list.
+ */
+function readsOne(path: string): boolean {
   const last = path.split('/').filter(Boolean).pop() ?? ''
-  const hasId = /[:{<[$]/.test(last)
+  if (/[:{<[$]/.test(last)) return true
+  const word = routeWords(path).pop()
+  return !!word && !/s$/i.test(word)
+}
+
+function modeOf(method: string, path: string): Mode {
   switch (method) {
     case 'GET':
-      return hasId ? 'one' : 'list'
+      return readsOne(path) ? 'one' : 'list'
     case 'PUT':
     case 'PATCH':
       return 'update'
@@ -434,7 +448,7 @@ const FEMININE_IN_O = new Set(['foto', 'moto', 'tribo', 'libido'])
  * ("tarefa", "reserva", "análise"); the rest are taken as masculine.
  */
 function feminine(word: string): boolean {
-  return /(?:a|ção|são|dade|gem|ise|tude)$/i.test(word) || FEMININE_IN_O.has(word.toLowerCase())
+  return /(?:a|[cçs][aã]o|dade|gem|ise|tude)$/i.test(word) || FEMININE_IN_O.has(word.toLowerCase())
 }
 
 /** "um lead", "uma tarefa" in Portuguese; "a lead", "an order" in English. */
@@ -938,7 +952,11 @@ function journeyFlow(j: JourneyPlan, use: { sec: boolean; send: boolean }): Flow
   return {
     id: `journey:${ep.method} ${ep.path}`,
     kind: 'journey',
-    title: { pt: `${p.pt} ${presentPt(verb.pt, false)} ${oneOf(sing, 'pt')}`, en: `${p.en} ${presentEn(verb.en, false)} ${oneOf(singEn, 'en')}` },
+    // A button of several words says the journey in the app's own words ("Sair da turma"); one word
+    // ("Cancelar") is the verb, told with the thing: "O usuário cancela uma reserva".
+    title: /\p{L}+\s+\p{L}/u.test(button)
+      ? { pt: cap(button), en: cap(button) }
+      : { pt: `${p.pt} ${presentPt(verb.pt, false)} ${oneOf(sing, 'pt')}`, en: `${p.en} ${presentEn(verb.en, false)} ${oneOf(singEn, 'en')}` },
     summary: {
       pt: clip(`O caminho de quem usa o sistema para ${verb.pt} ${oneOf(sing, 'pt')}: ${page ? `da página “${page}”` : `${at('de', sn, 'pt')}`}, pelo botão “${button}”, até ${at('none', dbn ?? srcn, 'pt')}, e de volta.`, 400),
       en: clip(`The path of a person who wants to ${verb.en} ${oneOf(singEn, 'en')}: from ${page ? `the “${page}” page` : at('none', sn, 'en')}, through the “${button}” button, to ${at('none', dbn ?? srcn, 'en')}, and back.`, 400),
@@ -963,22 +981,24 @@ function fitJourney(j: JourneyPlan): Flow {
  * sign up first, then delete, then create or change). Reading is not a journey. At most two, one per route.
  */
 function journeyPlans(ctx: Ctx, endpoints: Endpoint[]): JourneyPlan[] {
-  const out: (JourneyPlan & { rank: number; key: string })[] = []
+  const out: (JourneyPlan & { rank: number; key: string; file: string })[] = []
   for (const action of ctx.details?.actions ?? []) {
     if (isPlumbing(action.path)) continue
     const found = endpoints.find((e) => e.path === action.path && (e.method === action.method || e.method === 'ANY'))
-    const screen = componentOf(action.file, ctx.components)
+    const pageInfo = ctx.details?.pages?.get(action.file) ?? null
+    // A button in a piece of a page is pressed on that page: the page's part is the screen.
+    const screen = componentOf(pageInfo?.file ?? action.file, ctx.components)
     if (!found || !screen) continue
     const ep = { ...found, method: action.method }
     const key = `${ep.method} ${ep.path}`
-    if (out.some((j) => j.key === key)) continue
+    // One journey per route, and per button: a form's "Salvar" that creates or updates is one journey.
+    if (out.some((j) => j.key === key || (j.file === action.file && j.button === action.button))) continue
     const meaning = meaningOf(ep.method, ep.path)
     const last = (routeWords(ep.path).pop() ?? '').toLowerCase()
     const named = ROUTE_ACTIONS.has(last) || SIGNUP.has(last)
     if (!named && (meaning.mode === 'list' || meaning.mode === 'one')) continue
     const plan = planRequest(ctx, ep)
     if (!plan) continue
-    const pageInfo = ctx.details?.pages?.get(action.file) ?? null
     out.push({
       plan: { ...plan, screen },
       meaning,
@@ -988,6 +1008,7 @@ function journeyPlans(ctx: Ctx, endpoints: Endpoint[]): JourneyPlan[] {
       role: roleOf(action.file, pageInfo?.path ?? null),
       rank: named ? 3 : meaning.mode === 'delete' ? 2 : 1,
       key,
+      file: action.file,
     })
   }
   return out.sort((a, b) => b.rank - a.rank).slice(0, 2)

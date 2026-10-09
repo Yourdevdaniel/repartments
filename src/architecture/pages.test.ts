@@ -117,6 +117,10 @@ describe('pageNameOf', () => {
     expect(pageNameOf({ path: '/articles/:slug', title: null, component: null })).toBe('Articles')
   })
 
+  it('leaves out the emoji that opens a title', () => {
+    expect(pageNameOf({ path: '/', title: '🛒 Seu pedido', component: 'Cardapio' })).toBe('Seu pedido')
+  })
+
   it('takes the component name over a title too long to be a page name, like a slogan', () => {
     expect(pageNameOf({ path: '/', title: 'Seu próximo ensaio começa aqui', component: 'BuscaEstudios' })).toBe('Busca estudios')
   })

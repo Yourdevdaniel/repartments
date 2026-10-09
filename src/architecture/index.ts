@@ -520,9 +520,14 @@ function buildModelWith(input: SourceInput, progress: (stage: 'graph' | 'flows')
   details.pages = new Map()
   for (const p of pages) {
     if (!p.file || details.pages.has(p.file)) continue
-    details.pages.set(p.file, { path: p.path, name: p.name })
+    details.pages.set(p.file, { path: p.path, name: p.name, file: p.file })
     const screen = details.screens.get(p.file)
     if (screen && !screen.title) details.screens.set(p.file, { ...screen, title: p.name })
+  }
+  // The pieces a page imports are shown on it, so a button in one is pressed on that page.
+  for (const p of pages) {
+    if (!p.file) continue
+    for (const t of targetsOf.get(p.file) ?? []) if (!details.pages.has(t)) details.pages.set(t, { path: p.path, name: p.name, file: p.file })
   }
   const parts = withAgentNames(components, agents)
   const told = featuresOf(read, input.repo.description ?? null)

@@ -360,6 +360,12 @@ describe('modelForResource and singularOf', () => {
     expect(singularOf('statuses')).toBe('status')
     expect(singularOf('addresses')).toBe('address')
     expect(singularOf('status')).toBe('status')
+    // Portuguese plurals, with or without accents; English words that look alike stay English.
+    expect(singularOf('avaliacoes')).toBe('avaliacao')
+    expect(singularOf('notificações')).toBe('notificação')
+    expect(singularOf('postagens')).toBe('postagem')
+    expect(singularOf('shoes')).toBe('shoe')
+    expect(singularOf('tokens')).toBe('token')
     expect(singularOf('people')).toBe('person')
     expect(singularOf('api')).toBe('api')
   })
@@ -407,6 +413,30 @@ describe('screenActionsOf', () => {
       '}',
     ].join('\n')
     expect(screenActionsOf('app/app/(cliente)/pedido.tsx', native)).toEqual([{ button: 'Pagar', line: 3, method: 'POST', url: '/pedidos/{param}/pagar', confirm: false }])
+  })
+
+  it("reads an app's own button components and React Native touchables, and its own confirm helper", () => {
+    const screen = [
+      'export default function Assessoria() {',
+      '  async function entrar(t) {',
+      "    await api(`aluno/treinos-abertos/${t.id}/`, { method: 'POST' })",
+      '  }',
+      '  async function sairDaTurma(t) {',
+      "    if (!(await confirmar(`Sair da turma ${t.nome}`, 'Você deixa de ver os treinos.'))) return",
+      "    await api(`aluno/turmas/${t.id}/`, { method: 'DELETE' })",
+      '  }',
+      '  return (<View>',
+      '    <Botao titulo="Entrar no treino" onPress={() => void entrar(t)} />',
+      '    <Pressable onPress={() => void sairDaTurma(t)} accessibilityLabel={`Sair da turma ${t.nome}`}>',
+      '      <Text style={s.link}>Sair da turma</Text>',
+      '    </Pressable>',
+      '  </View>)',
+      '}',
+    ].join('\n')
+    expect(screenActionsOf('app/app/(aluno)/assessorias/[id].tsx', screen)).toEqual([
+      { button: 'Entrar no treino', line: 10, method: 'POST', url: '/aluno/treinos-abertos/{param}/', confirm: false },
+      { button: 'Sair da turma', line: 11, method: 'DELETE', url: '/aluno/turmas/{param}/', confirm: true },
+    ])
   })
 
   it('leaves out buttons whose text is only a symbol', () => {

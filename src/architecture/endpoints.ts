@@ -436,12 +436,13 @@ export function callsOf(path: string, text: string): CallDef[] {
     out.push({ method: method.toUpperCase(), url, line: line(at) })
   }
   const URL_ARG = String.raw`\(\s*(?:(?<q>['"])([^'"\n]*)\k<q>|\x60([^\x60\n]*)\x60)(\s*\+)?`
-  // fetch, and wrappers called the same way: api('/x', { method: 'POST' }).
-  for (const m of code.matchAll(new RegExp(String.raw`(?<![\w$.])(?:fetch|\$fetch|useFetch|api|apiFetch|apiRequest|request|http|fetcher|callApi|fetchApi)` + URL_ARG, 'g'))) {
+  // fetch, and wrappers called the same way: api('/x', { method: 'POST' }). A wrapper adds its own base
+  // URL, so its paths may leave out the leading slash (api('aluno/turmas/1/')); fetch's may not.
+  for (const m of code.matchAll(new RegExp(String.raw`(?<![\w$.])(fetch|\$fetch|useFetch|api|apiFetch|apiRequest|request|http|fetcher|callApi|fetchApi)` + URL_ARG, 'g'))) {
     const at = m.index ?? 0
     const window = code.slice(at, at + 300)
     const method = /method\s*:\s*['"](\w+)['"]/.exec(window)?.[1] ?? 'GET'
-    add(method, m[2] ?? m[3] ?? '', at, !!m[4], false)
+    add(method, m[3] ?? m[4] ?? '', at, !!m[5], !/fetch/i.test(m[1]))
   }
   for (const m of code.matchAll(new RegExp(String.raw`\b(?:axios|api|http|apiClient|httpClient|client|request|requests|\w+Api|\w+Client|\w+Http|\w+Service)\.(get|post|put|patch|delete|del)` + URL_ARG, 'g'))) {
     add(m[1] === 'del' ? 'delete' : m[1], m[3] ?? m[4] ?? '', m.index ?? 0, !!m[5], true)
