@@ -125,4 +125,10 @@ export const copy = {
   walking: { en: 'Walking over…', pt: 'Indo até lá…' },
   lost: { en: "Couldn't get there, try again", pt: 'Não deu para chegar, tente de novo' },
   lotOf: (n: number, of: number): L => ({ en: `Building ${n} of ${of}`, pt: `Prédio ${n} de ${of}` }),
+  openStudio: { en: 'Open in the studio', pt: 'Abrir no estúdio' },
+  studioTitle: { en: 'Studio: your private repos too', pt: 'Estúdio: seus repositórios privados também' },
+  studioLead: {
+    en: 'Sign in to browse commits and turn a system into an animated presentation of how it works.',
+    pt: 'Entre para ver os commits e transformar um sistema numa apresentação animada de como ele funciona.',
+  },
 }

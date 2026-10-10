@@ -21,6 +21,12 @@ describe('parseRoute', () => {
     expect(parseRoute('/octocat/')).toEqual({ login: 'octocat', demo: false })
   })
 
+  it('reads the studio, with or without a repo', () => {
+    expect(parseRoute('/studio')).toEqual({ login: null, demo: false, studio: { owner: null, repo: null } })
+    expect(parseRoute('/studio/acme/crm-api/')).toEqual({ login: null, demo: false, studio: { owner: 'acme', repo: 'crm-api' } })
+    expect(parseRoute('/studio/acme')).toEqual({ login: null, demo: false, studio: { owner: 'acme', repo: null } })
+  })
+
   it('survives a broken %-escape instead of taking the whole page down', () => {
     expect(parseRoute('/%E0%A4%A')).toEqual({ login: '%E0%A4%A', demo: false })
   })
