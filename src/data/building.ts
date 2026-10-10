@@ -23,18 +23,28 @@ export type BuildingState =
       trip: 'idle' | 'moving' | 'failed'
     }
 
-/** `/` is the landing page, `/demo` the hand-made demo building, `/<login>` someone's building. */
-export type Route = { login: string | null; demo: boolean }
+/**
+ * `/` is the landing page, `/demo` the hand-made demo building, `/<login>` someone's building, and
+ * `/studio[/<owner>/<repo>]` the signed-in studio (its repo picker, or one repo's workspace).
+ */
+export type Route = { login: string | null; demo: boolean; studio?: { owner: string | null; repo: string | null } }
 
 export function parseRoute(path: string): Route {
-  let seg = path.replace(/^\/+|\/+$/g, '').split('/')[0]
-  try {
-    seg = decodeURIComponent(seg)
-  } catch {
-    // A broken %-escape in a hand-typed URL: use it as it is, the API will call it an invalid name.
-  }
+  const segs = path
+    .replace(/^\/+|\/+$/g, '')
+    .split('/')
+    .map((seg) => {
+      try {
+        return decodeURIComponent(seg)
+      } catch {
+        // A broken %-escape in a hand-typed URL: use it as it is, the API will call it an invalid name.
+        return seg
+      }
+    })
+  const seg = segs[0]
   if (!seg) return { login: null, demo: false }
   if (seg === 'demo') return { login: null, demo: true }
+  if (seg === 'studio') return { login: null, demo: false, studio: { owner: segs[1] || null, repo: (segs[1] && segs[2]) || null } }
   return { login: seg, demo: false }
 }
 
