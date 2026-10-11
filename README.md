@@ -4,14 +4,27 @@ Your GitHub, as a tiny apartment building.
 
 Type a GitHub username and get a cozy 3D tower: every public repo is a floor, every technology a chibi resident. Step inside a flat and watch the stack act out how it works together: the front end asks for data, the guard checks the token, the back end checks the cache, fetches rows from the database, tests inspect the parcel, and the page shows up on the TV. Open pull requests bring a visitor; failing checks start an argument.
 
-It's an illustration of a repo's shape, never its contents: no code, routes, data or secrets ever reach the browser.
+The public building is an illustration of a repo's shape, never its contents: no code, routes, data or secrets ever reach the browser.
+
+## Studio
+
+Sign in with GitHub at `/studio` to open any repo your account can read, private ones too, and turn it into an animated show for people who don't code (a client, a stakeholder):
+
+- **How it works:** the repo becomes a building where every floor is a scene: the main parts introducing themselves, a request going through the system, an AI agent reading its instructions and choosing its tools, a background job. The parts, as residents, act it out with plain-language captions. Edit the script in your client's words, present it full screen, or save it as a file and open it later without signing in.
+- **Commits:** another building where every floor is a commit: its author walks in and visits each part of the system they changed, and the more a part changed, the warmer its room. The ground floor shows which parts change the most.
+- **Map:** the parts in bands (screens, API, security, business logic, AI, jobs, data), the arrows between them, the outside services they use, each AI agent's decision graph, and the commit heat on top.
+
+No sign-in? "See an example" opens a made-up CRM with an AI sales assistant.
+
+Sign-in uses GitHub's device flow (the GitHub CLI's "enter this code" login): the server only needs the app's public client ID and keeps no keys. The token stays in the browser tab, which talks to api.github.com directly, and the analysis runs there too: static and deterministic, no AI service ever reads the code.
 
 ## Stack
 
 - React 19, TypeScript, Vite, Tailwind CSS v4
 - three.js with react-three-fiber and drei
 - Kenney Mini Characters and Furniture Kit (CC0)
-- A Vercel function talking to GitHub's GraphQL API (token stays on the server)
+- Vercel functions talking to GitHub's GraphQL and REST APIs (tokens stay on the server)
+- GitHub sign-in through the device flow (GitHub App or OAuth App), no secrets on the server
 - Vitest
 
 ## Run your own
@@ -27,15 +40,34 @@ The API needs a GitHub token of your own. Either be logged in with the GitHub CL
 
 To put it online, import the repo on Vercel and set `GITHUB_TOKEN` there. Fine-grained tokens expire: in the last two weeks the function warns in its logs, and after that every building fails until you make a new one.
 
+The studio needs only the client ID of a GitHub App (recommended, read-only) or an OAuth App with the device flow enabled: `GITHUB_CLIENT_ID`. It's public; there is no client secret or session secret. In development, without it, "Sign in" uses your GitHub CLI login instead (only from your own machine). Step by step, in Portuguese: [docs/configuracao.md](docs/configuracao.md).
+
 ## Security
+
+For the public building:
 
 - **The token never leaves the server.** It lives in the server's environment only, can read nothing but public data, and what reaches the browser is tags (technology names, statuses), never files or code.
 - **It reads only manifests and file names** of public repos: `package.json`, `requirements.txt`, compose files, `.gitignore` and the like. Forks and private repos are never fetched.
 - **Abuse can only cost the token's hourly quota.** Each building is cached at the edge for an hour, URLs that would skip that cache are redirected to the cached one, and each visitor gets 20 uncached lookups a minute. If the quota still runs out, the site says GitHub asked it to slow down until the hour resets.
 
+For the studio:
+
+- **No keys on the server.** Sign-in is GitHub's device flow with a public client ID; the server only relays those two calls and stores nothing.
+- **The token stays in the tab.** It lives in `sessionStorage` (gone when the tab closes or on sign-out) and goes only to api.github.com; a strict CSP (`script-src 'self'`, `connect-src 'self' https://api.github.com`) keeps other scripts away from it. A read-only GitHub App with 8-hour tokens is the recommended setup.
+- **Code stays with its owner.** The analysis runs in the browser of the person signed in with access to the repo; the code comes straight from GitHub and never reaches Repartments' server or any AI service. `.env` files, keys and certificates are never read. A saved presentation holds the script and file names, never code.
+
 Found a security problem? Please report it privately through the repo's **Security → Report a vulnerability**, not in a public issue.
 
-How it all works, step by step (in Portuguese): [docs/COMO-FUNCIONA.md](docs/COMO-FUNCIONA.md).
+## Documentation (in Portuguese)
+
+| Document | What's in it |
+|---|---|
+| [COMO-FUNCIONA.md](docs/COMO-FUNCIONA.md) | How everything works, step by step, in plain words. |
+| [arquitetura.md](docs/arquitetura.md) | Architecture (arc42 + C4 diagrams): blocks, flows, deployment, security, risks. |
+| [analise.md](docs/analise.md) | How the studio reads a repo: files, imports, parts, routes, AI agents, scenes. |
+| [api.md](docs/api.md) | Every endpoint, its parameters, answers and errors. |
+| [configuracao.md](docs/configuracao.md) | Environment variables, creating the GitHub App, running and deploying. |
+| [adr/](docs/adr/README.md) | Architecture decision records. |
 
 ## Credits
 

@@ -1,0 +1,84 @@
+# Referência da API
+
+O Repartments tem poucas rotas próprias: o **prédio público** e o **repasse do login** do estúdio. Todo o resto do estúdio (repositórios, commits, leitura do código) é feito pelo navegador, direto na API do GitHub, com o token da pessoa ([ADR 0002](adr/0002-token-so-no-navegador.md)).
+
+Os tipos de cada resposta estão em [`src/shared/types.ts`](../src/shared/types.ts) (prédio público) e [`src/shared/studio.ts`](../src/shared/studio.ts) (estúdio): eles são o contrato entre as partes.
+
+## Rotas do Repartments
+
+### `GET /api/building?user=<login>[&after=<cursor>]`
+
+O prédio público de um usuário ou organização: até 12 repositórios públicos (6 nos prédios seguintes, a partir de `after`). Resposta `Building`. Erros `BuildingError`: `invalid-user` (400), `not-found` / `no-repos` (404), `rate-limited` (429), `unavailable` (502/503). Cache: 1 h na borda; URLs com outra caixa ou parâmetros extras são redirecionadas (308) para a canônica. Freio: 20 requisições por minuto por visitante. Usa o `GITHUB_TOKEN` do servidor, que só lê dados públicos.
+
+### Login do estúdio (`server/auth.ts`)
+
+Repasse **sem estado** do *device flow* do GitHub ([ADR 0001](adr/0001-login-pelo-device-flow.md)). Existe só porque `github.com/login/...` não aceita pedidos de páginas web. Não guarda nada; respostas com `Cache-Control: no-store`.
+
+| Rota | Corpo | Resposta |
+|---|---|---|
+| `GET /api/auth/config` | | `{ enabled, devLogin? }`: se o login está configurado (há `GITHUB_CLIENT_ID`), e, só no servidor de desenvolvimento sem app, se o atalho do GitHub CLI existe. |
+| `POST /api/auth/device` | | `{ device_code, user_code, verification_uri, expires_in, interval }`. Pede um código ao GitHub com o *Client ID* (e o escopo, para OAuth App). |
+| `POST /api/auth/token` | `{ device_code }` | `{ access_token, expires_in? }` quando a pessoa autorizou; senão `{ error, interval? }` com `authorization_pending`, `slow_down`, `expired_token`, `access_denied`, `incorrect_device_code` ou `device_flow_disabled`. |
+| `GET /api/auth/dev` | | **Só no servidor de desenvolvimento**, sem *Client ID* e a partir da própria máquina: `{ access_token }` com o token do GitHub CLI. |
+
+`POST` exige o cabeçalho `X-Requested-With` e `Origin` do próprio site (403 caso contrário). Freios por visitante: 20 códigos e 60 consultas por minuto. Erros do repasse: `{ "error": "login-disabled" }` (503, sem *Client ID*), `forbidden` (403), `invalid` (400), `rate-limited` (429), `unavailable` (502).
+
+O fluxo na página (`src/studio/session.ts`):
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant P as Página (estúdio)
+  participant R as Repartments (/api/auth)
+  participant G as github.com
+  participant A as api.github.com
+  P->>R: POST /api/auth/device
+  R->>G: POST /login/device/code (client_id)
+  G-->>R: device_code, user_code
+  R-->>P: device_code, user_code, verification_uri
+  P->>P: mostra o código, copia, abre github.com/login/device
+  loop a cada `interval` segundos
+    P->>R: POST /api/auth/token {device_code}
+    R->>G: POST /login/oauth/access_token (client_id, device_code)
+    G-->>R: authorization_pending | access_token
+    R-->>P: o mesmo
+  end
+  P->>P: guarda o token no sessionStorage da aba
+  P->>A: GET /user (Authorization: Bearer …)
+```
+
+## Chamadas ao GitHub feitas pelo navegador
+
+Com o token da pessoa, de `src/github/*` e `src/architecture/fetch.ts`. A CSP libera só `https://api.github.com` além do próprio site.
+
+| Para quê | Chamada | Onde |
+|---|---|---|
+| Quem entrou | `GET /user` | `studio/api.ts` |
+| Lista de repositórios | `GET /user/repos?per_page=30&page&sort=pushed&affiliation=owner,collaborator,organization_member` (com busca: páginas de 100, filtradas por nome e descrição, até 10 páginas) | `github/repos.ts` |
+| Resumo do repositório | `GET /repos/{owner}/{repo}` | `github/repos.ts` |
+| Branches | `GET /repos/{owner}/{repo}/branches?per_page=100` | `github/commits.ts` |
+| Commits com filtros | `GET /repos/{owner}/{repo}/commits?sha&author&since&until&per_page=40&page` | `github/commits.ts` |
+| Arquivos de um commit | `GET /repos/{owner}/{repo}/commits/{sha}` (o diff é cortado em 60 000 caracteres por arquivo e não é mostrado) | `github/commits.ts` |
+| Último commit da branch | `GET /repos/{owner}/{repo}/commits/{branch}` | `architecture/fetch.ts` |
+| Árvore de arquivos | `GET /repos/{owner}/{repo}/git/trees/{sha}?recursive=1` | `architecture/fetch.ts` |
+| Texto dos arquivos | `POST /graphql`, lotes de 60 `object(expression: "<sha>:<caminho>") { ... on Blob { text } }`, 4 lotes por vez | `architecture/fetch.ts` |
+
+Nenhum objeto do GitHub é usado inteiro: os campos são copiados para os tipos de `src/shared/studio.ts` (sem e-mails).
+
+### Erros
+
+Cada falha vira um `StudioErrorCode`, que a interface traduz:
+
+| Código | Quando |
+|---|---|
+| `signed-out` | O GitHub recusou o token (revogado, vencido). A página sai sozinha. |
+| `forbidden` | A conta não pode ler o repositório. |
+| `not-found` | Repositório, commit ou branch inexistente, ou repositório vazio. |
+| `invalid` | Parâmetro fora das regras (nome de repositório, data, branch). |
+| `rate-limited` | A cota da pessoa no GitHub acabou por agora. |
+| `login-disabled` | O servidor não tem `GITHUB_CLIENT_ID`. |
+| `unavailable` | O GitHub não respondeu direito. |
+
+## Cabeçalhos de segurança
+
+Todas as páginas e rotas recebem os cabeçalhos de [`vercel.json`](../vercel.json): CSP restrita (scripts só do site; `connect-src 'self' https://api.github.com`; imagens só do site e de `avatars.githubusercontent.com`), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy` e HSTS.
