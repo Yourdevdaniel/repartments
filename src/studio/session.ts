@@ -1,39 +1,14 @@
 /**
- * The studio's sign-in, with GitHub's device flow: the page shows a short code, the person types it
- * on github.com and approves, and GitHub hands this tab a token. No client secret, no server-side
- * session, no cookie: the token is kept in this tab's `sessionStorage` (gone when the tab closes),
- * and every studio call goes from here to api.github.com directly.
- *
- * The two sign-in calls go through `/api/auth/*` only because GitHub's sign-in endpoints refuse
- * requests made by web pages; that relay stores nothing (see `server/auth.ts`).
+ * The studio's sign-in, as the screens see it. The work happens in the token vault
+ * (`github/vault-core.ts`): GitHub's device flow (a short code typed on github.com), the token kept
+ * in a worker the page can't read, and a sign-in that lasts 8 hours at most. This hook only mirrors
+ * the vault's state, adds whether sign-in is set up on this server, and keeps a clock ticking for
+ * the "your session ends in…" notice.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { Viewer } from '../shared/studio'
-import { api, StudioApiError, setToken } from './api'
-
-const KEY = 'studio:token'
-
-type Saved = { token: string; exp: number | null }
-
-function load(): Saved | null {
-  try {
-    const saved = JSON.parse(sessionStorage.getItem(KEY) ?? 'null') as Saved | null
-    if (!saved || typeof saved.token !== 'string') return null
-    if (saved.exp !== null && saved.exp <= Date.now()) return null
-    return saved
-  } catch {
-    return null
-  }
-}
-
-function save(saved: Saved | null) {
-  try {
-    if (saved) sessionStorage.setItem(KEY, JSON.stringify(saved))
-    else sessionStorage.removeItem(KEY)
-  } catch {
-    // Storage blocked: the sign-in lasts until the page reloads.
-  }
-}
+import { onVaultState, vault } from '../github/vault'
+import type { VaultState } from '../github/vault-core'
 
 export type DeviceCode = { userCode: string; verificationUri: string; expiresAt: number }
 
@@ -41,109 +16,59 @@ export type SessionState =
   | { status: 'loading' }
   | { status: 'signed-out'; enabled: boolean; devLogin: boolean; error?: 'denied' | 'expired' | 'unavailable' }
   | { status: 'waiting'; code: DeviceCode }
-  | { status: 'signed-in'; user: Viewer }
+  | { status: 'signed-in'; user: Viewer; expiresAt: number }
 
-const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'repartments' }
+/** Minutes before the end of a sign-in when the studio starts warning. */
+export const WARN_MINUTES = 10
 
-async function post<T>(path: string, body: unknown = {}): Promise<T> {
-  const res = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body) })
-  return (await res.json()) as T
+/** "7 h 52 min", "9 min", "under a minute": what's left of a sign-in, in words. */
+export function timeLeft(ms: number, lang: 'en' | 'pt'): string {
+  const minutes = Math.floor(ms / 60_000)
+  if (minutes < 1) return lang === 'pt' ? 'menos de um minuto' : 'under a minute'
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (!h) return `${m} min`
+  return m ? `${h} h ${m} min` : `${h} h`
 }
 
-const wait = (ms: number, signal: AbortSignal) =>
-  new Promise<void>((resolve, reject) => {
-    const id = window.setTimeout(resolve, ms)
-    signal.addEventListener('abort', () => {
-      window.clearTimeout(id)
-      reject(new DOMException('Aborted', 'AbortError'))
-    })
-  })
-
-/** Who is signed in; `signIn` starts the device flow, `cancel` stops waiting, `signOut` forgets the token. */
+/** Who is signed in, how long it lasts, and the commands to sign in and out. */
 export function useSession() {
-  const [state, setState] = useState<SessionState>({ status: 'loading' })
-  const config = useRef({ enabled: false, devLogin: false })
-  const flow = useRef<AbortController | null>(null)
-
-  const signedOut = useCallback((error?: 'denied' | 'expired' | 'unavailable') => {
-    save(null)
-    setToken(null)
-    setState({ status: 'signed-out', ...config.current, error })
-  }, [])
-
-  /** Keeps a token: checks it with GitHub and shows who it belongs to. */
-  const adopt = useCallback(
-    async (token: string, expiresIn: number | null) => {
-      setToken(token, () => signedOut('expired'))
-      try {
-        const user = await api.viewer()
-        save({ token, exp: expiresIn ? Date.now() + expiresIn * 1000 : null })
-        setState({ status: 'signed-in', user })
-      } catch (err) {
-        signedOut(err instanceof StudioApiError && err.code === 'signed-out' ? 'expired' : 'unavailable')
-      }
-    },
-    [signedOut],
-  )
+  const [config, setConfig] = useState<{ enabled: boolean; devLogin: boolean } | null>(null)
+  const [vaultState, setVaultState] = useState<VaultState | null>(null)
+  const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
     let live = true
     fetch('/api/auth/config')
       .then((r) => r.json() as Promise<{ enabled?: boolean; devLogin?: boolean }>)
       .catch(() => ({}) as { enabled?: boolean; devLogin?: boolean })
-      .then(async (c) => {
-        if (!live) return
-        config.current = { enabled: !!c.enabled, devLogin: !!c.devLogin }
-        const saved = load()
-        if (saved) await adopt(saved.token, saved.exp ? (saved.exp - Date.now()) / 1000 : null)
-        else setState({ status: 'signed-out', ...config.current })
-      })
+      .then((c) => live && setConfig({ enabled: !!c.enabled, devLogin: !!c.devLogin }))
+    const stop = onVaultState(setVaultState)
+    // A vault that never answers (a browser blocking workers) shouldn't leave the page waiting.
+    const late = window.setTimeout(() => setVaultState((s) => s ?? { status: 'signed-out', reason: 'unavailable' }), 5000)
     return () => {
       live = false
-      flow.current?.abort()
+      stop()
+      window.clearTimeout(late)
     }
-  }, [adopt])
+  }, [])
 
-  const signIn = useCallback(async () => {
-    flow.current?.abort()
-    const ctrl = new AbortController()
-    flow.current = ctrl
-    try {
-      if (config.current.devLogin) {
-        const dev = await fetch('/api/auth/dev').then((r) => r.json() as Promise<{ access_token?: string }>)
-        if (dev.access_token) return adopt(dev.access_token, null)
-        return signedOut('unavailable')
-      }
-      const start = await post<{ device_code?: string; user_code?: string; verification_uri?: string; expires_in?: number; interval?: number }>('/api/auth/device')
-      if (!start.device_code || !start.user_code) return signedOut('unavailable')
-      const code: DeviceCode = {
-        userCode: start.user_code,
-        verificationUri: start.verification_uri ?? 'https://github.com/login/device',
-        expiresAt: Date.now() + (start.expires_in ?? 900) * 1000,
-      }
-      setState({ status: 'waiting', code })
-      // Poll at GitHub's pace until the person approves, says no, or the code runs out.
-      let interval = (start.interval ?? 5) * 1000
-      while (Date.now() < code.expiresAt) {
-        await wait(interval, ctrl.signal)
-        const answer = await post<{ access_token?: string; expires_in?: number; error?: string; interval?: number }>('/api/auth/token', {
-          device_code: start.device_code,
-        })
-        if (answer.access_token) return adopt(answer.access_token, answer.expires_in ?? null)
-        if (answer.error === 'slow_down') interval = Math.max(interval + 5000, (answer.interval ?? 0) * 1000)
-        else if (answer.error === 'access_denied') return signedOut('denied')
-        else if (answer.error !== 'authorization_pending') return signedOut(answer.error === 'expired_token' ? 'expired' : 'unavailable')
-      }
-      signedOut('expired')
-    } catch (err) {
-      if ((err as Error).name !== 'AbortError') signedOut('unavailable')
-    }
-  }, [adopt, signedOut])
+  // A slow tick for the countdown; every 15 s is plenty for minutes.
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 15_000)
+    return () => window.clearInterval(id)
+  }, [])
 
-  const cancel = useCallback(() => {
-    flow.current?.abort()
-    signedOut()
-  }, [signedOut])
+  let state: SessionState
+  if (!config || !vaultState) state = { status: 'loading' }
+  else if (vaultState.status === 'signed-in') state = { status: 'signed-in', user: vaultState.user, expiresAt: vaultState.expiresAt }
+  else if (vaultState.status === 'waiting') state = { status: 'waiting', code: vaultState }
+  else {
+    const error = vaultState.reason === 'disabled' ? 'unavailable' : vaultState.reason
+    state = { status: 'signed-out', ...config, ...(error ? { error } : {}) }
+  }
 
-  return { state, signIn, cancel, signOut: cancel, expired: () => signedOut('expired') }
+  const signIn = useCallback(() => (config?.devLogin ? vault.dev() : vault.start()), [config])
+
+  return { state, now, signIn, cancel: vault.cancel, signOut: vault.signOut }
 }

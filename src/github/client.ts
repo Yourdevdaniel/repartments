@@ -1,7 +1,7 @@
 /**
- * A small GitHub client for the studio, running in the browser as the signed-in person: it calls
- * api.github.com directly with their own token (GitHub's API allows that from any site, CORS
- * included), so the token and the code it reads never pass through Repartments' server.
+ * A small GitHub client for the studio, running in the browser as the signed-in person. Its requests
+ * go through the token vault (a worker that holds the token and talks to api.github.com directly),
+ * so neither the token nor the code it reads ever passes through Repartments' server.
  *
  * Every failure becomes a `StudioFailure` with one of the studio's error codes, so the screens never
  * have to read GitHub's status codes themselves.
@@ -55,11 +55,13 @@ export type GitHubClient = {
 }
 
 /**
- * The client for one token. Only headers GitHub accepts from a browser are sent (no User-Agent or
- * API-version header: browsers set the first, and the default version is the stable one).
+ * The client for one token, or for none when the requests go through the token vault, which adds
+ * the token on its side (`vault.ts`). Only headers GitHub accepts from a browser are sent (no
+ * User-Agent or API-version header: browsers set the first, and the default version is the stable
+ * one).
  */
-export function github(token: string, fetcher: Fetcher = (url, init) => fetch(url, init)): GitHubClient {
-  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' }
+export function github(token: string | null, fetcher: Fetcher = (url, init) => fetch(url, init)): GitHubClient {
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } : { Accept: 'application/vnd.github+json' }
 
   async function call(url: string, init: RequestInit): Promise<Response> {
     let res: Response
