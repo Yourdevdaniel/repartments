@@ -36,7 +36,7 @@ function Route({ flat }: { flat: FlatData }) {
   const [x0, x1] = span
   map.repeat.set((x1 - x0) / 0.22, 1)
   return (
-    <mesh position={[(x0 + x1) / 2, 0.006, 0.55]} rotation={[-Math.PI / 2, 0, 0]}>
+    <mesh position={[(x0 + x1) / 2, 0.014, flat.layout.lane ?? 0.55]} rotation={[-Math.PI / 2, 0, 0]}>
       <planeGeometry args={[x1 - x0, 0.05]} />
       <meshBasicMaterial map={map} transparent opacity={0.85} depthWrite={false} toneMapped={false} />
     </mesh>
@@ -57,9 +57,23 @@ export function Interior({ flat }: { flat: FlatData }) {
     <group position={[-W / 2, 0, 0]}>
       <Box size={[W + SIDE * 2, BASE, D + 0.2]} at={[W / 2, -BASE / 2 - 0.04, -0.05]} color="#fbf6ee" />
       <Box size={[W + SIDE * 2 + 0.04, 0.05, 0.05]} at={[W / 2, -0.05, D / 2 + 0.06]} color="#e9dfd2" />
-      {[-SIDE / 2, W + SIDE / 2].map((x) => (
-        <Box key={x} size={[SIDE, H + 0.1, D + 0.2]} at={[x, (H + 0.1) / 2 - 0.04, -0.05]} color={wall} />
-      ))}
+      {flat.layout.plan === 'office' ? (
+        // An office: tall side walls along the back row only, low ones along the rest, so nothing
+        // hides the front row from the camera.
+        [-SIDE / 2, W + SIDE / 2].map((x) => {
+          const split = flat.layout.rooms.find((r) => r.row === 'back')?.z1 ?? 0
+          const tall = split + D / 2 + 0.1
+          const low = D / 2 - split + 0.1
+          return (
+            <group key={x}>
+              <Box size={[SIDE, H + 0.1, tall]} at={[x, (H + 0.1) / 2 - 0.04, -D / 2 - 0.1 + tall / 2]} color={wall} />
+              <Box size={[SIDE, 0.24, low]} at={[x, 0.08, D / 2 + 0.1 - low / 2]} color={wall} />
+            </group>
+          )
+        })
+      ) : (
+        [-SIDE / 2, W + SIDE / 2].map((x) => <Box key={x} size={[SIDE, H + 0.1, D + 0.2]} at={[x, (H + 0.1) / 2 - 0.04, -0.05]} color={wall} />)
+      )}
       <Box size={[W + SIDE * 2, H + 0.1, 0.1]} at={[W / 2, (H + 0.1) / 2 - 0.04, -D / 2 - 0.1]} color={wall} />
       <Route flat={flat} />
       <Flat flat={flat} hovered={false} interactive={false} onHover={() => {}} onSelect={() => {}} />

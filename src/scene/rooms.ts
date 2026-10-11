@@ -6,7 +6,8 @@
  * Big rooms on purpose: this is what you see when you step inside, full screen.
  */
 import type { Role } from '../shared/types'
-import { compile, relax, type Beat, type Caption, type Hobby, type Story, type Vec2, type Vec3 } from './story'
+import { navigator } from './nav'
+import { compile, relax, WALK_SPEED, type Beat, type Caption, type Hobby, type Story, type Vec2, type Vec3 } from './story'
 import type { CastMember, Decor, FlatData, FlatLayout, FlatStatus, Placement, Room } from './types'
 
 export const DEPTH = 2.6
@@ -425,6 +426,8 @@ export function buildFlat(spec: FlatSpec): FlatData {
     rooms,
     tv: living?.template.tv ? { ...living.template.tv, at: add3(living.template.tv.at, living.x0) } : undefined,
   }
+  // Every walk goes round the furniture and through the doors.
+  const { route, blocked, nearestFree } = navigator(layout)
 
   const id = (role: Role) => role
   const cast: CastMember[] = []
@@ -437,8 +440,15 @@ export function buildFlat(spec: FlatSpec): FlatData {
   const visitors: CastMember[] = prs
     ? [{ id: 'visitor', tech: 'PR', role: 'coder', model: VISITOR_MODEL, color: '#f2a65a', story: '' }]
     : []
-  /** Where someone from outside comes in: the hall's front door, or the left end of the flat. */
-  const entrance = (): Vec2 => (room('hall') ? spot('hall', 'door') : [0.3, LANE])
+  /**
+   * Where someone from outside comes in: the hall's front door, or the first clear spot on the lane
+   * from the left end of the flat (a sofa may stand right at the end).
+   */
+  const entrance = (): Vec2 => {
+    if (room('hall')) return spot('hall', 'door')
+    for (let x = 0.3; x < layout.width; x += 0.05) if (!blocked([x, LANE])) return [x, LANE]
+    return [0.3, LANE]
+  }
 
   const mainRoles: Role[] = []
   const main = mainStory()
@@ -499,9 +509,10 @@ export function buildFlat(spec: FlatSpec): FlatData {
    */
   function managerVisit(): Story {
     const door = entrance()
-    const inside: Vec2 = [Math.max(door[0], 0.6), LANE]
-    const middle: Vec2 = [layout.width / 2, LANE]
-    const far: Vec2 = [layout.width - 0.6, LANE]
+    // Points along the lane, nudged off any furniture standing right there.
+    const inside = nearestFree([Math.max(door[0], 0.6), LANE])
+    const middle = nearestFree([layout.width / 2, LANE])
+    const far = nearestFree([layout.width - 0.6, LANE])
     const hidden = (on: boolean) => ({ 'manager:hidden': on })
     const verdict = cast.length
       ? { icon: '📋', text: { en: 'all in order', pt: 'tudo em ordem' } }
@@ -521,7 +532,7 @@ export function buildFlat(spec: FlatSpec): FlatData {
       { dur: 1, say: { manager: { icon: '👍' } }, acts: { manager: { anim: 'emote-yes', face: [far[0], 2] } } },
       { acts: { manager: { path: [middle, inside, door] } } },
       { dur: 14, flags: hidden(true), acts: { manager: { anim: 'idle' } } },
-    ])
+    ], WALK_SPEED, route)
   }
 
   /**
@@ -814,13 +825,13 @@ export function buildFlat(spec: FlatSpec): FlatData {
     // The visitor stands beside the desk, not in front of it, so both of them stay in view.
     const work = spot('office', 'work')
     beats.push(...prScene('backend', B, [work[0] - 0.58, work[1] + 0.18], work))
-    return { story: compile(start, beats) }
+    return { story: compile(start, beats, WALK_SPEED, route) }
   }
 
   /** Residents outside the request loop get a little routine of their own. */
   function ambientStory(role: Role): Story | null {
     const r = byRole.get(role)!
-    const one = (at: Vec2, beats: Beat[]) => compile({ [role]: { at, yaw: 0 } }, beats)
+    const one = (at: Vec2, beats: Beat[]) => compile({ [role]: { at, yaw: 0 } }, beats, WALK_SPEED, route)
     switch (role) {
       case 'frontend':
         return one(spot('living', 'home'), [
@@ -959,6 +970,6 @@ export function buildFlat(spec: FlatSpec): FlatData {
     }
     const start: Record<string, { at: Vec2; yaw: number }> = { [role]: { at: desk, yaw: Math.PI / 2 } }
     if (prs) start.visitor = { at: entrance(), yaw: 0 }
-    return compile(start, beats)
+    return compile(start, beats, WALK_SPEED, route)
   }
 }

@@ -88,7 +88,21 @@ function lengthOf(from: Vec2, path: Vec2[]) {
   return total
 }
 
-export function compile(start: Start, beats: Beat[], speed = WALK_SPEED): Story {
+/** Finds the way between two points around whatever is in the way (see `nav.ts`); straight by default. */
+export type Router = (from: Vec2, to: Vec2) => Vec2[]
+
+export function compile(start: Start, beats: Beat[], speed = WALK_SPEED, route?: Router): Story {
+  /** The points actually walked through: each leg of the planned path, routed around obstacles. */
+  const walked = (from: Vec2, path: Vec2[]): Vec2[] => {
+    if (!route) return path
+    const out: Vec2[] = []
+    let at = from
+    for (const p of path) {
+      out.push(...route(at, p))
+      at = p
+    }
+    return out
+  }
   const state = new Map(Object.entries(start).map(([id, s]) => [id, { ...s }]))
   const tracks: Story['tracks'] = Object.fromEntries([...state.keys()].map((id) => [id, []]))
   const props: Story['props'] = {}
@@ -104,19 +118,23 @@ export function compile(start: Start, beats: Beat[], speed = WALK_SPEED): Story 
 
     const acts = beat.acts ?? {}
     let length = beat.dur ?? 0
+    const routes = new Map<string, Vec2[]>()
     for (const [id, act] of Object.entries(acts)) {
       const s = state.get(id)
       if (!s) throw new Error(`story: unknown resident "${id}"`)
-      const path = pathOf(act)
-      if (path) length = Math.max(length, lengthOf(s.at, path) / speed)
-      else if (beat.dur === undefined) length = Math.max(length, DEFAULT_ANIM)
+      const planned = pathOf(act)
+      const path = planned ? walked(s.at, planned) : null
+      if (path) {
+        routes.set(id, path)
+        length = Math.max(length, lengthOf(s.at, path) / speed)
+      } else if (beat.dur === undefined) length = Math.max(length, DEFAULT_ANIM)
     }
     const t1 = t0 + length
 
     for (const [id, s] of state) {
       const act = acts[id]
       const track = tracks[id]
-      const path = act ? pathOf(act) : null
+      const path = routes.get(id) ?? null
       if (path) {
         let t = t0
         for (const p of path) {
