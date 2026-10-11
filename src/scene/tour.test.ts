@@ -65,11 +65,18 @@ const agent: Flow = {
 }
 
 describe('buildTour', () => {
-  it('gives every participant a room, in the order they appear, with the person at the door', () => {
+  it('lays a bigger scene out as an office: two rows across a corridor, the person at the door', () => {
     const flat = buildTour(request, 'pt')
-    expect(flat.layout.rooms.map((r) => r.id)).toEqual(['person', 'screen', 'api', 'service', 'db'])
-    expect(flat.layout.rooms[0].label?.pt).toBe('Entrada')
-    expect(flat.layout.rooms[2].label?.pt).toBe('Leads API')
+    expect(flat.layout.plan).toBe('office')
+    const back = flat.layout.rooms.filter((r) => r.row === 'back').map((r) => r.id)
+    const front = flat.layout.rooms.filter((r) => r.row === 'front').map((r) => r.id)
+    // Rooms that need a tall wall (the door, the TV, the shelves) take the back row.
+    expect(back).toEqual(['person', 'screen', 'db'])
+    expect(front).toEqual(['api', 'service'])
+    expect(flat.layout.rooms[0]).toMatchObject({ x0: 0, label: { pt: 'Entrada' } })
+    expect(flat.layout.rooms.find((r) => r.id === 'api')?.label?.pt).toBe('Leads API')
+    // Front-row rooms keep only low furniture, so the camera sees over them.
+    for (const r of flat.layout.rooms.filter((r) => r.row === 'front')) expect(r.furniture.every((f) => !/bookcase|lamp.*Floor|doorway|coatRack|fridge/i.test(f.model))).toBe(true)
     expect(flat.repo).toBe('Criar leads')
     expect(flat.cast.map((c) => c.tech)).toEqual(['User', 'Leads Screen', 'Leads API', 'Lead Service', 'PostgreSQL'])
     expect(new Set(flat.cast.map((c) => c.model)).size).toBe(flat.cast.length)
@@ -122,6 +129,15 @@ describe('buildTour', () => {
     const broken: Flow = { ...agent, steps: [...agent.steps, step('agent', 'ghost', 'call', 'Nobody')] }
     const flat = buildTour(broken, 'en')
     expect(flat.stories.main.captions.map((c) => c.caption.en)).not.toContain('Nobody')
+  })
+})
+
+describe('buildTour, small scenes', () => {
+  it('keeps a strip of rooms when only a few take part', () => {
+    const small: Flow = { ...request, actors: request.actors.slice(0, 3), steps: request.steps.slice(0, 2) }
+    const flat = buildTour(small, 'en')
+    expect(flat.layout.plan).toBe('strip')
+    expect(flat.layout.rooms.map((r) => r.id)).toEqual(['person', 'screen', 'api'])
   })
 })
 

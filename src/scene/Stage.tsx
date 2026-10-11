@@ -24,6 +24,8 @@ for (const m of ALL_MODELS.characters) useGLTF.preload(`/models/characters/${m}.
 const PANEL = 360
 /** Inside a flat, about two big rooms fill the screen. */
 const INSIDE_WIDTH = 4.0
+/** Inside an office floor, about two and a half columns of rooms. */
+const OFFICE_WIDTH = 6.4
 
 export type View = { mode: 'building'; entering: string | null } | { mode: 'inside'; id: string }
 
@@ -83,6 +85,11 @@ function CameraRig({
   const free = view.mode === 'building' && !view.entering
 
   const want = useMemo<Frame>(() => {
+    if (inside?.layout.plan === 'office') {
+      // A whole office floor seen from higher up, so the back row shows over the front row's low walls.
+      const fitW = Math.min(inside.layout.width + 0.6, OFFICE_WIDTH)
+      return { target: new Vector3(0, 0.42, 0.05), az: 0.1, el: 0.56, fitW, fitH: inside.layout.depth * 0.85 + 1.6 }
+    }
     if (inside) {
       const fitW = Math.min(inside.layout.width + 0.8, INSIDE_WIDTH)
       return { target: new Vector3(0, 0.66, 0.1), az: 0.16, el: 0.22, fitW, fitH: 2.15 }

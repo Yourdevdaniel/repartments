@@ -17,9 +17,11 @@
  */
 import type { Actor, ActorKind, Flow, FlowStep, StepAction, Text } from '../shared/studio'
 import type { Role } from '../shared/types'
+import { footprintOf, navigator } from './nav'
+import { FOOTPRINTS } from './footprints'
 import { DEPTH, HEIGHT } from './rooms'
-import { compile, type Beat, type Bubble, type Holder, type Story, type Vec2, type Vec3 } from './story'
-import type { CastMember, Decor, FlatData, FlatLayout, Placement, Room } from './types'
+import { compile, WALK_SPEED, type Beat, type Bubble, type Holder, type Story, type Vec2, type Vec3 } from './story'
+import type { CastMember, Decor, FlatData, FlatLayout, Placement, Rect, Room } from './types'
 
 const BACK = -DEPTH / 2
 /** The walking lane along the front of the rooms, as in `rooms.ts`. */
@@ -304,6 +306,173 @@ const add = (a: Vec2, x0: number): Vec2 => [a[0] + x0, a[1]]
 const add3 = (a: Vec3, x0: number): Vec3 => [a[0] + x0, a[1], a[2]]
 const same = (a: Vec2, b: Vec2) => Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6
 
+// ─── Floor plans ────────────────────────────────────────────────────────────────────────────────
+
+/** Scenes with this many rooms or more get an office floor instead of a strip of rooms. */
+const OFFICE_FROM = 4
+/** Office grid: column width, the two rows' depths and the corridor between them. */
+const COL = 2.5
+const ROW_BACK = 1.9
+const CORRIDOR = 1.0
+const ROW_FRONT = 1.7
+const OFFICE_DEPTH = ROW_BACK + CORRIDOR + ROW_FRONT
+/** Front-row furniture taller than this stays out, so the camera sees over it into the back row. */
+const LOW = 0.5
+/** Rooms that need a tall back wall (a door, a TV, shelves, a fridge) go in the back row when they can. */
+const BACK_KINDS = new Set<ActorKind>(['person', 'screen', 'database', 'cache', 'llm'])
+
+type Plan = {
+  layout: FlatLayout
+  homes: Map<string, Vec2>
+  faces: Map<string, Vec2>
+  /** The z of the spot in front of each room where visitors wait. */
+  meetZ: Map<string, number>
+  lane: number
+}
+
+const labelOf = (actor: Actor): Text => (actor.kind === 'person' ? { en: 'Entrance', pt: 'Entrada' } : actor.name)
+
+/** Rooms side by side along one lane: small scenes, and the shape the public building uses. */
+function stripPlan(order: Actor[], options: TourOptions): Plan {
+  let x = 0
+  const rooms: Room[] = []
+  const homes = new Map<string, Vec2>()
+  const faces = new Map<string, Vec2>()
+  const meetZ = new Map<string, number>()
+  let tv: FlatLayout['tv']
+  for (const actor of order) {
+    const t = ROOM[ROOM_FOR[actor.kind]]
+    rooms.push({
+      id: actor.id,
+      label: labelOf(actor),
+      x0: x,
+      x1: x + t.width,
+      wall: warm(WALL[actor.kind] ?? t.wall, options.heat?.[actor.id] ?? 0),
+      floor: t.floor,
+      furniture: t.furniture.map((f) => ({ ...f, at: add3(f.at, x) })),
+      decor: (t.decor ?? []).map((d) => ({ ...d, x: d.x + x })),
+    })
+    homes.set(actor.id, add(t.home, x))
+    faces.set(actor.id, add(t.face, x))
+    meetZ.set(actor.id, LANE - 0.05)
+    if (t.tv && !tv) tv = { ...t.tv, at: add3(t.tv.at, x) }
+    x += t.width
+  }
+  return { layout: { width: x, depth: DEPTH, height: HEIGHT, door: DOOR, rooms, tv, plan: 'strip', lane: LANE }, homes, faces, meetZ, lane: LANE }
+}
+
+/**
+ * An office floor: two rows of rooms facing each other across a corridor, the rows' rooms in the
+ * order people first appear. Back-row rooms keep their templates as they are (tall back wall,
+ * shelves, TV); front-row rooms are their mirror image against the low front wall, with only low
+ * furniture, so the camera looks over them. Everyone walks along the corridor.
+ */
+function officePlan(order: Actor[], options: TourOptions): Plan {
+  const backN = Math.ceil(order.length / 2)
+  const frontN = order.length - backN
+  const back: Actor[] = []
+  const front: Actor[] = []
+  for (const a of order) {
+    const backFull = back.length >= backN
+    const frontFull = front.length >= frontN
+    if ((BACK_KINDS.has(a.kind) && !backFull) || frontFull) back.push(a)
+    else front.push(a)
+  }
+  const zBack = -OFFICE_DEPTH / 2
+  const backEdge = zBack + ROW_BACK
+  const frontEdge = backEdge + CORRIDOR
+  const zFront = OFFICE_DEPTH / 2
+  const lane = (backEdge + frontEdge) / 2
+  const rooms: Room[] = []
+  const homes = new Map<string, Vec2>()
+  const faces = new Map<string, Vec2>()
+  const meetZ = new Map<string, number>()
+  const walls: Rect[] = []
+  let tv: FlatLayout['tv']
+
+  back.forEach((actor, i) => {
+    const t = ROOM[ROOM_FOR[actor.kind]]
+    const x0 = i * COL
+    const off = x0 + (COL - t.width) / 2
+    // Template depth runs from its back wall (BACK); here the back wall is zBack.
+    const z = (tz: number) => zBack + (tz - BACK)
+    rooms.push({
+      id: actor.id,
+      label: labelOf(actor),
+      x0,
+      x1: x0 + COL,
+      z0: zBack,
+      z1: backEdge,
+      row: 'back',
+      wall: warm(WALL[actor.kind] ?? t.wall, options.heat?.[actor.id] ?? 0),
+      floor: t.floor,
+      furniture: t.furniture.filter((f) => f.at[2] - BACK <= ROW_BACK - 0.15).map((f) => ({ ...f, at: [f.at[0] + off, f.at[1], z(f.at[2])] as Vec3 })),
+      decor: (t.decor ?? []).map((d) => ({ ...d, x: d.x + off })),
+    })
+    homes.set(actor.id, [t.home[0] + off, z(t.home[1])])
+    faces.set(actor.id, [t.face[0] + off, z(t.face[1])])
+    meetZ.set(actor.id, backEdge + 0.22)
+    if (t.tv && !tv) tv = { ...t.tv, at: [t.tv.at[0] + off, t.tv.at[1], z(t.tv.at[2])] }
+    if (i > 0) walls.push({ x0: x0 - 0.03, z0: zBack, x1: x0 + 0.03, z1: backEdge })
+  })
+
+  front.forEach((actor, i) => {
+    const t = ROOM[ROOM_FOR[actor.kind]]
+    const x0 = i * COL
+    const off = x0 + (COL - t.width) / 2
+    // Mirrored: the template's back wall becomes the low front wall at zFront.
+    const z = (tz: number) => zFront - (tz - BACK)
+    const floorItems = t.furniture.filter((f) => f.at[1] <= 0.25 && (FOOTPRINTS[f.model]?.h ?? 0) * (f.scale ?? 1) <= LOW && f.at[2] - BACK <= ROW_FRONT - 0.15)
+    const placed: Placement[] = floorItems.map((f) => mirrored(f, off, z))
+    const rests = placed.map(footprintOf).filter((r): r is Rect => r !== null)
+    // Things standing on furniture come along only if what they stand on did.
+    const onTop = t.furniture
+      .filter((f) => f.at[1] > 0.25)
+      .map((f): Placement => ({ ...f, at: [f.at[0] + off, f.at[1], z(f.at[2])], rotY: Math.PI - (f.rotY ?? 0) }))
+      .filter((f) => rests.some((r) => f.at[0] > r.x0 && f.at[0] < r.x1 && f.at[2] > r.z0 && f.at[2] < r.z1))
+    rooms.push({
+      id: actor.id,
+      label: labelOf(actor),
+      x0,
+      x1: x0 + COL,
+      z0: frontEdge,
+      z1: zFront,
+      row: 'front',
+      wall: warm(WALL[actor.kind] ?? t.wall, options.heat?.[actor.id] ?? 0),
+      floor: t.floor,
+      furniture: [...placed, ...onTop],
+      decor: [],
+    })
+    homes.set(actor.id, [t.home[0] + off, z(t.home[1])])
+    faces.set(actor.id, [t.face[0] + off, z(t.face[1])])
+    meetZ.set(actor.id, frontEdge - 0.22)
+    if (i > 0) walls.push({ x0: x0 - 0.03, z0: frontEdge, x1: x0 + 0.03, z1: zFront })
+  })
+
+  return {
+    layout: { width: back.length * COL, depth: OFFICE_DEPTH, height: HEIGHT, door: DOOR, rooms, tv, plan: 'office', lane, walls },
+    homes,
+    faces,
+    meetZ,
+    lane,
+  }
+}
+
+/**
+ * A floor item flipped to the other side of the room: it faces the corridor instead of the back
+ * wall. Turning by π − angle gives the right facing; then it's moved so its footprint lands exactly
+ * where the original's would after the flip (models aren't centred on their origin).
+ */
+function mirrored(f: Placement, off: number, z: (tz: number) => number): Placement {
+  const original = footprintOf({ ...f, at: [f.at[0] + off, f.at[1], f.at[2]] })
+  const turned: Placement = { ...f, rotY: Math.PI - (f.rotY ?? 0), at: [f.at[0] + off, f.at[1], z(f.at[2])] }
+  if (!original) return turned
+  // Where the footprint should be: the original's depth range, flipped.
+  const wantZ0 = z(original.z1)
+  const now = footprintOf(turned)!
+  return { ...turned, at: [turned.at[0] + (original.x0 - now.x0), turned.at[1], turned.at[2] + (wantZ0 - now.z0)] }
+}
+
 /** Where someone is between steps: at their own spot, or waiting in someone else's room. */
 type Where = { home: true } | { home: false; with: string; at: Vec2 }
 
@@ -325,29 +494,11 @@ export function buildTour(flow: Flow, lang: 'en' | 'pt', options: TourOptions = 
   // Steps naming someone who isn't in the scene are left out rather than breaking it.
   const steps = flow.steps.filter((s) => byId.has(s.from) && byId.has(s.to))
 
-  let x = 0
-  const rooms: Room[] = []
-  const homes = new Map<string, Vec2>()
-  const faces = new Map<string, Vec2>()
-  let tv: FlatLayout['tv']
-  for (const actor of order) {
-    const t = ROOM[ROOM_FOR[actor.kind]]
-    rooms.push({
-      id: actor.id,
-      label: actor.kind === 'person' ? { en: 'Entrance', pt: 'Entrada' } : actor.name,
-      x0: x,
-      x1: x + t.width,
-      wall: warm(WALL[actor.kind] ?? t.wall, options.heat?.[actor.id] ?? 0),
-      floor: t.floor,
-      furniture: t.furniture.map((f) => ({ ...f, at: add3(f.at, x) })),
-      decor: (t.decor ?? []).map((d) => ({ ...d, x: d.x + x })),
-    })
-    homes.set(actor.id, add(t.home, x))
-    faces.set(actor.id, add(t.face, x))
-    if (t.tv && !tv) tv = { ...t.tv, at: add3(t.tv.at, x) }
-    x += t.width
-  }
-  const layout: FlatLayout = { width: x, depth: DEPTH, height: HEIGHT, door: DOOR, rooms, tv }
+  const plan = order.length >= OFFICE_FROM ? officePlan(order, options) : stripPlan(order, options)
+  const { layout, homes, faces, meetZ, lane } = plan
+  const rooms = layout.rooms
+  // Every walk goes round the furniture (and, in an office, along the corridor).
+  const nav = navigator(layout)
 
   const used = new Set<string>()
   const cast: CastMember[] = order.map((a) => {
@@ -369,18 +520,18 @@ export function buildTour(flow: Flow, lang: 'en' | 'pt', options: TourOptions = 
     const push = (p: Vec2) => {
       if (!same(path[path.length - 1] ?? from, p)) path.push(p)
     }
-    if (Math.abs(from[1] - LANE) > 0.05) push([from[0], LANE])
-    push([to[0], LANE])
+    if (Math.abs(from[1] - lane) > 0.05) push([from[0], lane])
+    push([to[0], lane])
     push(to)
     return path
   }
-  /** A free spot on the lane in front of someone's room, beside whoever is already waiting there. */
+  /** A clear spot in front of someone's room, beside whoever is already waiting there. */
   const spotBy = (host: string, guest: string): Vec2 => {
     const h = home(host)
     const taken = [...where].filter(([id, w]) => id !== guest && !w.home && w.with === host).length
     const room = rooms.find((r) => r.id === host)!
     const dx = taken === 0 ? 0.48 : -0.42
-    return [Math.min(room.x1 - 0.2, Math.max(room.x0 + 0.2, h[0] + dx)), LANE - 0.05 + taken * 0.1]
+    return nav.nearestFree([Math.min(room.x1 - 0.2, Math.max(room.x0 + 0.2, h[0] + dx)), meetZ.get(host)! + taken * 0.1])
   }
 
   // Everyone starts facing the audience.
@@ -475,7 +626,7 @@ export function buildTour(flow: Flow, lang: 'en' | 'pt', options: TourOptions = 
   beats.push({ acts: finale, props: { letter: null, box: null } })
   beats.push({ dur: 1.4, flags: { tv: false } })
 
-  const story: Story = compile(start, beats)
+  const story: Story = compile(start, beats, WALK_SPEED, nav.route)
   const kind = KIND_LABEL[flow.kind]
   return {
     id: flow.id,
