@@ -8,9 +8,9 @@ The public building is an illustration of a repo's shape, never its contents: no
 
 ## Studio
 
-Sign in with GitHub at `/studio` to open any repo your account can read, private ones too, and turn it into an animated show for people who don't code (a client, a stakeholder):
+Switch to **Studio** at the top (or go to `/studio`) and sign in with GitHub to open any repo your account can read, private ones too, and turn it into an animated show for people who don't code (a client, a stakeholder):
 
-- **How it works:** the repo becomes a building where every floor is a scene: the main parts introducing themselves, a request going through the system, an AI agent reading its instructions and choosing its tools, a background job. The parts, as residents, act it out with plain-language captions. Edit the script in your client's words, present it full screen, or save it as a file and open it later without signing in.
+- **How it works:** the repo becomes a building where every floor is a scene: the main parts introducing themselves, a request going through the system, an AI agent reading its instructions and choosing its tools, a background job. The parts, as residents, act it out in an office floor plan, walking round the furniture, with plain-language captions in the system's own words (the form's fields, what gets saved, the e-mail's subject). Edit the script in your client's words, present it full screen, or save it as a file and open it later without signing in.
 - **Commits:** another building where every floor is a commit: its author walks in and visits each part of the system they changed, and the more a part changed, the warmer its room. The ground floor shows which parts change the most.
 - **Map:** the parts in bands (screens, API, security, business logic, AI, jobs, data), the arrows between them, the outside services they use, each AI agent's decision graph, and the commit heat on top.
 
@@ -53,7 +53,8 @@ For the public building:
 For the studio:
 
 - **No keys on the server.** Sign-in is GitHub's device flow with a public client ID; the server only relays those two calls and stores nothing.
-- **The token stays in the tab.** It lives in `sessionStorage` (gone when the tab closes or on sign-out) and goes only to api.github.com; a strict CSP (`script-src 'self'`, `connect-src 'self' https://api.github.com`) keeps other scripts away from it. A read-only GitHub App with 8-hour tokens is the recommended setup.
+- **The token is locked in a vault.** A worker holds it in its own memory and the page never sees it, not even at sign-in. The vault only makes the reads the studio needs (no writes, whatever the token's scope), and forgets the token after 8 hours at most; the header counts down and warns in the last 10 minutes.
+- **A strict CSP with Trusted Types** (`script-src 'self'`, `connect-src 'self' https://api.github.com`, `require-trusted-types-for 'script'`) shuts the usual doors to injected scripts.
 - **Code stays with its owner.** The analysis runs in the browser of the person signed in with access to the repo; the code comes straight from GitHub and never reaches Repartments' server or any AI service. `.env` files, keys and certificates are never read. A saved presentation holds the script and file names, never code.
 
 Found a security problem? Please report it privately through the repo's **Security → Report a vulnerability**, not in a public issue.

@@ -66,7 +66,8 @@ flowchart TB
     engine[Análise de arquitetura<br/>src/architecture/*]
     ghclient[Cliente do GitHub<br/>src/github/*]
     scene[Cena 3D<br/>src/scene/*]
-    tab[(sessionStorage da aba<br/>token, modelo, roteiro)]
+    vault[Cofre do token, worker<br/>src/github/vault*.ts]
+    tab[(sessionStorage da aba<br/>modelo, roteiro)]
   end
   subgraph vercel[Vercel]
     static[Arquivos estáticos<br/>dist/ + public/models]
@@ -80,11 +81,12 @@ flowchart TB
   spa -. "lazy" .-> studio
   studio --> engine & ghclient & scene
   studio <--> tab
-  ghclient -- "Bearer token da pessoa" --> gh
+  ghclient -- "pedidos de leitura" --> vault
+  vault -- "Bearer token da pessoa" --> gh
   engine --> ghclient
   spa -- "GET /api/building" --> fn_building
   fn_building -- "token do servidor, só público" --> gh
-  studio -- "POST /api/auth/device, /token" --> fn_auth
+  vault -- "POST /api/auth/device, /token" --> fn_auth
   fn_auth -- "client_id (público)" --> ghlogin
 ```
 
@@ -118,7 +120,9 @@ flowchart LR
 | Pasta / arquivo | Responsabilidade |
 |---|---|
 | `src/studio/Studio.tsx` | Cabeçalho, estados do login (código do device flow), lista de repositórios, exemplo embutido, abrir apresentação salva. |
-| `src/studio/session.ts` | Device flow do lado da página, token no `sessionStorage`, saída automática num 401. |
+| `src/studio/session.ts` | O estado do login para as telas (vindo do cofre), contagem regressiva das 8 horas. |
+| `src/github/vault*.ts`, `allow.ts` | O cofre do token: um worker que faz o device flow, guarda o token na memória, só deixa passar leituras e esquece tudo em 8 horas. |
+| `src/security.ts` | Política de Trusted Types: só scripts do próprio site, nunca texto virando HTML. |
 | `src/studio/api.ts` | Todas as chamadas ao GitHub feitas pela página, com erros traduzidos. |
 | `src/studio/Workspace.tsx` | Abas Como funciona / Commits / Mapa; guarda o modelo, o roteiro, o commit em cena e o calor; aplica os nomes do roteiro no mapa e nos commits; salvar apresentação. |
 | `src/studio/present/*` | `Theater` (o palco: prédio, cenas, painel, modo tela cheia com avanço automático), `PresentTab`, a cena de abertura (`intro.ts`) e o editor de roteiro. |
@@ -127,7 +131,8 @@ flowchart LR
 | `src/studio/store.ts`, `example.ts` | Memória da aba, arquivo de apresentação (validado ao abrir) e o exemplo de CRM. |
 | `src/github/*` | Cliente do GitHub para o navegador; repositórios; commits, branches e calor. |
 | `src/architecture/*` | Análise estática ([analise.md](analise.md)). |
-| `src/scene/tour.ts` | Gera um apartamento jogável a partir de uma cena; aplica o roteiro; paredes aquecidas pelo calor. |
+| `src/scene/tour.ts` | Gera um apartamento jogável a partir de uma cena (fileira para cenas pequenas, escritório com corredor para as grandes); aplica o roteiro; paredes aquecidas pelo calor. |
+| `src/scene/nav.ts`, `footprints.ts` | Caminhos que desviam de móveis e paredes (A* numa grade), usados por todas as histórias ([ADR 0006](adr/0006-escritorio-e-desvio-de-moveis.md)). |
 
 ## 6. Visão de execução
 
@@ -170,7 +175,7 @@ Passo a passo em [configuracao.md](configuracao.md). `vercel.json` define rotas 
 
 ## 8. Conceitos transversais
 
-- **Segurança.** Nenhum segredo do estúdio no servidor. Token só na aba (`sessionStorage`), nunca em cookie, `localStorage` ou servidor. CSP: `script-src 'self'`, `connect-src 'self' https://api.github.com`. Todo texto renderizado pelo React (nada de `innerHTML`). Arquivos de apresentação abertos são validados e reconstruídos campo a campo. O repasse do login valida o código, exige origem própria e tem freio. Nomes de dono e repositório validados antes de chamar o GitHub.
+- **Segurança.** Nenhum segredo do estúdio no servidor. O token fica trancado no cofre (um worker): nem a página o vê, ele só faz leituras de uma lista fechada e some em 8 horas (com contagem no cabeçalho e aviso nos últimos 10 minutos). CSP: `script-src 'self'`, `connect-src 'self' https://api.github.com`, Trusted Types obrigatório. Todo texto renderizado pelo React (nada de `innerHTML`). Arquivos de apresentação abertos são validados e reconstruídos campo a campo. O repasse do login valida o código, exige origem própria e tem freio. Nomes de dono e repositório validados antes de chamar o GitHub.
 - **Privacidade.** O código vai do GitHub direto para a aba; nenhum serviço de IA; nunca lê `.env`, chaves e certificados. Modelo e roteiro somem com a aba; o arquivo salvo leva roteiro, nomes de partes e arquivos e o começo das instruções dos agentes, nunca código.
 - **Erros.** Um conjunto pequeno de códigos (`StudioErrorCode`), traduzidos na interface; 401 encerra o login.
 - **Idiomas.** Todo texto visível em `pt` e `en`; o modelo traz as frases nas duas línguas.
@@ -191,7 +196,7 @@ Ver [adr/README.md](adr/README.md).
 
 | Risco | Efeito | Mitigação atual / próximo passo |
 |---|---|---|
-| Token na aba ao alcance de um XSS | Acesso de leitura (ou escrita, com OAuth App) aos repositórios da pessoa | CSP restrita, React escapando texto, GitHub App só leitura com tokens de 8 h. |
+| Script injetado na página | Poderia pedir leituras ao cofre enquanto o login dura | Token fora do alcance da página, só leituras permitidas, 8 h no máximo, CSP com Trusted Types, React escapando texto. |
 | Heurísticas erram nomes e fluxos | Cena estranha para o cliente | Roteiro editável (renomeia em todas as abas); nota "gerado a partir do código". |
 | Agente de IA não reconhecido | Falta a cena mais pedida | Aviso na apresentação com os SDKs reconhecidos; ampliar as regras com casos reais. |
 | Repositório muito grande | Análise parcial (`truncated`) | Orçamento de 700 arquivos / 7 MB; o mapa avisa. Próximo: escolher pastas. |

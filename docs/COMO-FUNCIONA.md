@@ -191,13 +191,14 @@ Na cena, `Resident.tsx` lê `sample()` a cada quadro: posiciona o boneco, gira s
 
 ## O estúdio (`/studio`)
 
-O prédio público só mostra o que é público e nunca mostra código. O **estúdio** é a parte com login: a pessoa entra com a conta do GitHub, abre qualquer repositório que essa conta enxerga (privados também) e o transforma numa apresentação animada para mostrar a um cliente. A arquitetura completa está em [arquitetura.md](arquitetura.md), as decisões em [adr/](adr/README.md), a leitura do código em [analise.md](analise.md) e a configuração em [configuracao.md](configuracao.md).
+O prédio público só mostra o que é público e nunca mostra código. O **estúdio** (o botão **Prédio | Estúdio** no topo troca entre os dois) é a parte com login: a pessoa entra com a conta do GitHub, abre qualquer repositório que essa conta enxerga (privados também) e o transforma numa apresentação animada para mostrar a um cliente. A arquitetura completa está em [arquitetura.md](arquitetura.md), as decisões em [adr/](adr/README.md), a leitura do código em [analise.md](analise.md) e a configuração em [configuracao.md](configuracao.md).
 
 ### Entrar, sem chave nenhuma no servidor
 
 1. Em `/studio`, **Entrar com o GitHub** mostra um código curto (como o login do GitHub CLI). O botão copia o código e abre `github.com/login/device`; a pessoa cola, autoriza, e a página continua sozinha.
-2. O GitHub entrega o token **para a aba do navegador**. Ele fica no `sessionStorage` (some ao fechar a aba ou clicar em Sair) e toda chamada vai direto da aba para a API do GitHub. O servidor do Repartments só repassa as duas chamadas do login, porque o GitHub não aceita que páginas façam essas duas diretamente, e não guarda nada.
-3. A lista mostra os repositórios da conta (próprios, de colaboração e de organizações), com busca e "Carregar mais". Privados têm o selo 🔒.
+2. O GitHub entrega o token para um **cofre**: um worker do navegador que guarda o token na memória dele. A página nunca vê o token; ela pede leituras ao cofre, e o cofre só faz as leituras de uma lista fechada (repositórios, commits, arquivos), direto na API do GitHub. O servidor do Repartments só repassa as duas chamadas do login, porque o GitHub não aceita que páginas façam essas duas diretamente, e não guarda nada.
+3. **O login dura no máximo 8 horas.** O cabeçalho mostra quanto falta ("termina em 7 h 52 min"); nos últimos 10 minutos aparece um aviso para salvar a apresentação; ao terminar, o estúdio explica e pede para entrar de novo. Fechar o site, sair, ou recarregar a página sem outra aba do estúdio aberta também encerra.
+4. A lista mostra os repositórios da conta (próprios, de colaboração e de organizações), com busca e "Carregar mais". Privados têm o selo 🔒.
 
 Sem login: **Ver um exemplo** abre um CRM de exemplo (com assistente de vendas de IA e algumas semanas de commits), e **Abrir uma apresentação salva** abre um arquivo baixado antes. Em desenvolvimento, sem app do GitHub configurado, "Entrar" usa o login do GitHub CLI da própria máquina.
 
@@ -209,6 +210,8 @@ O repositório vira um prédio em que **cada andar é uma cena**:
 - **Como o agente decide**: a mensagem chega, o agente lê as instruções, pergunta ao modelo de IA, escolhe entre as ferramentas, usa a que precisa e responde.
 - **Pedidos** ("Criar leads", "Ver clientes"…): a tela pede, a segurança confere, as regras trabalham, o banco guarda ou entrega, o e-mail sai, a resposta aparece na tela.
 - **Tarefas em segundo plano**, quando há fila.
+
+Cenas com 4 participantes ou mais viram um **escritório**: duas fileiras de salas dos dois lados de um corredor, a de trás com paredes altas e a da frente com divisórias baixas, para a câmera ver tudo por cima. Os moradores andam pelo corredor e **desviam dos móveis** (ninguém atravessa mesas). As legendas usam as palavras do próprio sistema: o título da tela, os campos do formulário ("preenche nome, empresa, e-mail e telefone e clica em “Salvar lead”"), o que o banco guarda, o assunto do e-mail.
 
 Dentro da cena, cada parte é um morador com o nome no crachá; eles andam até o cômodo uns dos outros levando cartas (pedidos) e caixas (respostas), e a legenda explica cada passo. O painel lista quem participa e o passo a passo.
 
