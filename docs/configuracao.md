@@ -22,7 +22,7 @@ Há dois tipos de app. Os dois funcionam com o mesmo código; a diferença é a 
 |---|---|---|
 | Permissão | *Fine-grained*: **Contents: read** e **Metadata: read**, nada de escrita | Escopo `repo`, que o GitHub só oferece como leitura **e** escrita |
 | Quais repositórios | A pessoa escolhe ao instalar o app (todos ou alguns) | Todos que a conta acessa |
-| Validade do token | 8 horas | Não expira (some quando a aba fecha) |
+| Validade do token | 8 horas | Não expira no GitHub; o estúdio o esquece em 8 horas |
 | Organizações | O dono da organização instala o app | A organização pode exigir aprovação do OAuth App |
 
 ### GitHub App (recomendado)
@@ -66,5 +66,5 @@ npm run build
 - [ ] `.env.local` não está no git (`git status` não mostra; o `.gitignore` cobre `.env*`).
 - [ ] O app do GitHub pede só leitura (GitHub App) ou `public_repo` se privados não forem necessários.
 - [ ] *Enable Device Flow* marcado no app (sem ele o login responde `login-disabled`).
-- [ ] A CSP de `vercel.json` continua com `script-src 'self'` e `connect-src 'self' https://api.github.com`: o token fica na aba, e é a CSP que impede scripts de fora de chegar nele ([ADR 0002](adr/0002-token-so-no-navegador.md)).
+- [ ] A CSP de `vercel.json` continua com `script-src 'self'`, `connect-src 'self' https://api.github.com` e `require-trusted-types-for 'script'`: o token fica trancado no cofre do navegador, e a CSP é o que impede scripts de fora de rodar na página ([ADR 0002](adr/0002-token-so-no-navegador.md)).
 - [ ] `npm audit` sem vulnerabilidades altas.

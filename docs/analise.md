@@ -84,6 +84,17 @@ Cada passo tem legenda (uma frase curta em português e inglês), balão (uma a 
 
 No navegador, a apresentação acrescenta a cena de abertura **"Conheça o sistema"** (`src/studio/present/intro.ts`) e os commits viram cenas próprias (`src/studio/works/scenes.ts`, [ADR 0005](adr/0005-commits-como-cenas.md)).
 
+## 8. Detalhes para quem não é técnico (`details.ts`)
+
+Para as legendas dizerem o que a pessoa vê e faz, e não só "a API chama o serviço", o analisador também lê, do próprio código:
+
+- **Modelos de dados** (Prisma, Django, SQLAlchemy, Mongoose, TypeORM, Sequelize): os campos de cada entidade, sem ids, datas automáticas e nada sensível (senhas, tokens, chaves, CPF, cartão).
+- **Telas**: o título (`<h1>`), os botões e os rótulos dos campos (`<label>`, `placeholder`, `aria-label`), juntando a tela com os componentes que ela importa.
+- **O que a tela envia** (`JSON.stringify({ … })`, `axios.post(url, { … })`), o **assunto dos e-mails** e o nome das **filas**.
+- Nomes de campos viram palavras ("companyName" → "empresa"), com um dicionário de termos comuns em português.
+
+Com isso, uma cena de pedido vira: "O usuário abre Leads, preenche nome, empresa, e-mail e telefone e clica em “Salvar lead”" → "A tela envia o novo lead (nome, empresa, e-mail e telefone)…" → "… guarda o novo lead em PostgreSQL: nome, empresa, e-mail e telefone" → "PostgreSQL confirma: o lead foi guardado" → "… envia o e-mail “Olá!” por Resend" → "A tela mostra que o lead foi salvo". Uma mesma API pode ter uma cena de escrita e outra de leitura (criar e listar).
+
 ## Limites conhecidos
 
 - Nomes de partes vêm de pastas; o roteiro editável existe para trocá-los pelas palavras do cliente.

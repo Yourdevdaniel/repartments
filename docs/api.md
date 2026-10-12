@@ -23,33 +23,38 @@ Repasse **sem estado** do *device flow* do GitHub ([ADR 0001](adr/0001-login-pel
 
 `POST` exige o cabeçalho `X-Requested-With` e `Origin` do próprio site (403 caso contrário). Freios por visitante: 20 códigos e 60 consultas por minuto. Erros do repasse: `{ "error": "login-disabled" }` (503, sem *Client ID*), `forbidden` (403), `invalid` (400), `rate-limited` (429), `unavailable` (502).
 
-O fluxo na página (`src/studio/session.ts`):
+Quem conversa com o repasse é o **cofre do token** (`src/github/vault-core.ts`), um worker da página, e não a página em si: o token nunca chega ao código da página ([ADR 0002](adr/0002-token-so-no-navegador.md)).
 
 ```mermaid
 sequenceDiagram
   autonumber
   participant P as Página (estúdio)
+  participant V as Cofre (worker)
   participant R as Repartments (/api/auth)
   participant G as github.com
   participant A as api.github.com
-  P->>R: POST /api/auth/device
+  P->>V: start
+  V->>R: POST /api/auth/device
   R->>G: POST /login/device/code (client_id)
   G-->>R: device_code, user_code
-  R-->>P: device_code, user_code, verification_uri
+  R-->>V: device_code, user_code, verification_uri
+  V-->>P: só o código para digitar
   P->>P: mostra o código, copia, abre github.com/login/device
   loop a cada `interval` segundos
-    P->>R: POST /api/auth/token {device_code}
+    V->>R: POST /api/auth/token {device_code}
     R->>G: POST /login/oauth/access_token (client_id, device_code)
     G-->>R: authorization_pending | access_token
-    R-->>P: o mesmo
+    R-->>V: o mesmo
   end
-  P->>P: guarda o token no sessionStorage da aba
-  P->>A: GET /user (Authorization: Bearer …)
+  V->>A: GET /user (Authorization: Bearer …)
+  V-->>P: quem entrou e até quando (8 h no máximo), nunca o token
+  P->>V: pedidos de leitura (repos, commits, árvore, arquivos)
+  V->>A: só os da lista de leituras, com o token
 ```
 
 ## Chamadas ao GitHub feitas pelo navegador
 
-Com o token da pessoa, de `src/github/*` e `src/architecture/fetch.ts`. A CSP libera só `https://api.github.com` além do próprio site.
+Feitas pelo cofre com o token da pessoa, a pedido de `src/github/*` e `src/architecture/fetch.ts`. O cofre só aceita estas leituras (`src/github/allow.ts`): qualquer outro caminho, método ou uma `mutation` de GraphQL é recusado. A CSP libera só `https://api.github.com` além do próprio site.
 
 | Para quê | Chamada | Onde |
 |---|---|---|
@@ -71,7 +76,7 @@ Cada falha vira um `StudioErrorCode`, que a interface traduz:
 
 | Código | Quando |
 |---|---|
-| `signed-out` | O GitHub recusou o token (revogado, vencido). A página sai sozinha. |
+| `signed-out` | O GitHub recusou o token (revogado, vencido), ou o login de 8 horas terminou. A página sai sozinha. |
 | `forbidden` | A conta não pode ler o repositório. |
 | `not-found` | Repositório, commit ou branch inexistente, ou repositório vazio. |
 | `invalid` | Parâmetro fora das regras (nome de repositório, data, branch). |
@@ -81,4 +86,4 @@ Cada falha vira um `StudioErrorCode`, que a interface traduz:
 
 ## Cabeçalhos de segurança
 
-Todas as páginas e rotas recebem os cabeçalhos de [`vercel.json`](../vercel.json): CSP restrita (scripts só do site; `connect-src 'self' https://api.github.com`; imagens só do site e de `avatars.githubusercontent.com`), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy` e HSTS.
+Todas as páginas e rotas recebem os cabeçalhos de [`vercel.json`](../vercel.json): CSP restrita (scripts só do site; `connect-src 'self' https://api.github.com`; imagens só do site e de `avatars.githubusercontent.com`; sem iframes nem plugins; **Trusted Types** obrigatório, com a política de `src/security.ts`), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy` e HSTS.

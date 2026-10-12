@@ -5,10 +5,11 @@ Cada decisão que muda a forma do sistema fica registrada aqui, no formato [MADR
 | Nº | Decisão | Estado |
 |---|---|---|
 | [0001](0001-login-pelo-device-flow.md) | Login com o GitHub pelo device flow, sem segredo no servidor | Aceito |
-| [0002](0002-token-so-no-navegador.md) | Token só na aba do navegador, que fala direto com o GitHub | Aceito |
+| [0002](0002-token-so-no-navegador.md) | Token trancado num worker do navegador, só leituras, 8 horas no máximo | Aceito |
 | [0003](0003-analise-estatica-sem-llm.md) | Arquitetura por análise estática determinística, sem LLM | Aceito |
 | [0004](0004-apresentacao-no-motor-de-historias.md) | Apresentação gerada sobre o motor de histórias existente | Aceito |
 | [0005](0005-commits-como-cenas.md) | Commits como cenas com os moradores, não como lista e diff | Aceito |
+| [0006](0006-escritorio-e-desvio-de-moveis.md) | Planta de escritório para cenas grandes, e moradores que desviam dos móveis | Aceito |
 
 Para uma decisão nova, copie o modelo abaixo para `NNNN-titulo-curto.md` e adicione a linha na tabela.
 
