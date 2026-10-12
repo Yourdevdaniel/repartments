@@ -114,7 +114,7 @@ export function Workspace({ source, lang }: { source: Source; lang: Lang }) {
 
   if (infoError && source.kind === 'repo') {
     return (
-      <div className="grid h-full place-items-center p-4">
+      <div className="grid h-full grid-cols-[minmax(0,1fr)] place-items-center p-4">
         <div className={`${glass} w-[min(28rem,100%)] p-6 text-center`}>
           <p className="text-4xl" aria-hidden="true">🔎</p>
           <p className="mt-3 text-lg font-extrabold" role="alert">{t.errors[infoError][lang]}</p>
@@ -197,7 +197,7 @@ export function Workspace({ source, lang }: { source: Source; lang: Lang }) {
             onLoaded={setLoaded}
           />
         ) : (
-          <div className="grid h-full place-items-center p-4">
+          <div className="grid h-full grid-cols-[minmax(0,1fr)] place-items-center p-4">
             <p className={`${glass} max-w-md px-5 py-4 text-center text-sm font-bold text-ink-soft`}>{t.offline[lang]}</p>
           </div>
         )}
@@ -209,7 +209,7 @@ export function Workspace({ source, lang }: { source: Source; lang: Lang }) {
 /** Before the first analysis (or after one failed): what will happen, and the button to start it. */
 function AnalyzeCard({ lang, canRead, error, onAnalyze }: { lang: Lang; canRead: boolean; error: StudioErrorCode | null; onAnalyze: () => void }) {
   return (
-    <div className="grid h-full place-items-center overflow-y-auto p-4">
+    <div className="grid h-full grid-cols-[minmax(0,1fr)] place-items-center overflow-y-auto p-4">
       <div className={`${glass} w-[min(34rem,100%)] p-6 text-center md:p-8`}>
         <p className="text-4xl" aria-hidden="true">🏗️</p>
         <h2 className="mt-3 text-xl leading-tight font-extrabold tracking-[-0.01em] md:text-2xl">{t.analyzeTitle[lang]}</h2>
@@ -235,7 +235,7 @@ function Progress({ lang, event }: { lang: Lang; event: Extract<AnalysisEvent, {
   const order = ['tree', 'files', 'graph', 'flows'] as const
   const at = order.indexOf(event.stage)
   return (
-    <div className="grid h-full place-items-center p-4">
+    <div className="grid h-full grid-cols-[minmax(0,1fr)] place-items-center p-4">
       <div className={`${glass} w-[min(26rem,100%)] p-6 text-center`} aria-live="polite">
         <p className="animate-bounce text-4xl motion-reduce:animate-none" aria-hidden="true">🏗️</p>
         <p className="mt-3 text-lg font-extrabold">

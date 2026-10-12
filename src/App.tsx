@@ -7,7 +7,7 @@ import type { Caption } from './scene/story'
 import type { FlatData } from './scene/types'
 import { WEATHERS, type Weather } from './scene/weather'
 import { Backdrop } from './ui/Backdrop'
-import { glass, LoopStrip, Logo } from './ui/kit'
+import { glass, LoopStrip, Logo, ModeSwitch } from './ui/kit'
 import { copy, doesFor, roles, type Lang } from './ui/roles'
 
 function initialLang(): Lang {
@@ -69,6 +69,12 @@ export default function App() {
   const flats = ready?.lots[ready.at].flats ?? []
   const lots = ready ? lotCount(ready.total, ready.lots[0].fetched) : 1
   const flat = view.mode === 'inside' ? (flats.find((f) => f.id === view.id) ?? null) : null
+
+  /** The last page of the public building, so the studio's mode switch can bring the visitor back to it. */
+  const lastTown = useRef(route.studio ? '/' : window.location.pathname)
+  useEffect(() => {
+    if (!route.studio) lastTown.current = window.location.pathname
+  }, [route])
 
   const go = useCallback((path: string) => {
     window.history.pushState(null, '', path)
@@ -182,7 +188,7 @@ export default function App() {
   if (route.studio)
     return (
       <Suspense fallback={<div className="h-dvh w-full" style={{ background: SKY.sun }} />}>
-        <Studio owner={route.studio.owner} repo={route.studio.repo} lang={lang} setLang={setLang} onGo={go} />
+        <Studio owner={route.studio.owner} repo={route.studio.repo} lang={lang} setLang={setLang} onGo={go} onTown={() => go(lastTown.current)} />
       </Suspense>
     )
 
@@ -224,7 +230,7 @@ export default function App() {
       {/* On a phone the weather and language toggles drop to a second row instead of running off screen.
           Above the full-screen cards (landing, loading, errors), or they'd swallow its clicks. */}
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-start justify-between gap-2 p-4 md:gap-3 md:p-6">
-        <div className="pointer-events-auto flex items-center gap-2">
+        <div className="pointer-events-auto flex flex-wrap items-center gap-2">
           <a
             href="/"
             onClick={(e) => {
@@ -239,6 +245,7 @@ export default function App() {
               <span className="block text-sm leading-tight text-ink-soft">{copy.tagline[lang]}</span>
             </span>
           </a>
+          <ModeSwitch mode="town" lang={lang} onTown={() => undefined} onStudio={() => go('/studio')} />
           {!landing && <SearchForm lang={lang} onGo={go} compact initial={route.login ?? ''} />}
         </div>
         <div className="pointer-events-auto ml-auto flex items-center gap-2">
@@ -559,7 +566,7 @@ function SearchForm({ lang, onGo, compact = false, initial = '' }: { lang: Lang;
 /** The front door: what this is, a field for a username, and a few buildings to peek at. */
 function Landing({ lang, onGo }: { lang: Lang; onGo: (path: string) => void }) {
   return (
-    <div className="absolute inset-0 grid place-items-center p-4">
+    <div className="absolute inset-0 grid grid-cols-[minmax(0,1fr)] place-items-center p-4">
       <div className={`${glass} w-[min(30rem,100%)] p-6 text-center md:p-8`}>
         <p className="text-4xl" aria-hidden="true">
           🏢
@@ -638,7 +645,7 @@ function Credits({ lang }: { lang: Lang }) {
 /** While the building goes up, or when it can't. */
 function Status({ state, login, lang, onGo }: { state: BuildingState; login: string; lang: Lang; onGo: (path: string) => void }) {
   return (
-    <div className="absolute inset-0 grid place-items-center p-4">
+    <div className="absolute inset-0 grid grid-cols-[minmax(0,1fr)] place-items-center p-4">
       <div className={`${glass} w-[min(26rem,100%)] p-6 text-center`}>
         {state.kind === 'loading' ? (
           <>

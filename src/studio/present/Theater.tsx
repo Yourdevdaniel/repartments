@@ -269,7 +269,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
       <div aria-hidden="true" className={`pointer-events-none absolute inset-0 bg-white/80 transition-opacity duration-200 ${veil ? 'opacity-100' : 'opacity-0'}`} />
 
       {!flats.length && (
-        <div className="absolute inset-0 grid place-items-center p-4">
+        <div className="absolute inset-0 grid grid-cols-[minmax(0,1fr)] place-items-center p-4">
           <p className={`${glass} max-w-md px-5 py-4 text-center text-sm font-bold text-ink-soft`}>{empty[lang]}</p>
         </div>
       )}

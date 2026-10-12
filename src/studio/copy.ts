@@ -18,13 +18,25 @@ export const t = {
   },
   signInError: {
     denied: { en: 'GitHub sign-in was cancelled.', pt: 'O login no GitHub foi cancelado.' },
-    expired: { en: 'The sign-in expired. Please sign in again.', pt: 'O login expirou. Entre de novo.' },
+    expired: {
+      en: 'For safety, a sign-in lasts 8 hours at most, and this one has ended. Sign in again to carry on.',
+      pt: 'Por segurança, o login dura no máximo 8 horas, e este terminou. Entre de novo para continuar.',
+    },
     unavailable: { en: "Couldn't reach GitHub. Please try again.", pt: 'Não deu para falar com o GitHub. Tente de novo.' },
   },
   privacy: {
-    en: "Sign-in is GitHub's own, with a code like the GitHub CLI's. The key stays only in this tab and goes straight to GitHub: this site stores nothing, and closing the tab or signing out forgets it.",
-    pt: 'O login é o do próprio GitHub, com um código como o do GitHub CLI. A chave fica só nesta aba e vai direto para o GitHub: este site não guarda nada, e fechar a aba ou sair apaga tudo.',
+    en: "Sign-in is GitHub's own, with a code like the GitHub CLI's. The key is locked away from this page's scripts, only reads, and goes straight to GitHub: this site stores nothing. It lasts 8 hours at most; closing the site or signing out forgets it.",
+    pt: 'O login é o do próprio GitHub, com um código como o do GitHub CLI. A chave fica trancada longe dos scripts desta página, só faz leituras e vai direto para o GitHub: este site não guarda nada. Ela dura no máximo 8 horas; fechar o site ou sair apaga tudo.',
   },
+  sessionLeft: (left: string): L => ({ en: `ends in ${left}`, pt: `termina em ${left}` }),
+  sessionHint: {
+    en: 'For safety, a sign-in lasts 8 hours at most. After that you sign in again.',
+    pt: 'Por segurança, o login dura no máximo 8 horas. Depois disso, é só entrar de novo.',
+  },
+  sessionEnding: (left: string): L => ({
+    en: `For safety, your sign-in ends in ${left}. Save the presentation to keep showing it without signing in, or sign in again afterwards.`,
+    pt: `Por segurança, seu login termina em ${left}. Salve a apresentação para continuar mostrando sem login, ou entre de novo depois.`,
+  }),
   deviceTitle: { en: 'Approve on GitHub', pt: 'Autorize no GitHub' },
   deviceLead: {
     en: 'Open GitHub, type this code and approve. This page carries on by itself.',

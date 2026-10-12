@@ -298,7 +298,7 @@ export function WorksTab({
           />
         )}
         {load.state === 'loading' && (
-          <div className="grid h-full place-items-center p-4">
+          <div className="grid h-full grid-cols-[minmax(0,1fr)] place-items-center p-4">
             <div className={`${glass} w-[min(24rem,100%)] p-6 text-center`} aria-live="polite">
               <p className="animate-bounce text-4xl motion-reduce:animate-none" aria-hidden="true">🏗️</p>
               <p className="mt-3 font-extrabold">{w.loading(load.done, load.total)[lang]}</p>
@@ -309,7 +309,7 @@ export function WorksTab({
           </div>
         )}
         {load.state === 'failed' && (
-          <div className="grid h-full place-items-center p-4">
+          <div className="grid h-full grid-cols-[minmax(0,1fr)] place-items-center p-4">
             <div className={`${glass} w-[min(26rem,100%)] p-6 text-center`}>
               <p className="font-extrabold" role="alert">{errorText(load.error, lang)}</p>
               <button type="button" onClick={() => setRetry((n) => n + 1)} className="mt-4 h-10 rounded-full bg-ink px-5 text-sm font-extrabold text-white">

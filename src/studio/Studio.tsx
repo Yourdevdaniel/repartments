@@ -5,12 +5,12 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Lang } from '../ui/roles'
-import { glass, Logo } from '../ui/kit'
+import { glass, Logo, ModeSwitch } from '../ui/kit'
 import { t } from './copy'
 import { RepoPicker } from './RepoPicker'
 import { examplePresentation } from './example'
 import { parsePresentation, type PresentationFile } from './store'
-import { useSession, type DeviceCode } from './session'
+import { timeLeft, useSession, WARN_MINUTES, type DeviceCode } from './session'
 import { Workspace } from './Workspace'
 
 type Props = {
@@ -19,13 +19,17 @@ type Props = {
   lang: Lang
   setLang: (lang: Lang) => void
   onGo: (path: string) => void
+  /** Back to the public building (the last page of it the visitor saw). */
+  onTown: () => void
 }
 
-export function Studio({ owner, repo, lang, setLang, onGo }: Props) {
+export function Studio({ owner, repo, lang, setLang, onGo, onTown }: Props) {
   const session = useSession()
   const [file, setFile] = useState<PresentationFile | null>(null)
   const [fileError, setFileError] = useState(false)
   const user = session.state.status === 'signed-in' ? session.state.user : null
+  const left = session.state.status === 'signed-in' ? session.state.expiresAt - session.now : null
+  const ending = left !== null && left <= WARN_MINUTES * 60_000
 
   useEffect(() => {
     document.title = file ? `${file.model.repo.name} · ${t.studio[lang]}` : repo ? `${owner}/${repo} · ${t.studio[lang]}` : `${t.studio[lang]} · Repartments`
@@ -119,6 +123,9 @@ export function Studio({ owner, repo, lang, setLang, onGo }: Props) {
             <span className="block text-xs font-bold text-accent">{t.studio[lang]}</span>
           </span>
         </a>
+        <span className="hidden sm:block">
+          <ModeSwitch mode="studio" lang={lang} onTown={onTown} onStudio={() => undefined} />
+        </span>
         {(file || (owner && repo)) && (
           <nav aria-label="breadcrumb" className={`${glass} flex min-w-0 items-center gap-1.5 px-3.5 py-2.5 text-sm font-extrabold`}>
             {user && (
@@ -177,7 +184,14 @@ export function Studio({ owner, repo, lang, setLang, onGo }: Props) {
           {user && (
             <div className={`${glass} flex items-center gap-2 py-1 pr-1 pl-1.5`}>
               {user.avatarUrl && <img src={user.avatarUrl} alt="" className="size-8 rounded-full" />}
-              <span className="hidden max-w-[9rem] truncate text-sm font-extrabold sm:block">{user.login}</span>
+              <span className="hidden min-w-0 leading-tight sm:block">
+                <span className="block max-w-[9rem] truncate text-sm font-extrabold">{user.login}</span>
+                {left !== null && (
+                  <span className={`block text-[11px] font-bold ${ending ? 'text-[#b45309]' : 'text-ink-soft'}`} title={t.sessionHint[lang]}>
+                    ⏱ {t.sessionLeft(timeLeft(left, lang))[lang]}
+                  </span>
+                )}
+              </span>
               <button
                 type="button"
                 onClick={() => {
@@ -192,6 +206,13 @@ export function Studio({ owner, repo, lang, setLang, onGo }: Props) {
           )}
         </div>
       </header>
+      {ending && left !== null && (
+        <div className="px-3 pb-2 md:px-4" role="status" aria-live="polite">
+          <p className="rounded-2xl bg-[#fff1df] px-4 py-2.5 text-sm font-bold text-[#9a5a12]">
+            ⏱ {t.sessionEnding(timeLeft(left, lang))[lang]}
+          </p>
+        </div>
+      )}
       <main className="relative min-h-0 flex-1">{body}</main>
     </div>
   )
@@ -237,7 +258,7 @@ function DeviceCodeCard({ code, lang, onCancel }: { code: DeviceCode; lang: Lang
 }
 
 function Centered({ children }: { children: ReactNode }) {
-  return <div className="grid h-full place-items-center overflow-y-auto p-4">{children}</div>
+  return <div className="grid h-full grid-cols-[minmax(0,1fr)] place-items-center overflow-y-auto p-4">{children}</div>
 }
 
 /**
