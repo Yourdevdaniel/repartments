@@ -55,3 +55,40 @@ export function Logo() {
     </svg>
   )
 }
+
+const MODES = {
+  town: { icon: '🏢', en: 'Building', pt: 'Prédio', hint: { en: 'Anyone’s public repos as a building', pt: 'Os repositórios públicos de alguém num prédio' } },
+  studio: {
+    icon: '🎬',
+    en: 'Studio',
+    pt: 'Estúdio',
+    hint: { en: 'Present how a system works and its commits, private repos too', pt: 'Apresente como um sistema funciona e seus commits, repositórios privados também' },
+  },
+} as const
+
+/**
+ * The switch between the two sides of the site: the public building (anyone's repos, no sign-in)
+ * and the studio (sign in, open any repo, present it). Shown in both headers, so either is always
+ * one click away.
+ */
+export function ModeSwitch({ mode, lang, onTown, onStudio }: { mode: 'town' | 'studio'; lang: 'en' | 'pt'; onTown: () => void; onStudio: () => void }) {
+  return (
+    <div className={`${glass} flex shrink-0 p-1`} role="group" aria-label={lang === 'pt' ? 'Modo' : 'Mode'}>
+      {(['town', 'studio'] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          aria-pressed={mode === m}
+          title={MODES[m].hint[lang]}
+          onClick={mode === m ? undefined : m === 'town' ? onTown : onStudio}
+          className={`flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-extrabold transition-colors ${
+            mode === m ? 'bg-ink text-white' : 'text-ink-soft hover:text-ink'
+          }`}
+        >
+          <span aria-hidden="true">{MODES[m].icon}</span>
+          {MODES[m][lang]}
+        </button>
+      ))}
+    </div>
+  )
+}
