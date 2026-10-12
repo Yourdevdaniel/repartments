@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Agent, Component, Dependency, Endpoint, External, Flow, Layer } from '../shared/studio'
 import { buildFlows, MAX_ACTORS, MAX_FLOWS, MAX_STEPS } from './flows'
+import type { FlowDetails } from './details'
 
 const component = (id: string, layer: Layer, extra: Partial<Component> = {}): Component => ({
   id,
@@ -235,5 +236,92 @@ describe('buildFlows: overview and limits', () => {
 
   it('ignores endpoints whose part is unknown and never throws', () => {
     expect(() => buildFlows({ components: [], dependencies: [], externals: [], endpoints: [endpoint('GET', '/x', 'nowhere')], agents: [] })).not.toThrow()
+  })
+})
+
+describe('buildFlows: with the details of the code', () => {
+  const components = [
+    component('frontend/pages', 'interface', { name: 'Frontend Pages' }),
+    component('backend/routes', 'api', { name: 'Backend Routes' }),
+    component('backend/services', 'logic', { name: 'Backend Services' }),
+    component('backend/db', 'data', { name: 'Backend Db' }),
+  ]
+  const dependencies = [dep('frontend/pages', 'backend/routes', 2), dep('backend/routes', 'backend/services'), dep('backend/services', 'backend/db')]
+  const externals = [ext('ext:postgresql', 'PostgreSQL', 'database', ['backend/db']), ext('ext:resend', 'Resend', 'email', ['backend/services'])]
+  const details: FlowDetails = {
+    models: [{ name: 'Lead', fields: ['name', 'company', 'email', 'phone', 'status'], line: 1 }],
+    calls: new Map([
+      ['POST /api/leads', { file: 'frontend/pages/LeadsPage.tsx', sent: ['name', 'company', 'email', 'phone'] }],
+      ['GET /api/leads', { file: 'frontend/pages/LeadsPage.tsx', sent: [] }],
+      ['DELETE /api/leads/:id', { file: 'frontend/pages/LeadsPage.tsx', sent: [] }],
+    ]),
+    screens: new Map([['frontend/pages/LeadsPage.tsx', { title: 'Leads', buttons: ['Cancelar', 'Salvar lead'], fields: ['Nome', 'Empresa', 'E-mail', 'Telefone'] }]]),
+    subjects: new Map([['backend/services', ['Olá!']]]),
+    tasks: ['followups'],
+  }
+  const run = (endpoints: Endpoint[]) => buildFlows({ components, dependencies, externals, endpoints, agents: [], details })
+
+  it('says what the person fills in, the button to press, what is sent and saved, and the e-mail subject', () => {
+    const [flow] = run([endpoint('POST', '/api/leads', 'backend/routes')])
+    expect(flow.steps[0].text.pt).toBe('O usuário abre Leads, preenche nome, empresa, e-mail e telefone e clica em “Salvar lead”')
+    expect(flow.steps[1].text.pt).toBe('A tela envia o novo lead (nome, empresa, e-mail e telefone) para Backend Routes')
+    expect(flow.steps[0].text.en).toBe('The user opens Leads, fills in nome, empresa, e-mail and telefone and clicks “Salvar lead”')
+    expect(flow.steps[1].text.en).toBe('The screen sends the new lead (name, company, email and phone) to Backend Routes')
+    expect(flow.steps.map((s) => s.text.pt)).toContain('Backend Services guarda o novo lead em PostgreSQL: nome, empresa, e-mail e telefone')
+    expect(flow.steps.map((s) => s.text.pt)).toContain('PostgreSQL confirma: o lead foi guardado')
+    expect(flow.steps.map((s) => s.text.pt)).toContain('Backend Services envia o e-mail “Olá!” por Resend')
+    expect(flow.steps[flow.steps.length - 1].text.pt).toBe('A tela mostra que o lead foi salvo')
+    expectWellFormed(flow)
+  })
+
+  it('tells a list as the screen asking for it, the data fetched, and the list shown', () => {
+    const [flow] = run([endpoint('GET', '/api/leads', 'backend/routes')])
+    expect(flow.steps[0].text.pt).toBe('O usuário abre Leads para ver os leads')
+    expect(flow.steps[1].text.pt).toBe('A tela pede a lista de leads para Backend Routes')
+    expect(flow.steps.map((s) => s.text.pt)).toContain('Backend Services procura os leads em PostgreSQL')
+    expect(flow.steps.map((s) => s.text.pt)).toContain('PostgreSQL devolve a lista de leads')
+    expect(flow.steps[flow.steps.length - 1].text.pt).toBe('A tela mostra a lista de leads')
+    expectWellFormed(flow)
+  })
+
+  it('tells a delete as the person asking to remove one lead, and the service removing it', () => {
+    const [flow] = run([endpoint('DELETE', '/api/leads/:id', 'backend/routes')])
+    expect(flow.steps[0].text.pt).toBe('O usuário abre Leads e pede para apagar um lead')
+    expect(flow.steps.map((s) => s.text.pt)).toContain('Backend Services apaga o lead em PostgreSQL')
+    expect(flow.steps.map((s) => s.text.pt)).toContain('PostgreSQL confirma: o lead foi apagado')
+    expectWellFormed(flow)
+  })
+
+  it('keeps every caption within 120 characters, cutting the lists rather than the words', () => {
+    const long = ['Nome completo do cliente', 'Empresa onde ele trabalha', 'E-mail de contato principal', 'Telefone com DDD', 'Cidade', 'Estado', 'Observações']
+    const big: FlowDetails = {
+      ...details,
+      screens: new Map([['frontend/pages/LeadsPage.tsx', { title: 'Leads', buttons: ['Salvar lead'], fields: long }]]),
+      calls: new Map([['POST /api/leads', { file: 'frontend/pages/LeadsPage.tsx', sent: ['name', 'company', 'email', 'phone', 'city', 'state', 'notes'] }]]),
+    }
+    const [flow] = buildFlows({ components, dependencies, externals, endpoints: [endpoint('POST', '/api/leads', 'backend/routes')], agents: [], details: big })
+    for (const s of flow.steps) expect(s.text.pt.length).toBeLessThanOrEqual(120)
+    expect(flow.steps[0].text.pt).toMatch(/ e mais \d+ e clica em “Salvar lead”$/)
+  })
+
+  it('names the queue task in a job when the worker is known, and keeps the old wording otherwise', () => {
+    const jobComponents = [component('backend/services', 'logic', { name: 'Services' }), component('backend/jobs', 'jobs', { name: 'Jobs' })]
+    const jobDeps = [dep('backend/services', 'backend/jobs')]
+    const jobExternals = [ext('ext:bullmq', 'BullMQ', 'queue', ['backend/jobs'])]
+    const withTask = buildFlows({
+      components: jobComponents,
+      dependencies: jobDeps,
+      externals: jobExternals,
+      endpoints: [],
+      agents: [],
+      details: { models: [], calls: new Map(), screens: new Map(), subjects: new Map(), tasks: ['followups'] },
+    })
+    const job = withTask.find((f) => f.kind === 'job') as Flow
+    expect(job.steps[0].text.pt).toBe('Services deixa uma tarefa de retorno na fila BullMQ')
+    expect(job.steps[1].text.pt).toBe('Jobs pega a tarefa de retorno da fila')
+    expectWellFormed(job)
+
+    const without = buildFlows({ components: jobComponents, dependencies: jobDeps, externals: jobExternals, endpoints: [], agents: [] })
+    expect((without.find((f) => f.kind === 'job') as Flow).steps[0].text.pt).toBe('Services deixa uma tarefa na fila BullMQ')
   })
 })

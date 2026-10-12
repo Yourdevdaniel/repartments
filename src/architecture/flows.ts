@@ -6,10 +6,13 @@
  *
  * Every step is a plain sentence in both languages, built from a template per kind of step. Nothing
  * here guesses at behaviour the code doesn't show: a step exists only because an import, a route or an
- * agent's tool says so.
+ * agent's tool says so. When the details of the code are given (the fields a form asks for, what a
+ * request sends, the e-mail's subject), the sentences say those things too; without them the scenes
+ * keep their shorter wording.
  */
 import type { Actor, ActorKind, Agent, Component, Dependency, Endpoint, External, ExternalKind, Flow, FlowStep, StepAction, Text } from '../shared/studio'
 import { clip, cap, firstSentence, joinList } from './text'
+import { fieldList, humanField, modelForResource, plainLabel, singularOf, taskPhraseOf, type DataModel, type FlowDetails, type Lang, type ScreenDetails } from './details'
 
 export type FlowInput = {
   components: Component[]
@@ -19,12 +22,20 @@ export type FlowInput = {
   agents: Agent[]
   /** File path → ids of the components that file imports. Lets a route's scene follow its own file. */
   fileDeps?: Map<string, string[]>
+  /** What the code says beyond the graph: fields, screens, sent data, e-mail subjects. Optional. */
+  details?: FlowDetails
 }
 
 /** Scenes are kept small enough to follow on a screen. */
 export const MAX_ACTORS = 7
 export const MAX_STEPS = 14
 export const MAX_FLOWS = 6
+
+/** A caption is read in one glance on a screen, so the longest ones are shortened. */
+const CAPTION_LIMIT = 120
+
+/** Buttons that leave the screen rather than send the data, so a scene never says "clicks Cancel". */
+const CANCEL_BUTTON = /cancel|fechar|voltar|sair|close|back|exit/i
 
 const PERSON: Actor = {
   id: 'person',
@@ -86,6 +97,7 @@ type Ctx = {
   externals: External[]
   /** File path → the components its imports reach, so a route only shows the parts its own file uses. */
   fileDeps: Map<string, string[]>
+  details: FlowDetails | null
 }
 
 /** The actor for a component, with the layer's kind. */
@@ -171,6 +183,35 @@ function resourceOf(path: string): string {
   return (fixed ?? path).replace(/[^\p{L}\p{N}_-]/gu, '') || 'dados'
 }
 
+/** What a route does to its resource: one item, a list, or a change to it. */
+type Mode = 'list' | 'one' | 'create' | 'update' | 'delete'
+
+function modeOf(method: string, path: string): Mode {
+  const last = path.split('/').filter(Boolean).pop() ?? ''
+  const hasId = /[:{<[$]/.test(last)
+  switch (method) {
+    case 'GET':
+      return hasId ? 'one' : 'list'
+    case 'PUT':
+    case 'PATCH':
+      return 'update'
+    case 'DELETE':
+      return 'delete'
+    default:
+      return 'create'
+  }
+}
+
+/** What the details add to one request: the screen that calls it, what it sends, and the words around it. */
+type Known = {
+  screen: ScreenDetails | null
+  /** The fields the front-end call sends, as the code names them. */
+  sent: string[]
+  subject: string | null
+  task: { pt: string; en: string } | null
+  model: DataModel | null
+}
+
 /** Everything a request scene is made of, found from the graph. */
 type RequestPlan = {
   endpoint: Endpoint
@@ -182,6 +223,19 @@ type RequestPlan = {
   db: External | null
   send: External | null
   queue: External | null
+  known: Known | null
+}
+
+function knownOf(details: FlowDetails | null, ep: Endpoint, src: Component): Known | null {
+  if (!details) return null
+  const call = details.calls.get(`${ep.method} ${ep.path}`)
+  return {
+    screen: call ? (details.screens.get(call.file) ?? null) : null,
+    sent: call?.sent ?? [],
+    subject: details.subjects.get(src.id)?.[0] ?? null,
+    task: taskPhraseOf(details.tasks[0]),
+    model: modelForResource(resourceOf(ep.path), details.models),
+  }
 }
 
 function planRequest(ctx: Ctx, ep: Endpoint): RequestPlan | null {
@@ -198,12 +252,166 @@ function planRequest(ctx: Ctx, ep: Endpoint): RequestPlan | null {
   const owner = svc?.id ?? api.id
   const send = serviceUsedBy(ctx, [owner, api.id], SEND_KINDS)
   const queue = serviceUsedBy(ctx, [owner, api.id], ['queue'])
-  return { endpoint: ep, api, screen, sec, svc, data, db, send, queue }
+  const known = knownOf(ctx.details, ep, svc ?? api)
+  return { endpoint: ep, api, screen, sec, svc, data, db, send, queue, known }
+}
+
+/** Both languages of one caption, from one builder. */
+function both(build: (lang: Lang) => string): Text {
+  return { pt: build('pt'), en: build('en') }
+}
+
+/** Portuguese words ending in "a" are feminine ("tarefa", "data"); the rest are taken as masculine. */
+function feminine(word: string): boolean {
+  return /a$/i.test(word)
+}
+
+/** "um lead", "uma tarefa" in Portuguese; "a lead", "an order" in English. */
+function oneOf(sing: string, lang: Lang): string {
+  if (lang === 'en') return `${/^[aeiou]/i.test(sing) ? 'an' : 'a'} ${sing}`
+  return `${feminine(sing) ? 'uma' : 'um'} ${sing}`
+}
+
+/** "o lead", "a tarefa". */
+function theOne(sing: string, lang: Lang): string {
+  return lang === 'en' ? `the ${sing}` : `${feminine(sing) ? 'a' : 'o'} ${sing}`
+}
+
+/** "o novo lead", "a nova tarefa". */
+function newOne(sing: string, lang: Lang): string {
+  return lang === 'en' ? `the new ${sing}` : `${feminine(sing) ? 'a nova' : 'o novo'} ${sing}`
+}
+
+/** "os leads", "as tarefas" in Portuguese; "the leads" in English. */
+function theAll(plural: string, lang: Lang): string {
+  if (lang === 'en') return `the ${plural}`
+  return `${plural.endsWith('as') ? 'as' : 'os'} ${plural}`
+}
+
+/** The ending of a participle that agrees with the word: "guardado" or "guardada". */
+function ending(sing: string): string {
+  return feminine(sing) ? 'a' : 'o'
+}
+
+/** The list of fields, with fewer items when the whole caption would run past its limit. */
+function fitList(items: string[], lang: Lang, build: (list: string) => string): string {
+  let text = ''
+  for (let max = 4; max >= 1; max--) {
+    text = build(fieldList(items, lang, max))
+    if (text.length <= CAPTION_LIMIT) return text
+  }
+  return clip(text, CAPTION_LIMIT)
+}
+
+/** The first button that sends the data; "Cancelar" and the like are not what the person does to save. */
+function pickButton(buttons: string[]): string | null {
+  return buttons.find((b) => !CANCEL_BUTTON.test(b)) ?? null
+}
+
+/** What the person does on the screen, in one language. */
+function personCaption(mode: Mode, screenTitle: string, fields: string[], button: string | null, res: string, lang: Lang): string {
+  const sing = singularOf(res)
+  const open = lang === 'pt' ? `O usuário abre ${screenTitle}` : `The user opens ${screenTitle}`
+  const withButton = (text: string) => (button ? `${text}${lang === 'pt' ? ` e clica em “${button}”` : ` and clicks “${button}”`}` : text)
+  switch (mode) {
+    case 'list':
+      return lang === 'pt' ? `${open} para ver ${theAll(res, 'pt')}` : `${open} to see ${theAll(res, 'en')}`
+    case 'one':
+      return lang === 'pt' ? `${open} para ver ${oneOf(sing, 'pt')}` : `${open} to see ${oneOf(sing, 'en')}`
+    case 'delete':
+      return lang === 'pt' ? `${open} e pede para apagar ${oneOf(sing, 'pt')}` : `${open} and asks to delete ${oneOf(sing, 'en')}`
+    default: {
+      const verb = mode === 'create' ? ['preenche', 'fills in', 'criar', 'create'] : ['muda', 'changes', 'mudar', 'change']
+      if (fields.length === 0) {
+        return withButton(lang === 'pt' ? `${open} para ${verb[2]} ${oneOf(sing, 'pt')}` : `${open} to ${verb[3]} ${oneOf(sing, 'en')}`)
+      }
+      // "abre Leads, preenche A, B e C e clica em…": a comma before the list keeps the "e"s apart.
+      const glue = button ? ',' : lang === 'pt' ? ' e' : ' and'
+      return fitList(fields, lang, (list) => withButton(`${open}${glue} ${verb[lang === 'pt' ? 0 : 1]} ${list}`))
+    }
+  }
+}
+
+/** What the screen sends to the API, in one language. */
+function screenToApiCaption(mode: Mode, sent: string[], res: string, api: string, lang: Lang): string {
+  const sing = singularOf(res)
+  const items = sent.map((f) => humanField(f, lang))
+  const sendLine = (head: string, tail: string) =>
+    items.length ? fitList(items, lang, (list) => `${head} (${list}) ${tail}`) : `${head} ${tail}`
+  const to = lang === 'pt' ? `para ${api}` : `to ${api}`
+  switch (mode) {
+    case 'list':
+      return lang === 'pt' ? `A tela pede a lista de ${res} para ${api}` : `The screen asks ${api} for the list of ${res}`
+    case 'one':
+      return lang === 'pt' ? `A tela pede ${oneOf(sing, 'pt')} para ${api}` : `The screen asks ${api} for ${oneOf(sing, 'en')}`
+    case 'delete':
+      return lang === 'pt' ? `A tela pede para apagar ${oneOf(sing, 'pt')} em ${api}` : `The screen asks ${api} to delete ${oneOf(sing, 'en')}`
+    case 'update':
+      return sendLine(lang === 'pt' ? 'A tela envia as mudanças' : 'The screen sends the changes', to)
+    default:
+      return sendLine(lang === 'pt' ? `A tela envia ${newOne(sing, 'pt')}` : `The screen sends ${newOne(sing, 'en')}`, to)
+  }
+}
+
+/** What the service does with the data, in the database, in one language. */
+function databaseCaption(mode: Mode, items: string[], res: string, src: string, db: string, lang: Lang): string {
+  const sing = singularOf(res)
+  switch (mode) {
+    case 'list':
+      return lang === 'pt' ? `${src} procura ${theAll(res, 'pt')} em ${db}` : `${src} looks up ${theAll(res, 'en')} in ${db}`
+    case 'one':
+      return lang === 'pt' ? `${src} procura ${theOne(sing, 'pt')} pedid${ending(sing)} em ${db}` : `${src} looks up the requested ${sing} in ${db}`
+    case 'update':
+      return lang === 'pt' ? `${src} atualiza ${theOne(sing, 'pt')} em ${db}` : `${src} updates the ${sing} in ${db}`
+    case 'delete':
+      return lang === 'pt' ? `${src} apaga ${theOne(sing, 'pt')} em ${db}` : `${src} deletes the ${sing} in ${db}`
+    default: {
+      const humanItems = items.map((f) => humanField(f, lang))
+      if (humanItems.length === 0) return lang === 'pt' ? `${src} guarda ${newOne(sing, 'pt')} em ${db}` : `${src} saves the new ${sing} in ${db}`
+      return fitList(humanItems, lang, (list) =>
+        lang === 'pt' ? `${src} guarda ${newOne(sing, 'pt')} em ${db}: ${list}` : `${src} saves the new ${sing} in ${db}: ${list}`,
+      )
+    }
+  }
+}
+
+/** What the database answers to the service, in one language. */
+function databaseReplyCaption(mode: Mode, res: string, db: string, lang: Lang): string {
+  const sing = singularOf(res)
+  switch (mode) {
+    case 'list':
+      return lang === 'pt' ? `${db} devolve a lista de ${res}` : `${db} returns the list of ${res}`
+    case 'one':
+      return lang === 'pt' ? `${db} devolve ${theOne(sing, 'pt')} pedid${ending(sing)}` : `${db} returns the requested ${sing}`
+    case 'update':
+      return lang === 'pt' ? `${db} confirma: ${theOne(sing, 'pt')} foi atualizad${ending(sing)}` : `${db} confirms: the ${sing} was updated`
+    case 'delete':
+      return lang === 'pt' ? `${db} confirma: ${theOne(sing, 'pt')} foi apagad${ending(sing)}` : `${db} confirms: the ${sing} was deleted`
+    default:
+      return lang === 'pt' ? `${db} confirma: ${theOne(sing, 'pt')} foi guardad${ending(sing)}` : `${db} confirms: the ${sing} was saved`
+  }
+}
+
+/** What the screen shows once the answer is back, in one language. */
+function showCaption(mode: Mode, res: string, lang: Lang): string {
+  const sing = singularOf(res)
+  switch (mode) {
+    case 'list':
+      return lang === 'pt' ? `A tela mostra a lista de ${res}` : `The screen shows the list of ${res}`
+    case 'one':
+      return lang === 'pt' ? `A tela mostra ${theOne(sing, 'pt')}` : `The screen shows the ${sing}`
+    case 'update':
+      return lang === 'pt' ? `A tela mostra que ${theOne(sing, 'pt')} foi atualizad${ending(sing)}` : `The screen shows that the ${sing} was updated`
+    case 'delete':
+      return lang === 'pt' ? `A tela mostra que ${theOne(sing, 'pt')} foi apagad${ending(sing)}` : `The screen shows that the ${sing} was deleted`
+    default:
+      return lang === 'pt' ? `A tela mostra que ${theOne(sing, 'pt')} foi salv${ending(sing)}` : `The screen shows that the ${sing} was saved`
+  }
 }
 
 /** One request scene, with the parts of the plan it may use. */
 function requestFlow(plan: RequestPlan, use: { sec: boolean; send: boolean; queue: boolean }): Flow {
-  const { endpoint: ep, api, screen } = plan
+  const { endpoint: ep, api, screen, known } = plan
   const sec = use.sec ? plan.sec : null
   const send = use.send ? plan.send : null
   const queue = use.queue ? plan.queue : null
@@ -211,6 +419,7 @@ function requestFlow(plan: RequestPlan, use: { sec: boolean; send: boolean; queu
   const dbSvc = plan.db
   const verb = verbOf(ep.method, ep.path)
   const res = resourceOf(ep.path)
+  const mode = modeOf(ep.method, ep.path)
   const sn = screen?.name ?? ''
   const an = api.name
   const secn = sec?.name ?? ''
@@ -231,12 +440,20 @@ function requestFlow(plan: RequestPlan, use: { sec: boolean; send: boolean; queu
   if (queue) actors.push(externalActor(queue))
 
   const steps: FlowStep[] = []
+  const stepT = (from: string, to: string, action: StepAction, text: Text, say?: { pt: string; en: string }, at?: { file: string; line: number }) =>
+    steps.push({ from, to, action, text, ...(say ? { say } : {}), ...(at ? { ref: at } : {}) })
   const step = (from: string, to: string, action: StepAction, pt: string, en: string, say?: { pt: string; en: string }, at?: { file: string; line: number }) =>
-    steps.push({ from, to, action, text: { pt, en }, ...(say ? { say } : {}), ...(at ? { ref: at } : {}) })
+    stepT(from, to, action, { pt, en }, say, at)
+
+  const screenTitle = known?.screen?.title ?? sn
+  const screenFields = (known?.screen?.fields ?? []).map(plainLabel)
+  const button = known && (mode === 'create' || mode === 'update') ? pickButton(known.screen?.buttons ?? []) : null
 
   if (screen) {
-    step('person', `c:${screen.id}`, 'ask', `O usuário usa a tela ${sn}`, `The user opens the ${sn} screen`, { pt: 'clique!', en: 'click!' })
-    step(`c:${screen.id}`, `c:${api.id}`, 'ask', `${sn} faz um pedido para ${an}: ${verb.pt} ${res}`, `${sn} sends a request to ${an}: ${verb.en} ${res}`, { pt: 'pedido!', en: 'request!' }, ref)
+    if (known) stepT('person', `c:${screen.id}`, 'ask', both((l) => personCaption(mode, screenTitle, screenFields, button, res, l)), { pt: 'clique!', en: 'click!' })
+    else step('person', `c:${screen.id}`, 'ask', `O usuário usa a tela ${sn}`, `The user opens the ${sn} screen`, { pt: 'clique!', en: 'click!' })
+    if (known) stepT(`c:${screen.id}`, `c:${api.id}`, 'ask', both((l) => screenToApiCaption(mode, known.sent, res, an, l)), { pt: 'pedido!', en: 'request!' }, ref)
+    else step(`c:${screen.id}`, `c:${api.id}`, 'ask', `${sn} faz um pedido para ${an}: ${verb.pt} ${res}`, `${sn} sends a request to ${an}: ${verb.en} ${res}`, { pt: 'pedido!', en: 'request!' }, ref)
   } else {
     step('person', `c:${api.id}`, 'ask', `O usuário faz um pedido para ${an}: ${verb.pt} ${res}`, `The user sends a request to ${an}: ${verb.en} ${res}`, { pt: 'pedido!', en: 'request!' }, ref)
   }
@@ -251,28 +468,55 @@ function requestFlow(plan: RequestPlan, use: { sec: boolean; send: boolean; queu
     const srcId = svc ? `c:${svc.id}` : `c:${api.id}`
     const srcName = svc ? svcn : an
     const dbId = `e:${dbSvc.id}`
-    if (ep.method === 'GET') {
-      step(srcId, dbId, 'fetch', `${srcName} busca os dados em ${dbn}`, `${srcName} fetches the data from ${dbn}`, { pt: 'os dados?', en: 'the data?' })
+    const fetching = ep.method === 'GET'
+    const saysAction = fetching ? { pt: 'os dados?', en: 'the data?' } : { pt: 'guardar', en: 'save' }
+    if (known) {
+      const items = known.sent.length > 0 ? known.sent : (known.model?.fields ?? [])
+      stepT(srcId, dbId, fetching ? 'fetch' : 'save', both((l) => databaseCaption(mode, items, res, srcName, dbn, l)), saysAction)
+    } else if (fetching) {
+      step(srcId, dbId, 'fetch', `${srcName} busca os dados em ${dbn}`, `${srcName} fetches the data from ${dbn}`, saysAction)
     } else {
-      step(srcId, dbId, 'save', `${srcName} guarda as mudanças em ${dbn}`, `${srcName} saves the changes in ${dbn}`, { pt: 'guardar', en: 'save' })
+      step(srcId, dbId, 'save', `${srcName} guarda as mudanças em ${dbn}`, `${srcName} saves the changes in ${dbn}`, saysAction)
     }
-    if (ep.method === 'GET') step(dbId, srcId, 'reply', `${dbn} entrega os dados`, `${dbn} hands over the data`, { pt: 'aqui está', en: 'here you go' })
-    else step(dbId, srcId, 'reply', `${dbn} confirma que guardou`, `${dbn} confirms it's saved`, { pt: 'guardado!', en: 'saved!' })
+    if (known) {
+      stepT(dbId, srcId, 'reply', both((l) => databaseReplyCaption(mode, res, dbn, l)), fetching ? { pt: 'aqui está', en: 'here you go' } : { pt: 'guardado!', en: 'saved!' })
+    } else if (fetching) {
+      step(dbId, srcId, 'reply', `${dbn} entrega os dados`, `${dbn} hands over the data`, { pt: 'aqui está', en: 'here you go' })
+    } else {
+      step(dbId, srcId, 'reply', `${dbn} confirma que guardou`, `${dbn} confirms it's saved`, { pt: 'guardado!', en: 'saved!' })
+    }
   }
   // E-mails, payments and queued jobs happen before the answer goes back.
   if (send) {
     const what = SENT[send.kind] ?? { pt: 'os dados', en: 'the data' }
-    step(`c:${src.id}`, `e:${send.id}`, 'send', `${src.name} envia ${what.pt} por ${sendName}`, `${src.name} sends ${what.en} through ${sendName}`, { pt: 'enviado!', en: 'sent!' })
+    const subject = known?.subject
+    if (subject) {
+      stepT(`c:${src.id}`, `e:${send.id}`, 'send', both((l) => (l === 'pt' ? `${src.name} envia o e-mail “${subject}” por ${sendName}` : `${src.name} sends the e-mail “${subject}” through ${sendName}`)), {
+        pt: 'enviado!',
+        en: 'sent!',
+      })
+    } else {
+      step(`c:${src.id}`, `e:${send.id}`, 'send', `${src.name} envia ${what.pt} por ${sendName}`, `${src.name} sends ${what.en} through ${sendName}`, { pt: 'enviado!', en: 'sent!' })
+    }
   }
   if (queue) {
-    step(`c:${src.id}`, `e:${queue.id}`, 'queue', `${src.name} deixa uma tarefa na fila ${queueName}`, `${src.name} leaves a task in the ${queueName} queue`, { pt: 'pra depois', en: 'for later' })
+    const task = known?.task
+    if (task) {
+      stepT(`c:${src.id}`, `e:${queue.id}`, 'queue', both((l) => (l === 'pt' ? `${src.name} deixa uma tarefa ${task.pt} na fila ${queueName}` : `${src.name} leaves a task ${task.en} in the ${queueName} queue`)), {
+        pt: 'pra depois',
+        en: 'for later',
+      })
+    } else {
+      step(`c:${src.id}`, `e:${queue.id}`, 'queue', `${src.name} deixa uma tarefa na fila ${queueName}`, `${src.name} leaves a task in the ${queueName} queue`, { pt: 'pra depois', en: 'for later' })
+    }
   }
   if (svc) {
     step(`c:${svc.id}`, `c:${api.id}`, 'reply', `${svcn} devolve o resultado`, `${svcn} returns the result`, { pt: 'pronto', en: 'done' })
   }
   if (screen) {
     step(`c:${api.id}`, `c:${screen.id}`, 'reply', `${an} devolve a resposta`, `${an} sends back the answer`, { pt: 'resposta!', en: 'answer!' })
-    step(`c:${screen.id}`, `c:${screen.id}`, 'show', `${sn} mostra o resultado na tela`, `${sn} shows the result on the screen`, { pt: 'na tela!', en: 'on screen!' })
+    if (known) stepT(`c:${screen.id}`, `c:${screen.id}`, 'show', both((l) => showCaption(mode, res, l)), { pt: 'na tela!', en: 'on screen!' })
+    else step(`c:${screen.id}`, `c:${screen.id}`, 'show', `${sn} mostra o resultado na tela`, `${sn} shows the result on the screen`, { pt: 'na tela!', en: 'on screen!' })
   } else {
     step(`c:${api.id}`, 'person', 'reply', `${an} devolve a resposta`, `${an} sends back the answer`, { pt: 'resposta!', en: 'answer!' })
   }
@@ -282,9 +526,10 @@ function requestFlow(plan: RequestPlan, use: { sec: boolean; send: boolean; queu
     id: `request:${ep.method} ${ep.path}`,
     kind: 'request',
     title,
+    // In words, not HTTP: what the person wants done, and who it passes through.
     summary: {
-      pt: clip(`${screen ? `Quando alguém usa ${sn}, ` : 'Quando alguém faz um pedido, '}${an} recebe ${ep.method} ${ep.path} e devolve a resposta.`, 400),
-      en: clip(`${screen ? `When someone uses ${sn}, ` : 'When someone sends a request, '}${an} receives ${ep.method} ${ep.path} and sends back the answer.`, 400),
+      pt: clip(`O caminho de um pedido para ${verb.pt} ${res}: ${screen ? `da tela ${sn} ` : ''}até ${an}${svc ? `, ${svcn}` : ''}${dbSvc ? ` e ${dbn}` : ''}, e de volta.`, 400),
+      en: clip(`How a request to ${verb.en} ${res} travels: ${screen ? `from the ${sn} screen ` : ''}to ${an}${svc ? `, ${svcn}` : ''}${dbSvc ? ` and ${dbn}` : ''}, and back.`, 400),
     },
     actors,
     steps,
@@ -464,6 +709,8 @@ function jobFlow(ctx: Ctx): Flow | null {
   const owners = [worker.id, ...ctx.deps.filter((d) => d.from === worker.id).map((d) => d.to)]
   const db = serviceUsedBy(ctx, owners, ['database'])
   const send = serviceUsedBy(ctx, owners, SEND_KINDS)
+  const task = ctx.details ? taskPhraseOf(ctx.details.tasks[0]) : null
+  const subject = ctx.details?.subjects.get(worker.id)?.[0] ?? null
 
   const actors: Actor[] = [componentActor(producer)]
   if (queue) actors.push(externalActor(queue))
@@ -479,14 +726,18 @@ function jobFlow(ctx: Ctx): Flow | null {
       from: `c:${producer.id}`,
       to: `e:${queue.id}`,
       action: 'queue',
-      text: { pt: `${p} deixa uma tarefa na fila ${queue.name}`, en: `${p} leaves a task in the ${queue.name} queue` },
+      text: task
+        ? both((l) => (l === 'pt' ? `${p} deixa uma tarefa ${task.pt} na fila ${queue.name}` : `${p} leaves a task ${task.en} in the ${queue.name} queue`))
+        : { pt: `${p} deixa uma tarefa na fila ${queue.name}`, en: `${p} leaves a task in the ${queue.name} queue` },
       say: { pt: 'pra depois', en: 'for later' },
     })
     steps.push({
       from: `e:${queue.id}`,
       to: `c:${worker.id}`,
       action: 'call',
-      text: { pt: `${w} pega a tarefa da fila`, en: `${w} takes the task from the queue` },
+      text: task
+        ? both((l) => (l === 'pt' ? `${w} pega a tarefa ${task.pt} da fila` : `${w} takes the task ${task.en} from the queue`))
+        : { pt: `${w} pega a tarefa da fila`, en: `${w} takes the task from the queue` },
       say: { pt: 'tarefa!', en: 'task!' },
     })
   } else {
@@ -513,7 +764,9 @@ function jobFlow(ctx: Ctx): Flow | null {
       from: `c:${worker.id}`,
       to: `e:${send.id}`,
       action: 'send',
-      text: { pt: `${w} envia ${what.pt} por ${send.name}`, en: `${w} sends ${what.en} through ${send.name}` },
+      text: subject
+        ? both((l) => (l === 'pt' ? `${w} envia o e-mail “${subject}” por ${send.name}` : `${w} sends the e-mail “${subject}” through ${send.name}`))
+        : { pt: `${w} envia ${what.pt} por ${send.name}`, en: `${w} sends ${what.en} through ${send.name}` },
       say: { pt: 'enviado!', en: 'sent!' },
     })
   }
@@ -579,6 +832,7 @@ export function buildFlows(input: FlowInput): Flow[] {
     deps: input.dependencies,
     externals: input.externals,
     fileDeps: input.fileDeps ?? new Map(),
+    details: input.details ?? null,
   }
   const flows: Flow[] = []
 
@@ -588,7 +842,8 @@ export function buildFlows(input: FlowInput): Flow[] {
     flows.push(fitAgent(ctx, agent))
   }
 
-  // Request scenes: the endpoints whose chains reach the most, POST first, one per API part.
+  // Request scenes: the endpoints whose chains reach the most, POST first; one per API part and kind
+  // of action, so creating and listing the same thing can both be shown.
   const plans = input.endpoints
     .map((ep) => planRequest(ctx, ep))
     .filter((p): p is RequestPlan => p !== null)
@@ -603,8 +858,9 @@ export function buildFlows(input: FlowInput): Flow[] {
   let requests = 0
   for (const { plan } of plans) {
     if (requests >= 3) break
-    if (usedApis.has(plan.api.id)) continue
-    usedApis.add(plan.api.id)
+    const kind = `${plan.api.id}|${plan.endpoint.method === 'GET' ? 'read' : 'write'}`
+    if (usedApis.has(kind)) continue
+    usedApis.add(kind)
     flows.push(fitRequest(plan))
     requests++
   }

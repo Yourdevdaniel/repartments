@@ -61,9 +61,22 @@ describe('buildModel on the CRM fixture', () => {
     expect(agent.loop).toBe(true)
   })
 
-  it('tells the story: the assistant first, then the request to create a lead, then the background job', () => {
-    expect(model.flows.map((f) => f.id)).toEqual(['agent:backend/src/agent/support.ts', 'request:POST /leads', 'job'])
+  it('tells the story: the assistant first, then creating and listing leads, then the background job', () => {
+    expect(model.flows.map((f) => f.id)).toEqual(['agent:backend/src/agent/support.ts', 'request:POST /leads', 'request:GET /leads', 'job'])
     expect(model.flows[1].title).toEqual({ pt: 'Criar leads', en: 'Create leads' })
+    expect(model.flows[2].title.pt).toBe('Listar leads')
+  })
+
+  it('tells the Criar leads scene with what the form asks for, what the service saves, and the e-mail it sends', () => {
+    const create = model.flows[1]
+    const pt = create.steps.map((s) => s.text.pt)
+    expect(pt[0]).toBe('O usuário abre Leads, preenche nome, empresa, e-mail e telefone e clica em “Salvar lead”')
+    expect(pt[1]).toBe('A tela envia o novo lead (nome, empresa, e-mail e telefone) para Backend Routes')
+    expect(pt).toContain('Backend Services guarda o novo lead em PostgreSQL: nome, empresa, e-mail e telefone')
+    expect(pt).toContain('PostgreSQL confirma: o lead foi guardado')
+    expect(pt).toContain('Backend Services envia o e-mail “Olá!” por Resend')
+    expect(pt[pt.length - 1]).toBe('A tela mostra que o lead foi salvo')
+    expect(create.steps[0].text.en).toBe('The user opens Leads, fills in nome, empresa, e-mail and telefone and clicks “Salvar lead”')
   })
 
   it('keeps every scene within the limits, with every step pointing at its own actors', () => {

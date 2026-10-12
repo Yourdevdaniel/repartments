@@ -27,32 +27,48 @@ export function App() {
   return <LeadsPage />
 }
 `,
-  'frontend/src/pages/LeadsPage.tsx': `import { useState } from 'react'
+  'frontend/src/pages/LeadsPage.tsx': `import { useEffect, useState } from 'react'
 import { LeadForm } from '../components/LeadForm'
 import { formatDate } from '@/lib/format'
 
 export function LeadsPage() {
   const [saved, setSaved] = useState<string[]>([])
 
-  async function send(name: string) {
+  useEffect(() => {
+    fetch('/api/leads')
+  }, [])
+
+  async function send({ name, company, email, phone }: { name: string; company: string; email: string; phone: string }) {
     const res = await fetch('/api/leads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, company, email, phone }),
     })
     if (res.ok) setSaved([...saved, formatDate(new Date())])
   }
 
-  return <LeadForm onSubmit={send} />
+  return (
+    <main>
+      <h1>Leads</h1>
+      <LeadForm onSubmit={send} />
+    </main>
+  )
 }
 `,
   'frontend/src/components/LeadForm.tsx': `import { useState } from 'react'
 
-export function LeadForm(props: { onSubmit: (name: string) => void }) {
+export function LeadForm(props: { onSubmit: (lead: { name: string; company: string; email: string; phone: string }) => void }) {
   const [name, setName] = useState('')
+  const [company, setCompany] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   return (
-    <form onSubmit={() => props.onSubmit(name)}>
-      <input value={name} onChange={(e) => setName(e.target.value)} />
+    <form onSubmit={() => props.onSubmit({ name, company, email, phone })}>
+      <label>Nome<input value={name} onChange={(e) => setName(e.target.value)} /></label>
+      <label>Empresa<input value={company} onChange={(e) => setCompany(e.target.value)} /></label>
+      <label>E-mail<input value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+      <label>Telefone<input value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
+      <button type="submit">Salvar lead</button>
     </form>
   )
 }
@@ -80,8 +96,14 @@ export function LeadForm(props: { onSubmit: (name: string) => void }) {
 }
 
 model Lead {
-  id   String @id @default(uuid())
-  name String
+  id           String    @id @default(uuid())
+  name         String
+  company      String
+  email        String
+  phone        String
+  status       String    @default("novo")
+  createdAt    DateTime  @default(now())
+  followedUpAt DateTime?
 }
 `,
   'backend/src/server.ts': `import express from 'express'
@@ -137,7 +159,7 @@ export async function listLeads() {
   return prisma.lead.findMany({ orderBy: { createdAt: 'desc' } })
 }
 
-export async function createLead(data: { name: string; email: string }) {
+export async function createLead(data: { name: string; company: string; email: string; phone: string }) {
   const lead = await prisma.lead.create({ data })
   await mail.emails.send({ from: 'crm@example.com', to: data.email, subject: 'Olá!', text: 'Recebemos o seu contato.' })
   await followups.add('followup', { leadId: lead.id })

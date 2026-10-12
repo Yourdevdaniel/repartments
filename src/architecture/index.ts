@@ -10,6 +10,7 @@ import { componentOf, dirOf } from '../shared/components'
 import type { GitHubClient } from '../github/client'
 import { agentsFrom, type AgentFile } from './agents'
 import { buildComponents, type ComponentFile } from './components'
+import { dataModelsOf, emailSubjectsOf, mergeScreenDetails, screenDetailsOf, sentFieldsOf, tasksOf, type CallDetails, type DataModel, type FlowDetails, type ScreenDetails } from './details'
 import { readFiles } from './fetch'
 import { callsOf, endpointsOf, matchCall, type RouteDef } from './endpoints'
 import { databaseLabelOf, externalsFrom, imagesOf, type Usage } from './externals'
@@ -117,6 +118,70 @@ function summaryOf(repoName: string, languages: { name: string }[], components: 
     en.push(`It has ${agents.length === 1 ? 'an AI agent' : `${agents.length} AI agents`}${tools ? ` that chooses between ${count(tools, 'tool', 'tools')}` : ''}.`)
   }
   return { pt: clip(pt.join(' '), 400), en: clip(en.join(' '), 400) }
+}
+
+/**
+ * What the scenes can say beyond the graph, read from the same texts: the data models, what each
+ * screen shows (with the screens it imports), what each front-end call sends, the e-mail subjects and
+ * the queues workers take from. A file that can't be read simply adds nothing.
+ */
+function flowDetailsOf(input: {
+  files: Map<string, string>
+  targetsOf: Map<string, string[]>
+  compOf: (path: string) => string | null
+  endpoints: Endpoint[]
+}): FlowDetails {
+  const { files, targetsOf, compOf, endpoints } = input
+  const models: DataModel[] = []
+  const tasks: string[] = []
+  const screens = new Map<string, ScreenDetails>()
+  const subjects = new Map<string, string[]>()
+  const calls = new Map<string, CallDetails>()
+
+  for (const [path, text] of files) {
+    try {
+      models.push(...dataModelsOf(path, text))
+    } catch {
+      // A file whose models can't be read is simply not drawn.
+    }
+    try {
+      for (const t of tasksOf(text)) if (!tasks.includes(t)) tasks.push(t)
+    } catch {
+      // Same for queue names.
+    }
+    try {
+      const own = screenDetailsOf(path, text)
+      const imported = (targetsOf.get(path) ?? []).map((t) => screenDetailsOf(t, files.get(t) ?? ''))
+      const merged = mergeScreenDetails([own, ...imported])
+      if (merged.title || merged.buttons.length || merged.fields.length) screens.set(path, merged)
+    } catch {
+      // A screen that can't be read keeps the scene's wording.
+    }
+    if (!langOf(path)) continue
+    const comp = compOf(path)
+    try {
+      if (comp) {
+        const list = subjects.get(comp) ?? []
+        for (const s of emailSubjectsOf(text)) if (!list.includes(s)) list.push(s)
+        subjects.set(comp, list)
+      }
+    } catch {
+      // E-mail subjects that can't be read are not drawn.
+    }
+    try {
+      for (const call of callsOf(path, text)) {
+        const hit = matchCall(call.url, endpoints, call.method)
+        if (!hit) continue
+        const key = `${hit.method} ${hit.path}`
+        const sent = call.method === 'GET' ? [] : sentFieldsOf(text, call.line)
+        const prev = calls.get(key)
+        if (!prev || (prev.sent.length === 0 && sent.length > 0)) calls.set(key, { file: path, sent })
+      }
+    } catch {
+      // A call that can't be read is not matched to its screen.
+    }
+  }
+  return { models, calls, screens, subjects, tasks }
 }
 
 /**
@@ -258,7 +323,8 @@ function buildModelWith(input: SourceInput, progress: (stage: 'graph' | 'flows')
   }
 
   progress('flows')
-  const flows = buildFlows({ components, dependencies, externals, endpoints, agents, fileDeps })
+  const details = flowDetailsOf({ files, targetsOf, compOf, endpoints })
+  const flows = buildFlows({ components, dependencies, externals, endpoints, agents, fileDeps, details })
 
   const lines = [...files.values()].reduce((n, t) => n + (t ? t.split('\n').length : 0), 0)
   return {
