@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { loginFrom, parseRoute, useBuilding, type BuildingState, type Route } from './data/building'
 import { lotCount } from './scene/lot'
 import { demoFlats, demoOwner } from './scene/demo'
@@ -7,6 +7,7 @@ import type { Caption } from './scene/story'
 import type { FlatData } from './scene/types'
 import { WEATHERS, type Weather } from './scene/weather'
 import { Backdrop } from './ui/Backdrop'
+import { glass, LoopStrip, Logo, ModeSwitch } from './ui/kit'
 import { copy, doesFor, roles, type Lang } from './ui/roles'
 
 function initialLang(): Lang {
@@ -30,10 +31,6 @@ const WEATHER_ICON: Record<Weather, string> = { sun: '☀️', clouds: '☁️',
 /** Seconds each weather lasts when it changes on its own. */
 const WEATHER_SECONDS = 22
 
-// No backdrop blur: blurring a WebGL canvas that redraws every frame was one of the costliest parts of
-// the page. A more opaque white reads just as well.
-const glass = 'rounded-[22px] border border-white/80 bg-white/[0.86] shadow-[0_18px_50px_-22px_rgba(40,52,110,0.45)]'
-
 /** Phones and tablets get "tap" and "pinch" in the hint instead of "click" and "scroll". */
 const TOUCH = window.matchMedia('(pointer: coarse)').matches
 
@@ -50,6 +47,10 @@ const DEMO: BuildingState = {
   trip: 'idle',
 }
 
+/** The studio (sign-in, analysis, commits) only downloads for people who open it. */
+const Studio = lazy(() => import('./studio/Studio').then((m) => ({ default: m.Studio })))
+const PrivacyPage = lazy(() => import('./privacy/PrivacyPage').then((m) => ({ default: m.PrivacyPage })))
+
 export default function App() {
   const [lang, setLangState] = useState<Lang>(initialLang)
   const [view, setView] = useState<View>({ mode: 'building', entering: null })
@@ -63,12 +64,18 @@ export default function App() {
   const timers = useRef<number[]>([])
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname))
   const street = useBuilding(route.login)
-  const landing = !route.login && !route.demo
-  const data: BuildingState | null = route.login ? street.state : DEMO
+  const landing = !route.login && !route.demo && !route.studio
+  const data: BuildingState | null = route.login ? street.state : route.studio ? null : DEMO
   const ready = data?.kind === 'ready' ? data : null
   const flats = ready?.lots[ready.at].flats ?? []
   const lots = ready ? lotCount(ready.total, ready.lots[0].fetched) : 1
   const flat = view.mode === 'inside' ? (flats.find((f) => f.id === view.id) ?? null) : null
+
+  /** The last page of the public building, so the studio's mode switch can bring the visitor back to it. */
+  const lastTown = useRef(route.studio ? '/' : window.location.pathname)
+  useEffect(() => {
+    if (!route.studio) lastTown.current = window.location.pathname
+  }, [route])
 
   const go = useCallback((path: string) => {
     window.history.pushState(null, '', path)
@@ -86,8 +93,9 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    document.title = route.login ? `@${route.login} · Repartments` : 'Repartments'
-  }, [route.login])
+    // The studio names its own pages.
+    if (!route.studio) document.title = route.login ? `@${route.login} · Repartments` : 'Repartments'
+  }, [route.login, route.studio])
 
   // Someone who landed in a language they don't read gets pointed at the other one, once.
   const [langHint, setLangHint] = useState(() => {
@@ -178,6 +186,20 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [back, view.mode])
 
+  if (route.privacy)
+    return (
+      <Suspense fallback={<div className="h-dvh w-full" style={{ background: SKY.sun }} />}>
+        <PrivacyPage lang={lang} setLang={setLang} onGo={go} />
+      </Suspense>
+    )
+
+  if (route.studio)
+    return (
+      <Suspense fallback={<div className="h-dvh w-full" style={{ background: SKY.sun }} />}>
+        <Studio owner={route.studio.owner} repo={route.studio.repo} lang={lang} setLang={setLang} onGo={go} onTown={() => go(lastTown.current)} />
+      </Suspense>
+    )
+
   return (
     <div className="relative h-dvh w-full overflow-hidden text-ink">
       {WEATHERS.map((w) => (
@@ -216,7 +238,7 @@ export default function App() {
       {/* On a phone the weather and language toggles drop to a second row instead of running off screen.
           Above the full-screen cards (landing, loading, errors), or they'd swallow its clicks. */}
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-start justify-between gap-2 p-4 md:gap-3 md:p-6">
-        <div className="pointer-events-auto flex items-center gap-2">
+        <div className="pointer-events-auto flex flex-wrap items-center gap-2">
           <a
             href="/"
             onClick={(e) => {
@@ -231,6 +253,7 @@ export default function App() {
               <span className="block text-sm leading-tight text-ink-soft">{copy.tagline[lang]}</span>
             </span>
           </a>
+          <ModeSwitch mode="town" lang={lang} onTown={() => undefined} onStudio={() => go('/studio')} />
           {!landing && <SearchForm lang={lang} onGo={go} compact initial={route.login ?? ''} />}
         </div>
         <div className="pointer-events-auto ml-auto flex items-center gap-2">
@@ -301,6 +324,18 @@ export default function App() {
             <p className="text-xs font-bold tracking-wide text-ink-soft uppercase">{flat.repo}</p>
             <p className="mt-1 text-sm leading-snug text-ink-soft">{flat.intro[lang]}</p>
             <StatusChips flat={flat} lang={lang} />
+            {flat.url && route.login && (
+              <a
+                href={`/studio/${ready.owner.login}/${flat.repo}`}
+                onClick={(e) => {
+                  e.preventDefault()
+                  go(`/studio/${ready.owner.login}/${flat.repo}`)
+                }}
+                className="mt-3 mr-1.5 inline-flex h-8 items-center gap-1.5 rounded-full bg-accent px-3 text-xs font-extrabold text-white transition-transform active:scale-[0.97]"
+              >
+                {copy.openStudio[lang]} <span aria-hidden="true">→</span>
+              </a>
+            )}
             {flat.url && (
               <a
                 href={flat.url}
@@ -539,7 +574,7 @@ function SearchForm({ lang, onGo, compact = false, initial = '' }: { lang: Lang;
 /** The front door: what this is, a field for a username, and a few buildings to peek at. */
 function Landing({ lang, onGo }: { lang: Lang; onGo: (path: string) => void }) {
   return (
-    <div className="absolute inset-0 grid place-items-center p-4">
+    <div className="absolute inset-0 grid grid-cols-[minmax(0,1fr)] place-items-center p-4">
       <div className={`${glass} w-[min(30rem,100%)] p-6 text-center md:p-8`}>
         <p className="text-4xl" aria-hidden="true">
           🏢
@@ -569,7 +604,22 @@ function Landing({ lang, onGo }: { lang: Lang; onGo: (path: string) => void }) {
             {copy.demo[lang]}
           </button>
         </div>
-        <p className="mt-5 text-[11px] leading-snug text-ink-soft">{copy.note[lang]}</p>
+        <a
+          href="/studio"
+          onClick={(e) => {
+            e.preventDefault()
+            onGo('/studio')
+          }}
+          className="mt-5 flex items-center gap-3 rounded-2xl bg-white/70 px-4 py-3 text-left transition-colors hover:bg-white"
+        >
+          <span className="text-2xl" aria-hidden="true">🔑</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-extrabold">{copy.studioTitle[lang]}</span>
+            <span className="block text-xs leading-snug text-ink-soft">{copy.studioLead[lang]}</span>
+          </span>
+          <span aria-hidden="true" className="font-extrabold text-accent">→</span>
+        </a>
+        <p className="mt-4 text-[11px] leading-snug text-ink-soft">{copy.note[lang]}</p>
       </div>
     </div>
   )
@@ -595,6 +645,10 @@ function Credits({ lang }: { lang: Lang }) {
         bernardes.dev
       </a>
       <span aria-hidden="true">·</span>
+      <a href={lang === 'pt' ? '/privacidade' : '/privacy'} className={link}>
+        {copy.privacy[lang]}
+      </a>
+      <span aria-hidden="true">·</span>
       <span>{copy.credits[lang]}</span>
     </p>
   )
@@ -603,7 +657,7 @@ function Credits({ lang }: { lang: Lang }) {
 /** While the building goes up, or when it can't. */
 function Status({ state, login, lang, onGo }: { state: BuildingState; login: string; lang: Lang; onGo: (path: string) => void }) {
   return (
-    <div className="absolute inset-0 grid place-items-center p-4">
+    <div className="absolute inset-0 grid grid-cols-[minmax(0,1fr)] place-items-center p-4">
       <div className={`${glass} w-[min(26rem,100%)] p-6 text-center`}>
         {state.kind === 'loading' ? (
           <>
@@ -651,53 +705,5 @@ function StatusChips({ flat, lang }: { flat: FlatData; lang: Lang }) {
         </li>
       ))}
     </ul>
-  )
-}
-
-/**
- * The loop at a glance: one little icon per step, the current one lifted and coloured, and an arrow
- * back to the start, because the story repeats.
- */
-function LoopStrip({ steps, current, text, loopLabel }: { steps: Caption[]; current: number; text: string; loopLabel: string }) {
-  return (
-    <div className={`${glass} pointer-events-auto flex max-w-[min(56rem,100%)] flex-col items-center gap-2.5 px-4 pt-3 pb-3.5`}>
-      <ol className="flex flex-wrap items-center justify-center gap-1" aria-label={loopLabel}>
-        {steps.map((step, i) => {
-          const on = i === current
-          return (
-            <li key={i} className="flex items-center gap-1">
-              {i > 0 && <span aria-hidden="true" className={`h-0.5 w-2 rounded-full ${i <= current ? 'bg-accent/60' : 'bg-ink/10'}`} />}
-              <span
-                aria-current={on ? 'step' : undefined}
-                className={`grid place-items-center rounded-full transition-all duration-300 ${
-                  on ? 'size-10 -translate-y-0.5 bg-accent text-xl shadow-[0_8px_18px_-8px_rgba(47,143,230,0.8)]' : 'size-8 bg-white text-base'
-                } ${!on && i < current ? 'opacity-100' : !on ? 'opacity-60' : ''}`}
-              >
-                {step.icon ?? '•'}
-              </span>
-            </li>
-          )
-        })}
-        <li aria-hidden="true" className="ml-1 text-base font-extrabold text-ink-soft" title={loopLabel}>
-          ↺
-        </li>
-      </ol>
-      <p className="min-h-6 text-center text-[15px] leading-snug font-bold md:text-base" aria-live="polite">
-        {text}
-      </p>
-    </div>
-  )
-}
-
-function Logo() {
-  return (
-    <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
-      <rect x="5" y="4" width="24" height="27" rx="5" fill="#ee9f7f" />
-      <rect x="9" y="8" width="7" height="6" rx="1.6" fill="#fff" />
-      <rect x="18" y="8" width="7" height="6" rx="1.6" fill="#ffe08a" />
-      <rect x="9" y="16" width="7" height="6" rx="1.6" fill="#ffe08a" />
-      <rect x="18" y="16" width="7" height="6" rx="1.6" fill="#fff" />
-      <rect x="14" y="24" width="6" height="7" rx="1.4" fill="#3f9c8f" />
-    </svg>
   )
 }
