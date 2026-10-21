@@ -105,6 +105,18 @@ export class GitHubError extends Error {
 
 export type Fetcher = (url: string, init: RequestInit) => Promise<Response>
 
+/**
+ * GitHub says when a fine-grained token expires (`GitHub-Authentication-Token-Expiration`, like
+ * "2026-10-15 09:00:00 UTC"). After that every building fails, so the last two weeks get a warning
+ * in the server's logs.
+ */
+export function expiringSoon(header: string | null, now = new Date()): boolean {
+  if (!header) return false
+  const at = Date.parse(header.replace(' UTC', 'Z').replace(' ', 'T'))
+  return Number.isFinite(at) && at - now.getTime() < 14 * 86_400_000
+}
+let warned = false
+
 type GraphQLAnswer = { data?: { repositoryOwner: RawOwner | null }; errors?: { type?: string; message: string }[] }
 
 /**
@@ -134,6 +146,11 @@ export async function fetchOwner(
     if (res.status === 401) throw new GitHubError('unavailable', 'GitHub rejected the server token')
     if (res.status === 403 || res.status === 429) throw new GitHubError('rate-limited', 'GitHub rate limit')
     if (!res.ok) throw new GitHubError('unavailable', `GitHub answered ${res.status}`)
+    const expires = res.headers.get('github-authentication-token-expiration')
+    if (!warned && expiringSoon(expires)) {
+      warned = true
+      console.warn(`[repartments] The GITHUB_TOKEN expires ${expires}: make a new one and update it on Vercel before then.`)
+    }
     json = (await res.json()) as GraphQLAnswer
   } catch (err) {
     const retryable = !(err instanceof GitHubError) || (err.kind === 'unavailable' && !err.message.includes('token'))

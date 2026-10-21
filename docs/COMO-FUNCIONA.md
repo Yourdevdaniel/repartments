@@ -17,28 +17,35 @@ A animação é **ilustrativa**. O site nunca mostra código, rota, dado ou segr
 | Estilo | Tailwind CSS v4 | Os cards de vidro, chips, botões |
 | 3D | three.js + react-three-fiber + drei | O prédio, os apartamentos, a câmera, as luzes |
 | Personagens e móveis | Kenney Mini Characters e Furniture Kit (CC0) | Modelos `.glb` com animações (andar, pegar, acenar, sentar…) |
-| Back-end | Função serverless da Vercel (`api/building.ts`) | Falar com o GitHub sem expor o token |
-| Dados | API GraphQL do GitHub | Repositórios, manifestos, PRs, status dos testes |
-| Testes | Vitest | 46 testes das partes puras (analisador, gerador, motor de animação) |
+| Back-end | Funções serverless da Vercel (`api/`) | Prédio público e repasse do login |
+| Login | "Continuar com GitHub" (GitHub App ou OAuth App, com o segredo do app no servidor), ou o device flow sem segredo | Cada pessoa entra com a própria conta; o servidor não guarda sessão nem banco |
+| Dados | APIs GraphQL e REST do GitHub | Repositórios, manifestos, PRs, status, commits, diffs, árvore de arquivos |
+| Testes | Vitest | Partes puras: analisadores, geradores, motor de animação, sessão, rotas, layout do mapa |
 | Hospedagem | Vercel | Site estático + função + cache na borda |
 
 ## Estrutura de pastas
 
 ```
 repartments/
-├─ api/building.ts        ← a função da Vercel (GET /api/building?user=...)
+├─ api/
+│  ├─ building.ts         ← prédio público (GET /api/building?user=...)
+│  └─ auth/               ← repasse do login do estúdio: config, login, callback, claim, device, token
 ├─ server/
-│  ├─ github.ts           ← a consulta GraphQL e a chamada ao GitHub
-│  ├─ analyze.ts          ← transforma manifestos em moradores (regras)
+│  ├─ github.ts           ← a consulta GraphQL do prédio público
+│  ├─ analyze.ts          ← manifestos → moradores (regras)
 │  ├─ handler.ts          ← valida, chama, analisa, monta a resposta
+│  ├─ auth.ts             ← repasse sem estado do login do GitHub (web e device flow)
 │  └─ limiter.ts          ← freio por visitante
 ├─ src/
 │  ├─ App.tsx             ← tela inicial, rotas, painéis, faixa do ciclo
 │  ├─ data/building.ts    ← busca /api/building e converte em apartamentos
-│  ├─ shared/types.ts     ← o "contrato" entre servidor e navegador
+│  ├─ shared/             ← o "contrato" entre as partes (types.ts, studio.ts)
+│  ├─ github/             ← cliente do GitHub no navegador: repositórios, commits
+│  ├─ architecture/       ← análise estática: arquivos, imports, partes, rotas, agentes, cenas
 │  ├─ scene/
 │  │  ├─ story.ts         ← o motor de coreografia (beats → tempo)
 │  │  ├─ rooms.ts         ← o gerador de apartamentos e histórias
+│  │  ├─ tour.ts          ← o gerador das cenas do estúdio
 │  │  ├─ Stage.tsx        ← o Canvas 3D, a câmera, o relógio
 │  │  ├─ Tower.tsx        ← o prédio visto de fora (vidro fosco)
 │  │  ├─ Interior.tsx     ← o apartamento em tela cheia
@@ -47,7 +54,9 @@ repartments/
 │  │  ├─ Life.tsx         ← pedestres e carros
 │  │  ├─ Sky.tsx          ← luzes, nuvens e chuva conforme o clima
 │  │  └─ demo/            ← o prédio de exemplo, digitado à mão
-│  └─ ui/                 ← textos em PT/EN e a cidade borrada do fundo
+│  ├─ studio/             ← o estúdio: login, abas, palco, apresentação, commits, mapa
+│  └─ ui/                 ← textos em PT/EN, peças comuns e a cidade borrada do fundo
+├─ docs/                  ← este guia, arquitetura, análise, API, configuração, ADRs
 ├─ public/models/         ← os .glb da Kenney
 └─ vercel.json            ← rotas da SPA e cabeçalhos de segurança
 ```
@@ -180,21 +189,101 @@ Na cena, `Resident.tsx` lê `sample()` a cada quadro: posiciona o boneco, gira s
 - **Freio** de 20 requisições por minuto por visitante (por instância) e **cache na borda** de 1 h, para ninguém esgotar a cota do token.
 - Auditoria antes do deploy: nenhum segredo nos arquivos, no histórico do git ou no bundle; 0 vulnerabilidades nas dependências.
 
+## O estúdio (`/studio`)
+
+O prédio público só mostra o que é público e nunca mostra código. O **estúdio** (o botão **Prédio | Estúdio** no topo troca entre os dois) é a parte com login: a pessoa entra com a conta do GitHub, abre qualquer repositório que essa conta enxerga (privados também) e o transforma numa apresentação animada para mostrar a um cliente. A arquitetura completa está em [arquitetura.md](arquitetura.md), as decisões em [adr/](adr/README.md), a leitura do código em [analise.md](analise.md) e a configuração em [configuracao.md](configuracao.md).
+
+### Entrar com o GitHub
+
+1. Em `/studio`, **Continuar com GitHub** leva a aba ao GitHub. A pessoa confere a conta e autoriza, e o GitHub a traz de volta para o mesmo estúdio, já com o login feito.
+2. O token vai para um **cofre**: um worker do navegador que guarda o token na memória dele. A página nunca vê o token; ela pede leituras ao cofre, e o cofre só faz as leituras de uma lista fechada (repositórios, commits, arquivos), direto na API do GitHub. O servidor do Repartments só repassa essas trocas com o GitHub, porque o GitHub não aceita que páginas as façam diretamente, e não guarda nada: o código que volta do GitHub vira token no servidor, com o segredo do app, e esse token segue para o cofre por um cookie que dura dois minutos e é lido uma vez.
+   - **Sem o segredo do app configurado**, o botão é **Entrar com o GitHub**: mostra um código curto (como o login do GitHub CLI). O botão copia o código e abre `github.com/login/device`; a pessoa cola, autoriza, e a página continua sozinha. Os dois caminhos chegam ao mesmo lugar.
+3. **O login dura no máximo 8 horas.** O cabeçalho mostra quanto falta ("termina em 7 h 52 min"); nos últimos 10 minutos aparece um aviso para salvar a apresentação; ao terminar, o estúdio explica e pede para entrar de novo. Fechar o site, sair, ou recarregar a página sem outra aba do estúdio aberta também encerra.
+4. A lista mostra os repositórios da conta (próprios, de colaboração e de organizações), com busca e "Carregar mais". Privados têm o selo 🔒.
+
+Sem login: **Ver um exemplo** abre um CRM de exemplo (com assistente de vendas de IA e algumas semanas de commits), e **Abrir uma apresentação salva** abre um arquivo baixado antes. Em desenvolvimento, sem app do GitHub configurado, o botão de entrar usa o login do GitHub CLI da própria máquina.
+
+### Como funciona (a apresentação)
+
+O repositório vira um prédio em que **cada andar é uma cena**:
+
+- **Conheça o sistema** (térreo): um guia visita as partes principais e cada uma diz, numa frase, o que faz.
+- **O que dá para fazer**: as funcionalidades do projeto, lidas do README, dos botões das telas e dos comandos, cada uma encenada como um pedido da pessoa e a resposta da parte que a atende ([ADR 0009](adr/0009-funcionalidades-pelo-readme-e-pela-interface.md)).
+- **Como o agente decide**: a mensagem chega, o agente lê as instruções, pergunta ao modelo de IA, escolhe entre as ferramentas, usa a que precisa e responde.
+- **Jornadas**: o que o cliente faz no sistema, passo a passo: abre a página, aperta o botão, confirma, o sistema faz e a tela mostra que deu certo (por exemplo, "O usuário cancela uma reserva"). O estúdio também lista as páginas do site, lidas dos roteadores e de onde os arquivos ficam ([detalhes](analise.md#jornadas), [ADR 0012](adr/0012-jornadas-pelos-botoes.md)).
+- **Pedidos** ("Criar leads", "Ver clientes", "Cancelar reservas"…): a tela pede, a segurança confere, as regras trabalham, o banco guarda ou entrega, o e-mail sai, a resposta aparece na tela. Rotas que só mantêm o site de pé (verificação de saúde, admin, login, token, webhooks) não viram cena; numa rota do Django, que não diz o método, vale o que a tela faz com ela ou a ação no fim do endereço ([detalhes](analise.md#quais-rotas-viram-pedido)).
+- **Tarefas em segundo plano**, quando há fila.
+
+Cenas com 4 participantes ou mais viram um **escritório**: duas fileiras de salas dos dois lados de um corredor, a de trás com paredes altas e a da frente com divisórias baixas, para a câmera ver tudo por cima. Os moradores andam pelo corredor e **desviam dos móveis** (ninguém atravessa mesas). As legendas usam as palavras do próprio sistema: o título da tela, os campos do formulário ("preenche nome, empresa, e-mail e telefone e clica em “Salvar lead”"), o que o banco guarda, o assunto do e-mail.
+
+Dentro da cena, cada parte é um morador com o nome no crachá; eles andam até o cômodo uns dos outros levando cartas (pedidos) e caixas (respostas), e a legenda explica cada passo. O painel lista quem participa e o passo a passo.
+
+- **Apresentar:** antes de começar, uma janela "Antes de apresentar" faz algumas perguntas de sim ou não, cada uma com um exemplo do que muda:
+  - "Trocar os nomes das partes do sistema por nomes mais simples?" (por exemplo, "Backend Routes" vira "Recepção");
+  - "Trocar os nomes das ferramentas da IA por nomes mais simples?" ("search_leads" vira "Buscar leads");
+  - "Trocar as marcas e o nome do modelo de IA por nomes gerais?" ("PostgreSQL" vira "Banco de dados", "gpt-4o-mini" vira "Modelo de IA");
+  - "Passar para a próxima cena sozinho?", e quais cenas mostrar.
+
+  Depois, tela cheia: só a cena, uma legenda grande e os controles. As escolhas valem também para os commits e o mapa, e vão junto na apresentação salva.
+- **Controles da cena** (apresentando ou não, dentro de uma cena): uma barra como a de um player de vídeo, e o teclado, como no YouTube. `?` mostra a lista na tela.
+
+  | Tecla | O que faz |
+  |---|---|
+  | Espaço ou K | Pausar ou continuar |
+  | → ou L / ← ou J | Próximo passo / passo anterior (depois do último passo, a próxima cena) |
+  | PgDn ou Shift → / PgUp ou Shift ← | Próxima cena / cena anterior |
+  | Home ou 0 / End | Voltar ao começo da cena / ir para o final |
+  | S | Parar: volta ao começo e pausa |
+  | − e + | Mais devagar ou mais rápido: 0,5x, 1x, 1,5x, 2x |
+  | H | Esconder ou mostrar os controles (a cena fica sozinha na tela, boa para gravar) |
+  | Esc | Sair da apresentação (ou voltar para o prédio) |
+
+  Clicar num ícone da faixa de passos também pula para ele. Trocar de cena volta a tocar; a velocidade continua a escolhida. Quem pediu ao sistema menos movimento começa com a cena pausada.
+- **Editar roteiro:** renomear moradores com as palavras do cliente ("Backend Routes" → "Recepção"), reescrever legendas, mudar títulos e esconder cenas. O novo nome vale em todo lugar: legendas, mapa e commits.
+- **Roteiro do autor** (menu **Roteiro**): o `repartments.json` da raiz do repositório, ou um importado, diz o que o sistema é, como as partes se chamam e quais cenas mostrar, e substitui as cenas lidas do código (que voltam por "Ver as cenas lidas do código"). **Copiar prompt para a IA** copia um texto para a pessoa colar na IA que ela já usa (o estúdio não envia nada), e **Ver o prompt** mostra esse texto inteiro antes (ele também está no topo de **Editar roteiro**); **Importar roteiro de um arquivo…** ou **Colar a resposta da IA…** lê a resposta; **Copiar pedido de correção para a IA** devolve à IA os avisos; **Exportar roteiro** baixa o que a tela mostra, para guardar no repositório. Se o commit do roteiro não é o aberto, aparece o aviso de desatualizado. Detalhes em [roteiro.md](roteiro.md).
+- **Privacidade**: a política fica em `/privacidade` (link nos créditos e embaixo do botão de entrar). Com commits na tela, **Salvar apresentação** pergunta se o arquivo vai com os nomes dos autores ou com "Autor 1, 2…". O registro das operações e o que falta antes de publicar estão em [privacidade.md](privacidade.md).
+- **Salvar apresentação:** baixa um `.json` com o modelo, o roteiro e os commits em cena (nomes de arquivos e tamanhos, nunca código), para apresentar depois sem login.
+- **Vídeo e PowerPoint** (na janela "Antes de apresentar", em "Ou salvar como"), com as mesmas escolhas de nomes, cenas e velocidade ([ADR 0007](adr/0007-video-e-powerpoint-no-navegador.md)):
+  - **🎬 Vídeo:** a apresentação toca uma vez, cena por cena, e é gravada em 1920×1080 com o título e a legenda de cada passo desenhados no vídeo. No fim, baixa um MP4 (ou WebM, nos navegadores que não gravam MP4). Leva o tempo da apresentação; a aba precisa ficar aberta e na frente. Esc cancela.
+  - **📊 PowerPoint:** em alguns segundos, o estúdio passa por cada cena e tira uma foto. O `.pptx` tem uma capa com o resumo, um slide por cena (foto, quem participa, passo a passo) com o texto completo nas anotações do apresentador, e um fechamento.
+  - Tudo é feito no navegador; nada vai para servidor nenhum.
+
+### Commits (as obras)
+
+Outro prédio: **cada andar é um commit** (os 12 mais recentes, o mais novo no topo) e o térreo é **"Onde o trabalho acontece"**, o diário de obras que visita as partes que mais mudaram. Dentro de um commit, **o autor entra e visita cada parte que mudou**; quanto mais mudou, **mais quentes as paredes** do cômodo. As legendas falam para leigos: "@ana traz uma correção: “Login expirava cedo demais”", "@ana mexe em Porteiro: mudança pequena (1 arquivo)". Filtros por branch, autor e período; botões para commits mais antigos e mais novos; "Apresentar" toca a história do mais antigo ao mais novo. O diff de verdade fica no GitHub, a um clique.
+
+### Mapa
+
+A arquitetura em faixas, de cima para baixo: telas, API, segurança, regras de negócio, inteligência artificial, tarefas, dados, e os serviços de fora (banco, fila, modelo de IA, e-mail…). Passar o mouse acende as conexões; clicar abre os detalhes. Agentes têm **Ver como decide**, que desenha o fluxo de decisão. **Calor dos commits** pinta as partes pelo quanto mudaram nos commits em cena; **Commit selecionado** acende as partes do commit que estava aberto.
+
+### Como a apresentação é gerada
+
+Tudo sai de uma **análise estática** feita **no navegador**, sem LLM (detalhes em [analise.md](analise.md)):
+
+1. lê a árvore de arquivos e o código que importa (até 700 arquivos), nunca `.env` nem chaves;
+2. descobre quem importa quem e agrupa os arquivos em **partes** por pasta, cada uma numa camada;
+3. acha as **rotas** (Express, FastAPI, Django, Next.js…) e liga as telas que chamam essas rotas;
+4. reconhece **serviços de fora** pelos pacotes (PostgreSQL, Redis, OpenAI, Stripe…);
+5. encontra **agentes de IA** pelo SDK que usam, com as instruções, as ferramentas e o laço de decisão;
+6. escreve as **cenas** com frases prontas em português e inglês.
+
+Depois, `src/scene/tour.ts` transforma cada cena num apartamento: um cômodo por participante, na ordem em que aparecem, e uma história em que quem entrega vai até quem recebe. É o mesmo motor de animação do prédio público.
+
 ## Rodar no PC
 
 ```sh
 npm install
 npm run dev        # http://localhost:5173 (ou a porta que aparecer)
-npm test           # 46 testes
+npm test           # todos os testes (Vitest)
 npm run build      # gera dist/ para produção
 ```
 
-Em desenvolvimento, o Vite serve `/api/building` com o mesmo código da função. O token vem de `GITHUB_TOKEN` ou, se não houver, do GitHub CLI logado (`gh auth token`). Ele fica só na memória do processo.
+Em desenvolvimento, o Vite serve `/api/building` e o repasse do login com o mesmo código das funções. O token do prédio público vem de `GITHUB_TOKEN` ou, se não houver, do GitHub CLI logado (`gh auth token`). Ele fica só na memória do processo. Variáveis do estúdio: ver [configuracao.md](configuracao.md).
 
 ## Publicar
 
 1. Criar o projeto na Vercel apontando para esta pasta (o Vite é detectado sozinho; a pasta `api/` vira função).
-2. Em *Settings → Environment Variables*, criar `GITHUB_TOKEN` com um token fine-grained sem permissões.
+2. Em *Settings → Environment Variables*, criar `GITHUB_TOKEN` com um token fine-grained sem permissões e, para o estúdio, `GITHUB_CLIENT_ID` ([configuracao.md](configuracao.md)).
 3. Deploy. As rotas como `/Yourdevdaniel` caem no app graças ao `vercel.json`.
 
 ## Limitações conhecidas

@@ -1,0 +1,105 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Yourdevdaniel/repartments/main/public/schema/repartments-1.json",
+  "version": 1,
+  "commit": "a1b2c3d",
+  "writtenAt": "2026-10-08",
+  "about": {
+    "pt": "Um CRM para a equipe comercial cadastrar clientes em potencial, acompanhar cada um e pedir ajuda a um assistente.",
+    "en": "A CRM for the sales team to register prospects, follow each one and ask an assistant for help."
+  },
+  "parts": [
+    {
+      "id": "telas",
+      "name": { "pt": "Telas", "en": "Screens" },
+      "does": { "pt": "Mostram a lista de contatos e o formulário de cadastro.", "en": "Show the contact list and the sign-up form." },
+      "role": "screen",
+      "paths": ["frontend/src/pages", "frontend/src/components"]
+    },
+    {
+      "id": "balcao",
+      "name": { "pt": "Balcão de pedidos", "en": "Order desk" },
+      "does": { "pt": "Recebe os pedidos das telas e do assistente.", "en": "Receives requests from the screens and the assistant." },
+      "role": "api",
+      "paths": ["backend/src/routes"]
+    },
+    {
+      "id": "porteiro",
+      "name": { "pt": "Porteiro", "en": "Doorman" },
+      "does": { "pt": "Confere quem está logado antes de deixar passar.", "en": "Checks who is logged in before letting anyone through." },
+      "role": "security",
+      "paths": ["backend/src/middleware/auth.ts"]
+    },
+    {
+      "id": "cadastro",
+      "name": { "pt": "Cadastro de contatos", "en": "Contact records" },
+      "does": { "pt": "Cria e lista os contatos.", "en": "Creates and lists contacts." },
+      "role": "service",
+      "paths": ["backend/src/services"]
+    },
+    {
+      "id": "arquivo",
+      "name": { "pt": "Banco de dados", "en": "Database" },
+      "does": { "pt": "Guarda todos os contatos.", "en": "Keeps every contact." },
+      "role": "database",
+      "paths": ["backend/src/db", "backend/prisma/schema.prisma"]
+    }
+  ],
+  "features": [
+    {
+      "name": { "pt": "Cadastrar contato", "en": "Add a contact" },
+      "does": { "pt": "Preenche nome, empresa, e-mail e telefone de um novo contato.", "en": "Fills in name, company, e-mail and phone of a new contact." },
+      "how": "button",
+      "file": "frontend/src/components/LeadForm.tsx",
+      "line": 1
+    },
+    {
+      "name": { "pt": "Ver contatos", "en": "See contacts" },
+      "does": { "pt": "Lista os contatos já cadastrados.", "en": "Lists the contacts already saved." },
+      "how": "button",
+      "file": "frontend/src/pages/LeadsPage.tsx"
+    },
+    {
+      "name": { "pt": "Perguntar ao assistente", "en": "Ask the assistant" },
+      "does": { "pt": "Responde sobre os contatos e agenda ligações.", "en": "Answers about contacts and schedules calls." },
+      "how": "readme",
+      "file": "backend/src/agent/support.ts"
+    }
+  ],
+  "scenes": [
+    {
+      "title": { "pt": "Cadastrar um contato", "en": "Adding a contact" },
+      "summary": { "pt": "Da tela até o banco de dados.", "en": "From the screen to the database." },
+      "cast": [
+        { "id": "vendedor", "name": { "pt": "Vendedor", "en": "Salesperson" }, "role": "person" },
+        { "id": "tela", "part": "telas" },
+        { "id": "balcao", "part": "balcao" },
+        { "id": "porteiro", "part": "porteiro" },
+        { "id": "banco", "part": "arquivo" }
+      ],
+      "steps": [
+        { "from": "vendedor", "to": "tela", "action": "ask", "text": { "pt": "Preenche o formulário de novo contato.", "en": "Fills in the new contact form." }, "say": { "pt": "Novo contato", "en": "New contact" }, "file": "frontend/src/components/LeadForm.tsx" },
+        { "from": "tela", "to": "balcao", "action": "call", "text": { "pt": "Envia o cadastro para o balcão.", "en": "Sends the sign-up to the desk." }, "file": "backend/src/routes/leads.ts" },
+        { "from": "balcao", "to": "porteiro", "action": "check", "text": { "pt": "O porteiro confere se a pessoa está logada.", "en": "The doorman checks the person is logged in." }, "file": "backend/src/middleware/auth.ts" },
+        { "from": "balcao", "to": "banco", "action": "save", "text": { "pt": "O contato é guardado no banco de dados.", "en": "The contact is kept in the database." }, "file": "backend/src/services/leads.ts" },
+        { "from": "tela", "to": "vendedor", "action": "show", "text": { "pt": "A lista mostra o novo contato.", "en": "The list shows the new contact." } }
+      ]
+    },
+    {
+      "title": { "pt": "Perguntar ao assistente", "en": "Asking the assistant" },
+      "summary": { "pt": "O assistente consulta os contatos e responde.", "en": "The assistant looks up contacts and answers." },
+      "cast": [
+        { "id": "vendedor", "name": { "pt": "Vendedor", "en": "Salesperson" }, "role": "person" },
+        { "id": "balcao", "part": "balcao" },
+        { "id": "assistente", "name": { "pt": "Assistente", "en": "Assistant" }, "role": "agent", "does": { "pt": "Entende a pergunta e escolhe o que fazer.", "en": "Understands the question and chooses what to do." } },
+        { "id": "banco", "part": "arquivo" }
+      ],
+      "steps": [
+        { "from": "vendedor", "to": "balcao", "action": "ask", "text": { "pt": "Pergunta quais contatos precisam de retorno.", "en": "Asks which contacts need a follow-up." } },
+        { "from": "balcao", "to": "assistente", "action": "call", "text": { "pt": "O balcão passa a pergunta ao assistente.", "en": "The desk hands the question to the assistant." }, "file": "backend/src/routes/assistant.ts" },
+        { "from": "assistente", "to": "assistente", "action": "decide", "text": { "pt": "Decide buscar os contatos.", "en": "Decides to look up the contacts." }, "file": "backend/src/agent/support.ts" },
+        { "from": "assistente", "to": "banco", "action": "fetch", "text": { "pt": "Busca os contatos no banco.", "en": "Fetches the contacts from the database." } },
+        { "from": "assistente", "to": "vendedor", "action": "reply", "text": { "pt": "Responde com a lista de quem chamar.", "en": "Answers with the list of who to call." } }
+      ]
+    }
+  ]
+}

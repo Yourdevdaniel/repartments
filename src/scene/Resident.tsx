@@ -47,9 +47,11 @@ type Props = {
   hideFlag?: string
   /** Opens an umbrella when it rains. */
   umbrella?: boolean
+  /** Bigger name tag and speech bubble, for scenes the camera shows from further away. */
+  tagScale?: number
 }
 
-export function Resident({ id, model, story, label, color = '#999', y = 0, offset = 0, hideFlag, umbrella = false }: Props) {
+export function Resident({ id, model, story, label, color = '#999', y = 0, offset = 0, hideFlag, umbrella = false, tagScale = 1 }: Props) {
   const gltf = useGLTF(`/models/characters/${model}.glb`)
   const root = useRef<Group>(null)
   const time = useStoryTime()
@@ -105,7 +107,7 @@ export function Resident({ id, model, story, label, color = '#999', y = 0, offse
     if (yaw.current === null) yaw.current = pose.yaw
     let diff = pose.yaw - yaw.current
     diff = Math.atan2(Math.sin(diff), Math.cos(diff))
-    yaw.current += diff * Math.min(1, delta * 10)
+    yaw.current += diff * Math.min(1, delta * 10 * Math.max(1, time.rate))
     group.rotation.y = yaw.current
 
     const base: AnimName = pose.anim
@@ -133,7 +135,7 @@ export function Resident({ id, model, story, label, color = '#999', y = 0, offse
       }
       now.carry = pose.carrying
     }
-    mixer.update(time.paused ? 1e-4 : delta)
+    mixer.update(time.paused ? 1e-4 : delta * time.rate)
 
     // Speech bubble: swap the picture when the line changes and pop it in.
     const line = bubbleAt(story, id, t)
@@ -157,7 +159,7 @@ export function Resident({ id, model, story, label, color = '#999', y = 0, offse
       s.pop = Math.min(1, s.pop + delta * 6)
       const k = 1 - Math.pow(1 - s.pop, 3)
       const overshoot = 1 + Math.sin(k * Math.PI) * 0.12
-      sprite.scale.set(BUBBLE_HEIGHT * s.aspect * k * overshoot, BUBBLE_HEIGHT * k * overshoot, 1)
+      sprite.scale.set(BUBBLE_HEIGHT * tagScale * s.aspect * k * overshoot, BUBBLE_HEIGHT * tagScale * k * overshoot, 1)
       material.opacity = k
     }
   })
@@ -166,7 +168,7 @@ export function Resident({ id, model, story, label, color = '#999', y = 0, offse
     <group ref={root}>
       <primitive object={scene} scale={CHARACTER_SCALE} />
       {badge && (
-        <sprite position={[0, 0.74, 0]} scale={[BADGE_HEIGHT * badge.aspect, BADGE_HEIGHT, 1]} center={[0.5, 0]}>
+        <sprite position={[0, 0.74, 0]} scale={[BADGE_HEIGHT * tagScale * badge.aspect, BADGE_HEIGHT * tagScale, 1]} center={[0.5, 0]}>
           <spriteMaterial map={badge.texture} transparent depthWrite={false} />
         </sprite>
       )}
@@ -182,7 +184,7 @@ export function Resident({ id, model, story, label, color = '#999', y = 0, offse
           </mesh>
         </group>
       )}
-      <sprite ref={bubble} position={[0, 0.92, 0]} center={[0.5, 0]} visible={false} renderOrder={2}>
+      <sprite ref={bubble} position={[0, 0.74 + BADGE_HEIGHT * tagScale + 0.03, 0]} center={[0.5, 0]} visible={false} renderOrder={2}>
         <spriteMaterial ref={bubbleMaterial} transparent depthWrite={false} depthTest={false} />
       </sprite>
     </group>

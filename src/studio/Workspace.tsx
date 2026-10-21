@@ -1,0 +1,370 @@
+/**
+ * One repo in the studio: the presentation, the commits and the map, side by side as tabs.
+ *
+ * It owns what the tabs share: the architecture model (read once, then kept while the tab is open),
+ * the presenter's script edits, the commit on screen in the Commits tab and what the loaded commits
+ * add up to, so the map can highlight or colour the same things the commits show.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { AnalysisEvent, ArchitectureModel, Churn, CommitDetail, RepoSummary, StudioErrorCode } from '../shared/studio'
+import { applyEdits, PLAIN, type ScriptEdits } from '../scene/tour'
+import { applyAuthored, parseAuthored } from '../architecture/authored'
+import { glass } from '../ui/kit'
+import type { Lang } from '../ui/roles'
+import { api, StudioApiError } from './api'
+import { AuthoredMenu, AuthoredNotice } from './Authored'
+import { t } from './copy'
+import { MapTab } from './map/MapTab'
+import { PresentTab } from './present/PresentTab'
+import { WorksTab } from './works/WorksTab'
+import { download, presentationFile, store, type PresentationFile } from './store'
+import { EXPORT_EVENT, type ExportKind, useDetailsMenu } from './lib/menu'
+
+export type Source = { kind: 'repo'; owner: string; repo: string } | { kind: 'file'; file: PresentationFile }
+
+type Tab = 'present' | 'commits' | 'map'
+const TABS: Tab[] = ['present', 'commits', 'map']
+
+/** An item of the "Save presentation" menu. */
+const saveItem = 'block w-full rounded-xl px-3 py-2 text-left text-xs font-extrabold text-ink hover:bg-ink/[0.06]'
+
+type Analysis =
+  | { state: 'idle' }
+  | { state: 'running'; stage: Extract<AnalysisEvent, { type: 'progress' }> }
+  | { state: 'failed'; error: StudioErrorCode }
+
+function initialTab(): Tab {
+  const tab = new URLSearchParams(window.location.search).get('tab')
+  return TABS.includes(tab as Tab) ? (tab as Tab) : 'present'
+}
+
+export function Workspace({ source, lang }: { source: Source; lang: Lang }) {
+  const owner = source.kind === 'repo' ? source.owner : source.file.model.repo.owner
+  const repo = source.kind === 'repo' ? source.repo : source.file.model.repo.name
+  const [tab, setTabState] = useState<Tab>(initialTab)
+  const [info, setInfo] = useState<RepoSummary | null>(null)
+  const [infoError, setInfoError] = useState<StudioErrorCode | null>(null)
+  const [model, setModel] = useState<ArchitectureModel | null>(() => (source.kind === 'file' ? source.file.model : store.model(owner, repo)))
+  const [edits, setEditsState] = useState<ScriptEdits>(() => (source.kind === 'file' ? source.file.edits : store.edits(owner, repo)))
+  const [analysis, setAnalysis] = useState<Analysis>({ state: 'idle' })
+  /** An author's script imported here (kept for "Read again"), and whether the scenes read from the code are on show instead. */
+  const [imported, setImported] = useState<string | null>(() => (source.kind === 'repo' ? store.authored(owner, repo) : null))
+  const [showingAutomatic, setShowingAutomatic] = useState(false)
+  const [selected, setSelected] = useState<CommitDetail | null>(null)
+  const [churn, setChurn] = useState<Churn | null>(null)
+  const [churnLoading, setChurnLoading] = useState(false)
+  /** The commits on screen in the Commits tab (or saved with an opened presentation). */
+  const [loaded, setLoaded] = useState<CommitDetail[]>(() => (source.kind === 'file' ? source.file.commits : []))
+  const abort = useRef<AbortController | null>(null)
+  const saveMenu = useDetailsMenu()
+
+  /** Asks the Theater to export (it listens for the event); the menu closes. */
+  const exportAs = (kind: ExportKind) => {
+    saveMenu.close()
+    window.dispatchEvent(new CustomEvent(EXPORT_EVENT, { detail: { kind } }))
+  }
+
+  const setTab = (next: Tab) => {
+    setTabState(next)
+    const url = new URL(window.location.href)
+    url.searchParams.set('tab', next)
+    url.searchParams.delete('login')
+    window.history.replaceState(null, '', url)
+  }
+
+  // A refused token already signs the person out (see `api.ts`); here it's just the message.
+  const failed = useCallback((err: unknown): StudioErrorCode => (err instanceof StudioApiError ? err.code : 'unavailable'), [])
+
+  useEffect(() => {
+    if (source.kind !== 'repo') return
+    const ctrl = new AbortController()
+    api
+      .repo(owner, repo, ctrl.signal)
+      .then(setInfo)
+      .catch((err: Error) => err.name !== 'AbortError' && setInfoError(failed(err)))
+    return () => ctrl.abort()
+  }, [source.kind, owner, repo, failed])
+
+  useEffect(() => () => abort.current?.abort(), [])
+
+  const analyze = async (script: string | null = imported) => {
+    abort.current?.abort()
+    const ctrl = new AbortController()
+    abort.current = ctrl
+    setAnalysis({ state: 'running', stage: { type: 'progress', stage: 'tree' } })
+    try {
+      const next = await api.architecture(owner, repo, undefined, (stage) => setAnalysis({ state: 'running', stage }), ctrl.signal, script ?? undefined)
+      setModel(next)
+      setShowingAutomatic(false)
+      store.saveModel(next)
+      // A script that was refused isn't kept: reading again goes back to the repo's own.
+      const keep = script !== null && !next.authored?.problems.some((p) => p.level === 'error') ? script : null
+      setImported(keep)
+      store.saveAuthored(owner, repo, keep)
+      setAnalysis({ state: 'idle' })
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return
+      setAnalysis({ state: 'failed', error: failed(err) })
+    }
+  }
+
+  /** An imported script: the repo is read again with it, so the files it cites are checked; a saved presentation takes it as is. */
+  const importScript = (text: string) => {
+    if (source.kind === 'repo') return void analyze(text)
+    if (!model) return
+    setModel(applyAuthored(model, parseAuthored(text, null), 'import'))
+    setShowingAutomatic(false)
+  }
+  const removeImport = () => void analyze(null)
+
+  const setEdits = (next: ScriptEdits) => {
+    setEditsState(next)
+    if (source.kind === 'repo') store.saveEdits(owner, repo, next)
+  }
+
+  const loadChurn = async () => {
+    if (source.kind !== 'repo') return
+    setChurnLoading(true)
+    try {
+      setChurn(await api.churn(owner, repo, {}, 30))
+    } catch (err) {
+      failed(err)
+    } finally {
+      setChurnLoading(false)
+    }
+  }
+
+  const naming = edits.naming ?? PLAIN
+  // The scenes on show: the author's script, or the ones read from the code that it keeps aside.
+  const shown = useMemo<ArchitectureModel | null>(
+    () => (model && showingAutomatic && model.automatic ? { ...model, flows: model.automatic } : model),
+    [model, showingAutomatic],
+  )
+
+  // The presenter's names for the parts (renamed by hand, or the plain label), so the commits tell
+  // a part the way the presentation does. `name` stays the code's name for the technical switch.
+  const named = useMemo<ArchitectureModel | null>(
+    () =>
+      model
+        ? {
+            ...model,
+            components: model.components.map((c) => {
+              const own = edits.actors[c.id]
+              if (!own?.en?.trim() && !own?.pt?.trim()) return c
+              const base = c.label ?? { en: c.name, pt: c.name }
+              return { ...c, label: { en: own.en?.trim() || base.en, pt: own.pt?.trim() || base.pt } }
+            }),
+          }
+        : null,
+    [model, edits],
+  )
+  // The map shows parts by the same names the presentation uses right now.
+  const mapModel = useMemo<ArchitectureModel | null>(
+    () =>
+      named && naming.parts === 'plain'
+        ? { ...named, components: named.components.map((c) => ({ ...c, name: (c.label ?? { en: c.name, pt: c.name })[lang] })) }
+        : named,
+    [named, naming.parts, lang],
+  )
+
+  const fmt = new Intl.DateTimeFormat(lang === 'pt' ? 'pt-BR' : 'en', { dateStyle: 'medium', timeStyle: 'short' })
+
+  if (infoError && source.kind === 'repo') {
+    return (
+      <div className="grid h-full grid-cols-[minmax(0,1fr)] place-items-center p-4">
+        <div className={`${glass} w-[min(28rem,100%)] p-6 text-center`}>
+          <p className="text-4xl" aria-hidden="true">🔎</p>
+          <p className="mt-3 text-lg font-extrabold" role="alert">{t.errors[infoError][lang]}</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Every tab tells the story in the system's own parts, so they all need the architecture first.
+  const needsModel = !model
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="relative z-40 flex flex-wrap items-center gap-2 px-3 pb-2 md:px-4">
+        <div className={`${glass} flex p-1`} role="tablist" aria-label={t.studio[lang]}>
+          {TABS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+              className={`h-9 rounded-full px-4 text-sm font-extrabold transition-colors ${tab === id ? 'bg-ink text-white' : 'text-ink-soft hover:text-ink'}`}
+            >
+              {t.tabs[id][lang]}
+            </button>
+          ))}
+        </div>
+        {info?.private && <span className="rounded-full bg-ink/[0.07] px-2.5 py-1 text-xs font-extrabold text-ink-soft">🔒 {t.private[lang]}</span>}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {model && analysis.state !== 'running' && (
+            <span className="hidden text-xs font-semibold text-ink-soft md:inline">{t.analyzedAt(fmt.format(new Date(model.generatedAt)))[lang]}</span>
+          )}
+          {model && source.kind === 'repo' && analysis.state !== 'running' && (
+            <button type="button" onClick={() => void analyze()} className="h-9 rounded-full bg-white/80 px-3.5 text-xs font-extrabold text-ink transition-colors hover:bg-white">
+              ↻ {t.reanalyze[lang]}
+            </button>
+          )}
+          {shown && analysis.state !== 'running' && (
+            <AuthoredMenu
+              model={shown}
+              flows={applyEdits(shown.flows, edits)}
+              lang={lang}
+              showingAutomatic={showingAutomatic}
+              onShowAutomatic={setShowingAutomatic}
+              onImport={importScript}
+              onRemoveImport={imported !== null && source.kind === 'repo' ? removeImport : null}
+            />
+          )}
+          {model && (
+            <details ref={saveMenu.details} onToggle={saveMenu.onToggle} className="relative">
+              <summary
+                ref={saveMenu.summary}
+                role="button"
+                aria-expanded={saveMenu.open}
+                title={t.saveHint[lang]}
+                className="flex h-9 cursor-pointer list-none items-center rounded-full bg-white/80 px-3.5 text-xs font-extrabold text-ink transition-colors hover:bg-white"
+              >
+                ⬇ {t.save[lang]}
+              </summary>
+              <div className="absolute right-0 z-30 mt-2 w-72 rounded-[22px] border border-white/80 bg-white p-2 shadow-[0_18px_50px_-22px_rgba(40,52,110,0.45)]">
+                {tab === 'present' && (
+                  <>
+                    <button type="button" onClick={() => exportAs('deck')} className={saveItem}>
+                      {t.saveDeck[lang]}
+                    </button>
+                    <button type="button" onClick={() => exportAs('video')} className={saveItem}>
+                      {t.saveVideo[lang]}
+                    </button>
+                  </>
+                )}
+                {loaded.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => download(`${model.repo.name}-apresentacao.json`, presentationFile(model, edits, loaded))}
+                    className={saveItem}
+                  >
+                    {t.saveJson[lang]}
+                  </button>
+                ) : (
+                  // With commits on screen the file carries their authors' names: offer it without them too.
+                  <>
+                    <p className="px-3 pt-1 pb-2 text-[11px] leading-snug text-ink-soft">{t.saveNames[lang]}</p>
+                    <button
+                      type="button"
+                      onClick={() => download(`${model.repo.name}-apresentacao.json`, presentationFile(model, edits, loaded))}
+                      className={saveItem}
+                    >
+                      {t.saveWithNames[lang]}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => download(`${model.repo.name}-apresentacao.json`, presentationFile(model, edits, loaded, { lang }))}
+                      className={saveItem}
+                    >
+                      {t.saveWithoutNames[lang]}
+                    </button>
+                  </>
+                )}
+                <p className="px-3 pt-1 pb-1 text-[11px] leading-snug text-ink-soft">{t.saveJsonNote[lang]}</p>
+              </div>
+            </details>
+          )}
+        </div>
+      </div>
+
+      {/* A refused script is answered on any tab: the "Roteiro" menu it was pasted in is on all of them. */}
+      {model && !showingAutomatic && analysis.state !== 'running' && (tab === 'present' || model.authored?.problems.some((p) => p.level === 'error')) && (
+        <AuthoredNotice model={model} lang={lang} />
+      )}
+
+      <div className="relative min-h-0 flex-1">
+        {analysis.state === 'running' ? (
+          <Progress lang={lang} event={analysis.stage} />
+        ) : needsModel || (analysis.state === 'failed' && !model) ? (
+          <AnalyzeCard lang={lang} canRead={source.kind === 'repo'} error={analysis.state === 'failed' ? analysis.error : null} onAnalyze={() => void analyze()} />
+        ) : tab === 'present' && shown ? (
+          <PresentTab model={shown} edits={edits} onEdits={setEdits} lang={lang} />
+        ) : tab === 'map' && mapModel ? (
+          <div className="h-full overflow-y-auto px-3 pb-3 md:px-4 md:pb-4">
+            <MapTab
+              model={mapModel}
+              lang={lang}
+              churn={churn}
+              onLoadChurn={source.kind === 'repo' ? loadChurn : () => setTab('commits')}
+              churnLoading={churnLoading}
+              commit={selected}
+            />
+          </div>
+        ) : named && (source.kind === 'repo' || loaded.length > 0) ? (
+          <WorksTab
+            owner={owner}
+            repo={repo}
+            defaultBranch={info?.defaultBranch ?? named.repo.branch}
+            model={named}
+            naming={naming}
+            onNaming={(next) => setEdits({ ...edits, naming: next })}
+            lang={lang}
+            preloaded={source.kind === 'file' ? loaded : null}
+            onCommit={setSelected}
+            onChurn={setChurn}
+            onLoaded={setLoaded}
+          />
+        ) : (
+          <div className="grid h-full grid-cols-[minmax(0,1fr)] place-items-center p-4">
+            <p className={`${glass} max-w-md px-5 py-4 text-center text-sm font-bold text-ink-soft`}>{t.offline[lang]}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Before the first analysis (or after one failed): what will happen, and the button to start it. */
+function AnalyzeCard({ lang, canRead, error, onAnalyze }: { lang: Lang; canRead: boolean; error: StudioErrorCode | null; onAnalyze: () => void }) {
+  return (
+    <div className="grid h-full grid-cols-[minmax(0,1fr)] place-items-center overflow-y-auto p-4">
+      <div className={`${glass} w-[min(34rem,100%)] p-6 text-center md:p-8`}>
+        <p className="text-4xl" aria-hidden="true">🏗️</p>
+        <h2 className="mt-3 text-xl leading-tight font-extrabold tracking-[-0.01em] md:text-2xl">{t.analyzeTitle[lang]}</h2>
+        <p className="mt-2 text-[15px] leading-snug text-ink-soft">{t.analyzeLead[lang]}</p>
+        {error && (
+          <p className="mt-3 rounded-2xl bg-[#ffe4e4] px-3 py-2 text-sm font-bold text-[#a12d2d]" role="alert">
+            {t.errors[error][lang]}
+          </p>
+        )}
+        {canRead && (
+          <button type="button" onClick={onAnalyze} className="mt-5 h-12 rounded-full bg-ink px-6 text-[15px] font-extrabold text-white transition-transform active:scale-[0.97]">
+            {error ? t.retry[lang] : t.analyze[lang]}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** While the repo is read: which stage, and a bar while files come in. */
+function Progress({ lang, event }: { lang: Lang; event: Extract<AnalysisEvent, { type: 'progress' }> }) {
+  const share = event.stage === 'files' && event.total ? (event.done ?? 0) / event.total : null
+  const order = ['tree', 'files', 'graph', 'flows'] as const
+  const at = order.indexOf(event.stage)
+  return (
+    <div className="grid h-full grid-cols-[minmax(0,1fr)] place-items-center p-4">
+      <div className={`${glass} w-[min(26rem,100%)] p-6 text-center`} aria-live="polite">
+        <p className="animate-bounce text-4xl motion-reduce:animate-none" aria-hidden="true">🏗️</p>
+        <p className="mt-3 text-lg font-extrabold">
+          {t.stages[event.stage][lang]}
+          {share !== null && ` ${event.done}/${event.total}`}
+        </p>
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-ink/10" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(((at + (share ?? 0)) / order.length) * 100)}>
+          <div className="h-full rounded-full bg-accent transition-[width] duration-500" style={{ width: `${((at + (share ?? 0.5)) / order.length) * 100}%` }} />
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -12,6 +12,8 @@ import type { CastMember, Decor, FlatData, FlatLayout, Placement } from './types
 
 const WALL = 0.06
 const STUB = 0.28
+/** The low wall along the front of an office's front row, high enough to carry the room's sign. */
+const FRONT_WALL = 0.2
 
 function Furniture({ model, at, rotY = 0, scale = 1, tint }: Placement) {
   const gltf = useGLTF(`/models/furniture/${model}.glb`)
@@ -257,8 +259,8 @@ function WallDecor({ decor, z }: { decor: Decor; z: number }) {
 
 const SIGN_FONT = 'ui-rounded, "Nunito Variable", "Nunito", "Segoe UI", system-ui, sans-serif'
 
-/** The little wooden sign over each room saying what it is for. */
-function RoomSign({ text, at }: { text: string; at: Vec3 }) {
+/** The little wooden sign over each room saying what it is for (on a low wall, without its strings). */
+function RoomSign({ text, at, strings = true }: { text: string; at: Vec3; strings?: boolean }) {
   const { map, aspect } = useMemo(() => {
     const s = 4
     const h = 34 * s
@@ -291,7 +293,7 @@ function RoomSign({ text, at }: { text: string; at: Vec3 }) {
   return (
     <group position={at}>
       {/* Two strings it hangs from */}
-      {[-1, 1].map((side) => (
+      {strings && [-1, 1].map((side) => (
         <mesh key={side} position={[side * h * aspect * 0.3, h / 2 + 0.05, -0.002]} rotation={[0, 0, side * -0.5]}>
           <boxGeometry args={[0.006, 0.12, 0.004]} />
           <meshBasicMaterial color="#7b5a43" />
@@ -307,6 +309,87 @@ function RoomSign({ text, at }: { text: string; at: Vec3 }) {
 
 /** Rooms, walls and furniture. The front is left open, dollhouse style. */
 function Rooms({ layout }: { layout: FlatLayout }) {
+  if (layout.plan === 'office') return <OfficeRooms layout={layout} />
+  return <StripRooms layout={layout} />
+}
+
+/** The things every room has, whatever the plan: furniture, steam over the coffee machine. */
+function Furnishings({ layout }: { layout: FlatLayout }) {
+  return (
+    <>
+      {layout.rooms.flatMap((room) => room.furniture.map((f, j) => <Furniture key={`${room.id}-${j}`} {...f} />))}
+      {layout.rooms.flatMap((room) =>
+        room.furniture
+          .filter((f) => f.model === 'kitchenCoffeeMachine')
+          .map((f, j) => <Steam key={`${room.id}-steam${j}`} at={[f.at[0] + 0.09, f.at[1] + 0.19, f.at[2] - 0.1]} />),
+      )}
+    </>
+  )
+}
+
+/**
+ * An office floor: the back row's rooms stand against a tall wall with their pictures and signs;
+ * the front row's have knee-high partitions and a low front wall carrying the sign, so the camera
+ * sees the whole floor; a light corridor runs between the rows.
+ */
+function OfficeRooms({ layout }: { layout: FlatLayout }) {
+  const { depth: D, height: H, width: W } = layout
+  const lang = useSceneLang()
+  const back = -D / 2
+  const front = D / 2
+  const backRow = layout.rooms.filter((r) => r.row === 'back')
+  const frontRow = layout.rooms.filter((r) => r.row === 'front')
+  const corridor: [number, number] = [backRow[0]?.z1 ?? 0, frontRow[0]?.z0 ?? backRow[0]?.z1 ?? 0]
+  const shell = useMemo(() => {
+    const list: BoxSpec[] = []
+    // The corridor, and a runner rug down the middle of it.
+    list.push({ size: [W, 0.04, corridor[1] - corridor[0]], at: [W / 2, -0.02, (corridor[0] + corridor[1]) / 2], color: '#ece4d6' })
+    list.push({ size: [W - 0.4, 0.012, 0.36], at: [W / 2, 0.006, (corridor[0] + corridor[1]) / 2], color: '#d9cdf0' })
+    // A front cell with no room in it (odd numbers of rooms) still gets a floor.
+    if (frontRow.length < backRow.length) {
+      const x0 = frontRow.length ? frontRow[frontRow.length - 1].x1 : 0
+      list.push({ size: [W - x0, 0.04, front - corridor[1]], at: [(W + x0) / 2, -0.02, (corridor[1] + front) / 2], color: '#ece4d6' })
+    }
+    backRow.forEach((room, i) => {
+      const w = room.x1 - room.x0
+      const cx = (room.x0 + room.x1) / 2
+      const depth = room.z1! - room.z0!
+      list.push({ size: [w, 0.04, depth], at: [cx, -0.02, (room.z0! + room.z1!) / 2], color: room.floor })
+      list.push({ size: [w, H, WALL], at: [cx, H / 2, back - WALL / 2], color: room.wall })
+      list.push({ size: [w, 0.05, 0.015], at: [cx, 0.025, back + 0.008], color: '#ffffff' })
+      if (i > 0) list.push({ size: [WALL, H, depth], at: [room.x0, H / 2, (room.z0! + room.z1!) / 2], color: '#f5f1ea' })
+    })
+    frontRow.forEach((room, i) => {
+      const w = room.x1 - room.x0
+      const cx = (room.x0 + room.x1) / 2
+      const depth = room.z1! - room.z0!
+      list.push({ size: [w, 0.04, depth], at: [cx, -0.02, (room.z0! + room.z1!) / 2], color: room.floor })
+      // A low wall at the front in the room's colour, and knee-high partitions between rooms.
+      list.push({ size: [w, FRONT_WALL, WALL], at: [cx, FRONT_WALL / 2, front - WALL / 2], color: room.wall })
+      if (i > 0) list.push({ size: [WALL, STUB, depth], at: [room.x0, STUB / 2, (room.z0! + room.z1!) / 2], color: '#f5f1ea' })
+    })
+    return list
+  }, [layout, W, H, back, front, corridor[0], corridor[1]])
+
+  return (
+    <group>
+      <Boxes boxes={shell} cast />
+      <Furnishings layout={layout} />
+      {backRow.flatMap((room) =>
+        (room.decor ?? []).map((d, j) =>
+          d.kind === 'clock' ? <Clock key={`${room.id}-d${j}`} decor={d} z={back + 0.02} /> : <WallDecor key={`${room.id}-d${j}`} decor={d} z={back + 0.016} />,
+        ),
+      )}
+      {backRow.map((room) => room.label && <RoomSign key={`${room.id}-sign`} text={room.label[lang]} at={[(room.x0 + room.x1) / 2, H - 0.14, back + 0.02]} />)}
+      {frontRow.map(
+        (room) => room.label && <RoomSign key={`${room.id}-sign`} strings={false} text={room.label[lang]} at={[(room.x0 + room.x1) / 2, FRONT_WALL / 2 + 0.02, front + 0.012]} />,
+      )}
+    </group>
+  )
+}
+
+/** Rooms side by side, each with a tall back wall, and doors between them. */
+function StripRooms({ layout }: { layout: FlatLayout }) {
   const { depth: D, height: H, door } = layout
   const lang = useSceneLang()
   const back = -D / 2
@@ -334,7 +417,7 @@ function Rooms({ layout }: { layout: FlatLayout }) {
   return (
     <group>
       <Boxes boxes={shell} cast />
-      {layout.rooms.flatMap((room) => room.furniture.map((f, j) => <Furniture key={`${room.id}-${j}`} {...f} />))}
+      <Furnishings layout={layout} />
       {layout.rooms.flatMap((room) =>
         (room.decor ?? []).map((d, j) =>
           d.kind === 'clock' ? (
@@ -343,11 +426,6 @@ function Rooms({ layout }: { layout: FlatLayout }) {
             <WallDecor key={`${room.id}-d${j}`} decor={d} z={back + 0.016} />
           ),
         ),
-      )}
-      {layout.rooms.flatMap((room) =>
-        room.furniture
-          .filter((f) => f.model === 'kitchenCoffeeMachine')
-          .map((f, j) => <Steam key={`${room.id}-steam${j}`} at={[f.at[0] + 0.09, f.at[1] + 0.19, f.at[2] - 0.1]} />),
       )}
       {layout.rooms.map(
         (room) =>
@@ -507,6 +585,8 @@ export function Flat({ flat, hovered, interactive, onHover, onSelect }: FlatProp
   const { layout, cast, stories } = flat
   const lang = useSceneLang()
   const narrator = stories[flat.narrator]
+  // An office floor is framed from further away: bigger tags and bubbles keep them readable.
+  const tagScale = layout.plan === 'office' ? 1.5 : 1
 
   const events = interactive
     ? {
@@ -532,7 +612,7 @@ export function Flat({ flat, hovered, interactive, onHover, onSelect }: FlatProp
       <Rooms layout={layout} />
       {layout.tv && <Screen tv={layout.tv} story={narrator} />}
       {cast.map((c) => (
-        <Resident key={c.id} id={c.id} model={c.model} story={stories[c.story]} label={c.tech} color={c.color} />
+        <Resident key={c.id} id={c.id} model={c.model} story={stories[c.story]} label={c.tech} color={c.color} tagScale={tagScale} />
       ))}
       {flat.visitors.map((v) => (
         <Resident

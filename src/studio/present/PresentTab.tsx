@@ -1,0 +1,100 @@
+/**
+ * How the system works, as a show: every floor is a scene the analysis wrote (a request going
+ * through the system, an AI agent choosing its tools, a background job), played on the `Theater`.
+ * The script is editable, so the presenter can use the client's own words.
+ */
+import { useMemo, useState } from 'react'
+import type { ArchitectureModel } from '../../shared/studio'
+import { actorKey, applyEdits, buildTour, namingExamples, PLAIN, renameParts, type ScriptEdits } from '../../scene/tour'
+import type { Lang } from '../../ui/roles'
+import { scriptFlows } from './intro'
+import { ScriptEditor } from './ScriptEditor'
+import { Theater } from './Theater'
+import { authorPrompt } from '../authorPrompt'
+
+const w = {
+  scenes: { en: 'Scenes', pt: 'Cenas' },
+  scenesLead: { en: 'Each floor is one scene. Step inside to watch it.', pt: 'Cada andar é uma cena. Entre para assistir.' },
+  sceneOf: (n: number, of: number) => ({ en: `Scene ${n} of ${of}`, pt: `Cena ${n} de ${of}` }),
+  edit: { en: 'Edit script', pt: 'Editar roteiro' },
+  readOn: (date: string) => ({ en: `Read from the code on ${date}`, pt: `Lido do código em ${date}` }),
+  authoredOn: (date: string) => ({ en: `Author's script, checked against the code on ${date}`, pt: `Roteiro do autor, conferido com o código em ${date}` }),
+  none: { en: 'No scenes to show: every scene is hidden in the script.', pt: 'Nenhuma cena para mostrar: todas estão ocultas no roteiro.' },
+  noAgent: {
+    en: 'No AI agent found in this repo, so there is no "how the AI decides" scene. The studio recognizes the common AI libraries (OpenAI, Anthropic, Google, Mistral, Cohere, Groq, Ollama, LangChain/LangGraph, LlamaIndex, CrewAI, OpenAI Agents and Vercel AI).',
+    pt: 'Nenhum agente de IA encontrado neste repositório, então não há a cena "como a IA decide". O estúdio reconhece as bibliotecas de IA mais comuns (OpenAI, Anthropic, Google, Mistral, Cohere, Groq, Ollama, LangChain/LangGraph, LlamaIndex, CrewAI, OpenAI Agents e Vercel AI).',
+  },
+  note: {
+    en: 'Written automatically from the system’s own code. Edit the script to use your client’s words.',
+    pt: 'Escrito automaticamente a partir do código do próprio sistema. Edite o roteiro para usar as palavras do seu cliente.',
+  },
+  authoredNote: {
+    en: "Written by the system's author (repartments.json file). The studio checked that the files it cites exist in the code.",
+    pt: 'Escrito pelo autor do sistema (arquivo repartments.json). O estúdio conferiu se os arquivos que ele cita existem no código.',
+  },
+}
+
+export function PresentTab({ model, edits, onEdits, lang }: { model: ArchitectureModel; edits: ScriptEdits; onEdits: (e: ScriptEdits) => void; lang: Lang }) {
+  const generated = useMemo(() => scriptFlows(model), [model])
+  const flows = useMemo(() => applyEdits(generated, edits).filter((f) => !edits.hidden.includes(f.id)), [generated, edits])
+  const flats = useMemo(() => flows.map((f) => buildTour(f, lang)), [flows, lang])
+  const [editing, setEditing] = useState(false)
+  const titles = useMemo(() => applyEdits(generated, edits), [generated, edits])
+  // Examples show the names the audience would see: renames by hand included.
+  const examples = useMemo(() => namingExamples(applyEdits(generated, { ...edits, naming: PLAIN })), [generated, edits])
+  // The summary lists kinds of parts ("as telas, a recepção") and names one part: the agent's.
+  const summary = useMemo(
+    () => renameParts(model.summary, model.components.filter((c) => model.agents.some((a) => a.component === c.id)), edits),
+    [model, edits],
+  )
+
+  return (
+    <>
+      <Theater
+        flows={flows}
+        flats={flats}
+        owner={model.repo.owner}
+        lang={lang}
+        sceneOf={w.sceneOf}
+        intro={
+          <>
+            <p className="text-xs font-bold tracking-wide text-ink-soft uppercase">
+              {model.repo.owner}/{model.repo.name}
+            </p>
+            <p className="mt-1 text-sm leading-snug">{summary[lang]}</p>
+            {!model.agents.length && !model.automatic && <p className="mt-2 rounded-xl bg-ink/5 px-3 py-2 text-xs leading-snug text-ink-soft">{w.noAgent[lang]}</p>}
+          </>
+        }
+        listTitle={w.scenes}
+        listLead={w.scenesLead}
+        tools={
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="h-9 rounded-full bg-ink/5 px-3 text-xs font-extrabold text-ink-soft transition-colors hover:bg-ink/10 hover:text-ink max-lg:h-10 max-lg:bg-white/90 max-lg:shadow"
+          >
+            ✏️ {w.edit[lang]}
+          </button>
+        }
+        note={model.automatic ? w.authoredNote : w.note}
+        empty={w.none}
+        keysOff={editing}
+        setup={{
+          naming: edits.naming ?? PLAIN,
+          onNaming: (naming) => onEdits({ ...edits, naming }),
+          examples,
+          scenes: titles.map((f) => ({ id: f.id, title: f.title[lang], on: !edits.hidden.includes(f.id) })),
+          onScene: (id, on) => onEdits({ ...edits, hidden: on ? edits.hidden.filter((h) => h !== id) : [...edits.hidden, id] }),
+        }}
+        exportInfo={{
+          title: `${model.repo.owner}/${model.repo.name}`,
+          summary: summary[lang],
+          subtitle: (model.automatic ? w.authoredOn : w.readOn)(new Intl.DateTimeFormat(lang === 'pt' ? 'pt-BR' : 'en', { dateStyle: 'long' }).format(new Date(model.generatedAt)))[lang],
+        }}
+      />
+      {editing && (
+        <ScriptEditor flows={generated} edits={edits} onChange={onEdits} lang={lang} onClose={() => setEditing(false)} keyOf={actorKey} prompt={authorPrompt(model)} />
+      )}
+    </>
+  )
+}

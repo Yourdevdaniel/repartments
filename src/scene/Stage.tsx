@@ -1,6 +1,6 @@
 import { ContactShadows, PerformanceMonitor, useGLTF } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { OrthographicCamera as OrthoCam, Vector3 } from 'three'
 import { Interior } from './Interior'
 import { Manager, Pedestrians, Traffic } from './Life'
@@ -24,6 +24,8 @@ for (const m of ALL_MODELS.characters) useGLTF.preload(`/models/characters/${m}.
 const PANEL = 360
 /** Inside a flat, about two big rooms fill the screen. */
 const INSIDE_WIDTH = 4.0
+/** Inside an office floor, about two and a half columns of rooms. */
+const OFFICE_WIDTH = 6.4
 
 export type View = { mode: 'building'; entering: string | null } | { mode: 'inside'; id: string }
 
@@ -59,6 +61,7 @@ function CameraRig({
   instant,
   recenter,
   onMoved,
+  panel,
 }: {
   flats: FlatData[]
   lot: number
@@ -66,6 +69,8 @@ function CameraRig({
   instant: boolean
   recenter: number
   onMoved: (moved: boolean) => void
+  /** Whether the side panel covers the right of the screen, so the shot centres on what's left. */
+  panel: boolean
 }) {
   const { camera, size, pointer, gl } = useThree()
   const time = useStoryTime()
@@ -83,8 +88,16 @@ function CameraRig({
   const free = view.mode === 'building' && !view.entering
 
   const want = useMemo<Frame>(() => {
+    // Upright phones have no room to spare: the whole floor has to fit the width, so the caps below
+    // (tuned for wide screens, where the side panel takes the rest) don't apply there.
+    const upright = size.width < size.height
+    if (inside?.layout.plan === 'office') {
+      // A whole office floor seen from higher up, so the back row shows over the front row's low walls.
+      const fitW = upright ? inside.layout.width + 1.4 : Math.min(inside.layout.width + 0.6, OFFICE_WIDTH)
+      return { target: new Vector3(0, 0.42, 0.05), az: 0.1, el: 0.56, fitW, fitH: inside.layout.depth * 0.85 + 1.6 }
+    }
     if (inside) {
-      const fitW = Math.min(inside.layout.width + 0.8, INSIDE_WIDTH)
+      const fitW = upright ? inside.layout.width + 1.4 : Math.min(inside.layout.width + 0.8, INSIDE_WIDTH)
       return { target: new Vector3(0, 0.66, 0.1), az: 0.16, el: 0.22, fitW, fitH: 2.15 }
     }
     const entering = view.mode === 'building' ? flats.findIndex((f) => f.id === view.entering) : -1
@@ -100,7 +113,6 @@ function CameraRig({
     // Room for the roof and the street, plus the header and the hint at the bottom of the screen. A
     // phone held upright frames the tower tighter at the sides (the trees can go off screen) and
     // leaves more above and below, where its header and buttons stack up.
-    const upright = size.width < size.height
     return {
       target: new Vector3(0, height * 0.5, 0.6),
       az: 0.36,
@@ -111,8 +123,8 @@ function CameraRig({
   }, [inside, view, flats, height, size.width, size.height])
 
   // The latest of what the input handlers read, so they're bound once instead of every render.
-  const live = useRef({ free, want, size, onMoved })
-  live.current = { free, want, size, onMoved }
+  const live = useRef({ free, want, size, onMoved, panel })
+  live.current = { free, want, size, onMoved, panel }
 
   const report = () => {
     const m = !isHome(orbit.current)
@@ -144,8 +156,8 @@ function CameraRig({
     }
     /** Pixels per world unit at zoom 1, and where the middle of the shot is on screen. */
     const frame = () => {
-      const { want, size } = live.current
-      const avail = size.width - (size.width >= 1024 ? PANEL : 0)
+      const { want, size, panel } = live.current
+      const avail = size.width - (panel && size.width >= 1024 ? PANEL : 0)
       const rect = el.getBoundingClientRect()
       return { scale: Math.min(avail / want.fitW, size.height / want.fitH), cx: rect.left + avail / 2, cy: rect.top + size.height / 2 }
     }
@@ -268,11 +280,11 @@ function CameraRig({
   }, [gl])
 
   useEffect(() => {
-    const panel = size.width >= 1024 ? PANEL : 0
-    if (panel) cam.setViewOffset(size.width, size.height, panel / 2, 0, size.width, size.height)
+    const side = panel && size.width >= 1024 ? PANEL : 0
+    if (side) cam.setViewOffset(size.width, size.height, side / 2, 0, size.width, size.height)
     else cam.clearViewOffset()
     cam.updateProjectionMatrix()
-  }, [cam, size.width, size.height])
+  }, [cam, size.width, size.height, panel])
 
   useFrame((_, delta) => {
     const key = inside ? `in:${inside.id}` : `out:${lot}`
@@ -286,8 +298,7 @@ function CameraRig({
     snappy.current = Math.max(0, snappy.current - delta)
     const speed = snappy.current > 0 ? 14 : view.mode === 'building' && view.entering ? 6 : 3.2
     const k = instant ? 1 : 1 - Math.exp(-delta * speed)
-    const panel = size.width >= 1024 ? PANEL : 0
-    const avail = size.width - panel
+    const avail = size.width - (panel && size.width >= 1024 ? PANEL : 0)
 
     if (inside) {
       const x = actionX(inside, time.current)
@@ -337,6 +348,21 @@ function RenderStats() {
   return null
 }
 
+/**
+ * While a video or slides are being made: renders each frame itself (a frame callback with a
+ * priority takes over rendering) and hands the canvas over right after, while the picture is still
+ * in it; a WebGL canvas is cleared once the browser has shown it.
+ */
+function FrameTap({ onFrame }: { onFrame: (canvas: HTMLCanvasElement) => void }) {
+  const tap = useRef(onFrame)
+  tap.current = onFrame
+  useFrame(({ gl, scene, camera }) => {
+    gl.render(scene, camera)
+    tap.current(gl.domElement)
+  }, 1)
+  return null
+}
+
 function Clock({
   time,
   narrator,
@@ -348,7 +374,7 @@ function Clock({
 }) {
   const last = useRef<Caption | null | undefined>(undefined)
   useFrame((_, delta) => {
-    if (!time.paused) time.current += Math.min(delta, 0.1)
+    if (!time.paused) time.current += Math.min(delta, 0.1) * time.rate
     const story = narrator ? narrator.stories[narrator.narrator] : null
     const caption = story ? captionAt(story, time.current) : null
     if (caption !== last.current) {
@@ -377,12 +403,38 @@ type Props = {
   onMoved: (moved: boolean) => void
   /** Which building on the owner's street this is (0 = the first). */
   lot: number
+  /** When this changes, the stories start again from their first step (a presentation entering a scene). */
+  restart?: string | number | null
+  /** Playback, for the presenter's controls: stand still, and how fast the stories play (1 = as written). */
+  paused?: boolean
+  rate?: number
+  /** Handed the scene's clock, so the presenter can jump to a step, the start or the end. */
+  clock?: { current: StoryTime | null }
+  /** Whether a side panel covers the right of the screen (true unless said otherwise). */
+  panel?: boolean
+  /** Called with the canvas after every frame is drawn, to record it (only while recording). */
+  onFrame?: (canvas: HTMLCanvasElement) => void
 }
 
-export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption, recenter, onMoved, lot }: Props) {
+export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption, recenter, onMoved, lot, restart, paused, rate, clock, panel = true, onFrame }: Props) {
   const hood = useMemo(() => neighborhood(owner, lot), [owner, lot])
   const reduce = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, [])
-  const time = useMemo<StoryTime>(() => ({ current: reduce ? 9 : 0, paused: reduce }), [reduce])
+  const time = useMemo<StoryTime>(() => ({ current: reduce ? 9 : 0, paused: reduce, rate: 1 }), [reduce])
+  // Before the next frame draws, so the new scene never shows a moment from the middle of its story.
+  useLayoutEffect(() => {
+    if (restart !== undefined && restart !== null && !reduce) time.current = 0
+  }, [restart, reduce, time])
+  useLayoutEffect(() => {
+    time.paused = paused ?? reduce
+    time.rate = rate ?? 1
+  }, [paused, rate, reduce, time])
+  useLayoutEffect(() => {
+    if (!clock) return
+    clock.current = time
+    return () => {
+      clock.current = null
+    }
+  }, [clock, time])
   const inside = view.mode === 'inside' ? (flats.find((f) => f.id === view.id) ?? null) : null
   // Sharp on capable screens, softer when the frame rate drops (PerformanceMonitor below).
   const [dpr, setDpr] = useState(() => Math.min(window.devicePixelRatio || 1, 1.5))
@@ -404,7 +456,8 @@ export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onS
       <SceneLangContext.Provider value={lang}>
       <StoryTimeContext.Provider value={time}>
         <Clock time={time} narrator={inside} onCaption={onCaption} />
-        <CameraRig flats={flats} lot={lot} view={view} instant={reduce} recenter={recenter} onMoved={onMoved} />
+        {onFrame && <FrameTap onFrame={onFrame} />}
+        <CameraRig flats={flats} lot={lot} view={view} instant={reduce} recenter={recenter} onMoved={onMoved} panel={panel} />
         {import.meta.env.DEV && <RenderStats />}
         <Suspense fallback={null}>
           {inside ? (

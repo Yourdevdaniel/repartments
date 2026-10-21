@@ -1,0 +1,168 @@
+/**
+ * The script editor: the generated presentation is a first draft, and the presenter knows the
+ * client's words. Here they can rename the residents ("Leads API" → "Recepção"), rewrite any
+ * caption, retitle scenes and leave scenes out. Edits are kept apart from the model (per language
+ * on screen), so reading the repo again keeps them, and "Restore" brings the generated text back.
+ */
+import { useEffect, useMemo, useRef } from 'react'
+import type { Actor, Flow } from '../../shared/studio'
+import { applyEdits, NO_EDITS, type ScriptEdits } from '../../scene/tour'
+import type { Lang } from '../../ui/roles'
+import { PromptPanel } from '../Authored'
+
+const w = {
+  title: { en: 'Edit the script', pt: 'Editar o roteiro' },
+  lead: {
+    en: 'Changes apply to the language on screen and are saved in this browser (and in the saved presentation).',
+    pt: 'As mudanças valem para o idioma da tela e ficam salvas neste navegador (e na apresentação salva).',
+  },
+  askAi: { en: 'Have an AI write the whole script', pt: 'Pedir para uma IA escrever o roteiro inteiro' },
+  people: { en: 'Residents', pt: 'Moradores' },
+  peopleLead: { en: 'Renaming one renames it in every scene.', pt: 'Renomear um muda o nome em todas as cenas.' },
+  scenes: { en: 'Scenes', pt: 'Cenas' },
+  show: { en: 'Show this scene', pt: 'Mostrar esta cena' },
+  sceneTitle: { en: 'Title', pt: 'Título' },
+  step: (n: number) => ({ en: `Step ${n}`, pt: `Passo ${n}` }),
+  restore: { en: 'Restore the generated text', pt: 'Restaurar o texto gerado' },
+  done: { en: 'Done', pt: 'Pronto' },
+}
+
+const field =
+  'w-full min-w-0 rounded-xl border border-ink/10 bg-white px-3 py-2 text-[13px] font-medium text-ink outline-none transition focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/30'
+
+export function ScriptEditor({
+  flows,
+  edits,
+  onChange,
+  lang,
+  onClose,
+  keyOf,
+  prompt,
+}: {
+  /** The scenes as generated (before edits), in order. */
+  flows: Flow[]
+  edits: ScriptEdits
+  onChange: (e: ScriptEdits) => void
+  lang: Lang
+  onClose: () => void
+  keyOf: (a: Actor) => string
+  /** The prompt for an AI to write the whole script, offered at the top. */
+  prompt?: string
+}) {
+  const dialog = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    const d = dialog.current
+    // No close() on cleanup: React's development double-mount would fire `close` and shut the
+    // dialog right after opening it. The element goes away with the component anyway.
+    if (d && !d.open) d.showModal()
+  }, [])
+
+  /**
+   * The text each field shows when it has no edit of its own: the generated script with the chosen
+   * names applied, but the captions and titles still as generated. Saved edits stay relative to the
+   * generated text (keys come from `flows`), so only what is shown changes.
+   */
+  const base = useMemo(() => applyEdits(flows, { ...edits, steps: {}, titles: {} }), [flows, edits])
+
+  /** Each participant once, however many scenes it appears in, with the name it shows now. */
+  const people = useMemo(() => {
+    const seen = new Map<string, { key: string; shown: Actor['name'] }>()
+    flows.forEach((f, fi) =>
+      f.actors.forEach((a, ai) => {
+        const key = keyOf(a)
+        if (!seen.has(key)) seen.set(key, { key, shown: base[fi].actors[ai].name })
+      }),
+    )
+    return [...seen.values()]
+  }, [flows, base, keyOf])
+
+  const patch = (group: 'actors' | 'steps' | 'titles', key: string, value: string) =>
+    onChange({ ...edits, [group]: { ...edits[group], [key]: { ...edits[group][key], [lang]: value } } })
+
+  return (
+    <dialog
+      ref={dialog}
+      onClose={onClose}
+      aria-labelledby="script-title"
+      className="m-auto max-h-[min(44rem,calc(100dvh-2rem))] w-[min(46rem,calc(100vw-2rem))] overflow-hidden rounded-[22px] border border-white/80 bg-[#f7f8fd] p-0 text-ink shadow-[0_30px_80px_-30px_rgba(40,52,110,0.6)] backdrop:bg-ink/30"
+    >
+      <div className="flex max-h-[inherit] flex-col">
+        <header className="flex items-start gap-3 border-b border-ink/10 px-5 py-4">
+          <div className="min-w-0 flex-1">
+            <h2 id="script-title" className="text-lg font-extrabold">✏️ {w.title[lang]}</h2>
+            <p className="text-xs leading-snug text-ink-soft">{w.lead[lang]}</p>
+          </div>
+          <button type="button" onClick={() => dialog.current?.close()} className="h-9 rounded-full bg-ink px-4 text-sm font-extrabold text-white">
+            {w.done[lang]}
+          </button>
+        </header>
+        <div className="overflow-y-auto px-5 py-4">
+          {prompt && (
+            <details className="mb-5 rounded-2xl border border-ink/10 bg-white/70 p-3">
+              <summary className="cursor-pointer text-sm font-extrabold">🤖 {w.askAi[lang]}</summary>
+              <div className="mt-2">
+                <PromptPanel prompt={prompt} lang={lang} />
+              </div>
+            </details>
+          )}
+          <h3 className="text-sm font-extrabold">{w.people[lang]}</h3>
+          <p className="text-xs text-ink-soft">{w.peopleLead[lang]}</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {people.map(({ key, shown }) => (
+              <label key={key} className="grid gap-1 text-[11px] font-bold text-ink-soft">
+                <span className="truncate">{shown[lang]}</span>
+                <input className={field} value={edits.actors[key]?.[lang] ?? shown[lang]} onChange={(e) => patch('actors', key, e.target.value)} />
+              </label>
+            ))}
+          </div>
+
+          <h3 className="mt-6 text-sm font-extrabold">{w.scenes[lang]}</h3>
+          <div className="mt-2 grid gap-3">
+            {flows.map((f, fi) => {
+              const shown = base[fi]
+              const hidden = edits.hidden.includes(f.id)
+              return (
+                <section key={f.id} className={`rounded-2xl border border-ink/10 bg-white/70 p-3 ${hidden ? 'opacity-60' : ''}`}>
+                  <label className="flex items-center gap-2 text-xs font-extrabold text-ink-soft">
+                    <input
+                      type="checkbox"
+                      checked={!hidden}
+                      onChange={(e) => onChange({ ...edits, hidden: e.target.checked ? edits.hidden.filter((h) => h !== f.id) : [...edits.hidden, f.id] })}
+                      className="accent-[#2f8fe6]"
+                    />
+                    {w.show[lang]}
+                  </label>
+                  <label className="mt-2 grid gap-1 text-[11px] font-bold text-ink-soft">
+                    {w.sceneTitle[lang]}
+                    <input className={`${field} font-extrabold`} value={edits.titles[f.id]?.[lang] ?? shown.title[lang]} onChange={(e) => patch('titles', f.id, e.target.value)} />
+                  </label>
+                  <ol className="mt-2 grid gap-1.5">
+                    {shown.steps.map((s, i) => {
+                      const key = `${f.id}#${i}`
+                      return (
+                        <li key={key}>
+                          <label className="grid gap-1 text-[11px] font-bold text-ink-soft">
+                            {w.step(i + 1)[lang]}
+                            <textarea rows={2} className={`${field} resize-y`} value={edits.steps[key]?.[lang] ?? s.text[lang]} onChange={(e) => patch('steps', key, e.target.value)} />
+                          </label>
+                        </li>
+                      )
+                    })}
+                  </ol>
+                </section>
+              )
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={() => onChange(NO_EDITS)}
+            className="mt-5 h-9 rounded-full bg-ink/5 px-4 text-xs font-extrabold text-ink-soft transition-colors hover:bg-ink/10 hover:text-ink"
+          >
+            ↺ {w.restore[lang]}
+          </button>
+        </div>
+      </div>
+    </dialog>
+  )
+}
