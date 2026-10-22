@@ -1,95 +1,36 @@
 /**
- * The presentation as a video file, made in the browser: evenly spaced frames of the 3D scene
- * (`framePacer`) are drawn onto a 1920×1080 canvas with the sky behind it and the scene's title and
- * caption on top (the page's own captions are HTML, so a recording of the 3D canvas alone would have
- * no words), and that canvas is recorded with `MediaRecorder`: MP4 where the browser can, WebM
- * otherwise. Nothing leaves the browser. The same canvas gives the still pictures for the slides
- * (`still`).
+ * The presentation as a video file, made in the browser, frame by frame: the stage moves on 1/30 s
+ * and draws, that frame of the 3D scene goes onto a 1920×1080 canvas with the sky behind it and the
+ * scene's title and caption on top (the page's own captions are HTML, so the 3D canvas alone would
+ * have no words), and the canvas is encoded (`encodeCanvas`). Nothing waits for the screen, so the
+ * tab can be hidden meanwhile, and the video comes out at exactly 30 frames a second on any machine.
+ * Nothing leaves the browser. The same canvas gives the still pictures for the slides (`still`).
  */
 
 /** What is written on a frame: the scene's kicker and title, and the step's caption with its icon. */
 export type Overlay = { kicker: string; title: string; caption: string; icon: string }
 
-/**
- * 3 Mbit/s: sharp for flat colours and big captions, and about 22 MB a minute, small enough to send.
- * `fps` is the aim: the frames really come a whole number of screen refreshes apart (`framePacer`).
- */
+/** 3 Mbit/s: sharp for flat colours and big captions, and about 22 MB a minute, small enough to send. */
 export const VIDEO = { width: 1920, height: 1080, fps: 30, bitrate: 3_000_000 }
 
-/**
- * The bit rate for a video of `fps` frames a second. The browser's encoder spends the bit rate per
- * frame as if there were always 30 a second (a canvas stream has no frame rate of its own: 37.5 fps
- * asked at 3 Mbit/s came out at 3.75), so it shrinks as the frames grow, for the same file size.
- */
-export function videoBitrate(fps: number): number {
-  return Math.round((VIDEO.bitrate * VIDEO.fps) / fps)
+/** How many frames a scene whose story lasts `seconds` takes at `rate` (1 = as written). */
+export function sceneFrames(seconds: number, rate: number, fps = VIDEO.fps): number {
+  return Math.max(1, Math.round((seconds / (rate > 0 ? rate : 1)) * fps))
 }
 
-/** A gap this long between two frames means the scene is still loading. */
-const STALL_MS = 50
-/** Smooth frames in a row that measure the screen. */
-const MEASURE = 30
-/** How long the scene must run without a stall before the video starts. */
-const WARMUP_MS = 1000
-/** Past this, the video starts anyway (a machine that never runs smoothly). */
-const WARMUP_MAX_MS = 6000
-
 /**
- * Picks which frames of the screen go into the video, given the time each is drawn for. A recorded
- * frame is stamped with the screen refresh it was drawn on, so taking one every 1/30 s by the clock
- * lands them 2 refreshes apart, then 3, on a 75 Hz screen, and the video judders. Keeping one every
- * n refreshes instead, n being how many fit in about 1/30 s (2 at 60 or 75 Hz, 5 at 144 Hz), spaces
- * them evenly.
- *
- * Nothing is kept until the scene has run `WARMUP_MS` without a stall: its residents and furniture
- * are still loading. The first `MEASURE` smooth frames measure the screen, which gives `fps` early;
- * `onSteady` is called once the scene runs steadily, once.
+ * Lets the browser breathe (paint, run React) and comes straight back. A message, not a timer: a
+ * hidden tab holds timers back to once a second, and after a few minutes to once a minute.
  */
-export function framePacer(onSteady: () => void = () => {}, aim = VIDEO.fps) {
-  let first = NaN
-  let prev = NaN
-  let run: number[] = []
-  let smooth = 0
-  let refresh = 0
-  let gap = 0
-  let steady = false
-  let kept = -Infinity
-  const measure = () => {
-    // No smooth run at all: every frame the machine manages is kept.
-    refresh = run.length ? [...run].sort((a, b) => a - b)[run.length >> 1] : 1000 / aim
-    gap = refresh * Math.max(1, Math.floor(1000 / aim / refresh + 0.25))
-  }
-  return {
-    /** Whether the frame drawn at `now` goes into the video. */
-    keep(now: number): boolean {
-      const step = now - prev
-      prev = now
-      if (steady) {
-        // Half a refresh early still counts: the screen's frames come a little early or late.
-        if (now - kept < gap - refresh / 2) return false
-        kept = now
-        return true
-      }
-      if (Number.isNaN(first)) first = now
-      if (step < STALL_MS) {
-        run.push(step)
-        smooth += step
-      } else {
-        run = []
-        smooth = 0
-      }
-      if (!gap && run.length >= MEASURE) measure()
-      if (smooth < WARMUP_MS && now - first < WARMUP_MAX_MS) return false
-      if (!gap) measure()
-      steady = true
-      onSteady()
-      return false
-    },
-    /** The video's frames a second, once the screen is measured (0 before). */
-    get fps() {
-      return gap ? 1000 / gap : 0
-    },
-  }
+export function breathe(): Promise<void> {
+  return new Promise((done) => {
+    const channel = new MessageChannel()
+    channel.port1.onmessage = () => {
+      channel.port1.close()
+      done()
+    }
+    channel.port2.postMessage(null)
+  })
 }
 
 const FONT = '"Nunito Variable", Nunito, ui-rounded, system-ui, sans-serif'
@@ -98,25 +39,10 @@ const INK_SOFT = '#5b6078'
 /** A scene change fades from white, like the page's veil. */
 const FADE_MS = 420
 
-/** The recording formats to try, best first: H.264 MP4 plays everywhere, WebM is the fallback. */
-const TYPES: { mime: string; ext: 'mp4' | 'webm' }[] = [
-  { mime: 'video/mp4;codecs=avc1.640028', ext: 'mp4' },
-  { mime: 'video/mp4;codecs=avc1.42E01E', ext: 'mp4' },
-  { mime: 'video/mp4', ext: 'mp4' },
-  { mime: 'video/webm;codecs=vp9', ext: 'webm' },
-  { mime: 'video/webm;codecs=vp8', ext: 'webm' },
-  { mime: 'video/webm', ext: 'webm' },
-]
-
 /** "exemplo/crm" → "exemplo-crm-apresentacao.mp4". */
 export function videoFileName(title: string, lang: 'en' | 'pt', ext: 'mp4' | 'webm'): string {
   const base = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'repartments'
   return `${base}-${lang === 'pt' ? 'apresentacao' : 'presentation'}.${ext}`
-}
-
-/** The best format the browser records, or null when it records none. */
-export function pickFormat(supported: (mime: string) => boolean): { mime: string; ext: 'mp4' | 'webm' } | null {
-  return TYPES.find((t) => supported(t.mime)) ?? null
 }
 
 /** Where a picture goes to fit whole inside a frame, centred. */
@@ -268,43 +194,37 @@ export function compositor(width = VIDEO.width, height = VIDEO.height) {
   }
 }
 
-/** Whether the browser can record video at all (very old browsers can't). */
-export function canRecord(): boolean {
-  return typeof MediaRecorder !== 'undefined' && typeof HTMLCanvasElement.prototype.captureStream === 'function' && !!pickFormat((m) => MediaRecorder.isTypeSupported(m))
+/** Whether the browser can encode video (WebCodecs: Chrome, Edge, Safari 16.4+, Firefox 130+). */
+export function canEncode(): boolean {
+  return typeof VideoEncoder !== 'undefined' && typeof VideoFrame !== 'undefined'
 }
 
 /**
- * Records a canvas at `bitrate` from `resume` until `stop`, which hands back the file. It starts
- * paused: the encoder takes most of a second to get going, and frames drawn before `resume` warm it
- * up without going into the file (otherwise the video opens with that second frozen). Throws when
- * the browser can't record video at all.
+ * Turns what is drawn on `canvas` into a video file, one frame per `add`, each 1/fps long whatever
+ * time it took to draw: H.264 MP4 where the browser encodes it, VP9 or VP8 WebM otherwise. The muxer
+ * (mediabunny) loads only now, the first time someone asks for a video. Throws when the browser
+ * encodes none of them.
  */
-export function recordCanvas(canvas: HTMLCanvasElement, bitrate = VIDEO.bitrate) {
-  const format = typeof MediaRecorder === 'undefined' ? null : pickFormat((m) => MediaRecorder.isTypeSupported(m))
-  if (!format || typeof canvas.captureStream !== 'function') throw new Error('recording-unsupported')
-  // No frame rate: a frame is taken each time the canvas is drawn, and `framePacer` picks those.
-  const stream = canvas.captureStream()
-  const recorder = new MediaRecorder(stream, { mimeType: format.mime, videoBitsPerSecond: bitrate })
-  const chunks: Blob[] = []
-  recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data)
-  recorder.start(1000)
-  recorder.pause()
-  const end = () => stream.getTracks().forEach((t) => t.stop())
+export async function encodeCanvas(canvas: HTMLCanvasElement, fps = VIDEO.fps) {
+  const mb = await import('mediabunny')
+  const codec = await mb.getFirstEncodableVideoCodec(['avc', 'vp9', 'vp8'], { width: canvas.width, height: canvas.height, bitrate: VIDEO.bitrate })
+  if (!codec) throw new Error('recording-unsupported')
+  const ext: 'mp4' | 'webm' = codec === 'avc' ? 'mp4' : 'webm'
+  const target = new mb.BufferTarget()
+  const output = new mb.Output({ format: ext === 'mp4' ? new mb.Mp4OutputFormat({ fastStart: 'in-memory' }) : new mb.WebMOutputFormat(), target })
+  // A key frame every 2 s, so a player can jump around the file.
+  const source = new mb.CanvasSource(canvas, { codec, bitrate: VIDEO.bitrate, keyFrameInterval: 2 })
+  output.addVideoTrack(source, { frameRate: fps })
+  await output.start()
+  let frames = 0
   return {
-    ext: format.ext,
-    resume: () => recorder.state === 'paused' && recorder.resume(),
-    stop: () =>
-      new Promise<Blob>((resolve) => {
-        recorder.onstop = () => {
-          end()
-          resolve(new Blob(chunks, { type: format.mime.split(';')[0] }))
-        }
-        recorder.stop()
-      }),
-    cancel: () => {
-      recorder.onstop = end
-      if (recorder.state !== 'inactive') recorder.stop()
-      else end()
+    ext,
+    /** Adds what is on the canvas now as the next frame; resolves once the encoder can take another. */
+    add: () => source.add(frames++ / fps, 1 / fps),
+    finish: async () => {
+      await output.finalize()
+      return new Blob([target.buffer!], { type: `video/${ext}` })
     },
+    cancel: () => void output.cancel().catch(() => undefined),
   }
 }
