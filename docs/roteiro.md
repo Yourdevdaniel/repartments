@@ -3,7 +3,7 @@
 A leitura automática do estúdio ([analise.md](analise.md)) entende a **arquitetura**, mas não a **intenção**: não sabe que "Backend Routes" é a "Recepção de pedidos", nem quais são as três coisas que o cliente faz no sistema. Quem conhece o sistema diz isso num arquivo `repartments.json`, o **roteiro do autor**, e o estúdio o usa no lugar do que leu sozinho. Por que é um arquivo, e não uma LLM no estúdio: [ADR 0010](adr/0010-roteiro-do-autor.md).
 
 - Schema (para o editor conferir o arquivo enquanto se escreve): [`public/schema/repartments-1.json`](../public/schema/repartments-1.json), publicado em `https://raw.githubusercontent.com/Yourdevdaniel/repartments/main/public/schema/repartments-1.json`.
-- Exemplo completo, para o CRM de exemplo do estúdio: [`docs/exemplos/repartments.json`](exemplos/repartments.json).
+- Exemplo completo, para o CRM usado nos testes (`src/architecture/fixtures.ts`): [`docs/exemplos/repartments.json`](exemplos/repartments.json).
 
 ## De onde o estúdio lê
 
