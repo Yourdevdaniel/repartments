@@ -15,7 +15,7 @@
  * session, no database. The token goes to the person's browser, where the vault keeps it; every
  * studio call after that goes from the browser to api.github.com directly.
  *
- *   GET  /api/auth/config    → { enabled, web, devLogin? }   is sign-in set up here, and which kind?
+ *   GET  /api/auth/config    → { enabled, web, install?, devLogin? }   is sign-in set up here, and which kind?
  *   GET  /api/auth/login     ?next=/studio/…  → 302 to GitHub
  *   GET  /api/auth/callback  ?code&state      → 302 back to the studio, token in a short cookie
  *   POST /api/auth/claim     → { access_token, expires_in? }  once; the vault calls it
@@ -33,6 +33,8 @@ export type AuthEnv = {
   GITHUB_OAUTH_SCOPE?: string
   /** The app's client secret, for "Continue with GitHub". Secret: set it as a sensitive variable. */
   GITHUB_CLIENT_SECRET?: string
+  /** GitHub App only: its URL name (github.com/apps/<slug>), for the "choose repositories" link. Public. */
+  GITHUB_APP_SLUG?: string
 }
 
 export type Fetcher = (url: string, init: RequestInit) => Promise<Response>
@@ -138,7 +140,14 @@ export async function handleAuth(request: Request, { env, fetcher = fetch, devTo
   const callbackUrl = `${origin}/api/auth/callback`
 
   if (route === '/api/auth/config' && method === 'GET') {
-    return json({ enabled: !!clientId, web: !!(clientId && secret), ...(devToken && !clientId ? { devLogin: true } : {}) })
+    const slug = env.GITHUB_APP_SLUG?.trim() ?? ''
+    const install = clientId && /^[a-z0-9-]{1,100}$/.test(slug) ? `https://github.com/apps/${slug}/installations/new` : null
+    return json({
+      enabled: !!clientId,
+      web: !!(clientId && secret),
+      ...(install ? { install } : {}),
+      ...(devToken && !clientId ? { devLogin: true } : {}),
+    })
   }
 
   // "Continue with GitHub": off to GitHub, remembering the state and the PKCE verifier in a cookie.
