@@ -28,6 +28,7 @@ export const pw = {
   speed: { en: 'Speed', pt: 'Velocidade' },
   hud: { en: 'Hide the controls', pt: 'Esconder os controles' },
   hudHidden: { en: 'Controls hidden · H shows them', pt: 'Controles escondidos · H mostra de novo' },
+  hudShow: { en: 'Show the controls (H)', pt: 'Mostrar os controles (H)' },
   keys: { en: 'Keyboard shortcuts', pt: 'Atalhos do teclado' },
   controls: { en: 'Scene controls', pt: 'Controles da cena' },
   lastScene: { en: 'This is the last scene', pt: 'Esta é a última cena' },

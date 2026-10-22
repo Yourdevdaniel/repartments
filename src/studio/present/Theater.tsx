@@ -698,13 +698,14 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
             </div>
           </div>
         )}
-        <div className={`pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-2 p-4 md:p-6 ${hud ? '' : 'hidden'}`}>
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-2 p-4 md:p-6">
           <div className={`${glass} w-full max-w-full px-4 py-3 md:w-auto md:max-w-[min(40rem,70vw)]`}>
             <p className="text-xs font-bold tracking-wide text-ink-soft uppercase">{flow ? sceneOf(index + 1, flows.length)[lang] : owner}</p>
             <h2 className="text-lg leading-tight font-extrabold md:text-2xl">{flow ? flow.title[lang] : ''}</h2>
             {flow && <p className="mt-0.5 hidden text-sm text-ink-soft md:block">{flow.summary[lang]}</p>}
           </div>
-          <div className={`pointer-events-auto flex flex-wrap items-center justify-end gap-2 ${exporting ? 'hidden' : ''}`}>
+          {!hud && !exporting && <ShowControls lang={lang} onShow={toggleHud} />}
+          <div className={`pointer-events-auto flex flex-wrap items-center justify-end gap-2 ${exporting || !hud ? 'hidden' : ''}`}>
             <label className={`${glass} flex h-10 cursor-pointer items-center gap-2 px-3.5 text-xs font-extrabold text-ink-soft`}>
               <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} className="accent-[#2f8fe6]" />
               {w.auto[lang]}
@@ -717,14 +718,14 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
             </button>
           </div>
         </div>
-        <div className={`pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-3 p-4 md:p-8 ${hud ? '' : 'hidden'}`}>
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-3 p-4 md:p-8">
           {flow && caption.text && (
             <p className={`${glass} max-w-[min(60rem,100%)] px-6 py-4 text-center text-xl leading-snug font-extrabold md:text-3xl`} aria-live="polite">
               <span aria-hidden="true" className="mr-2">{caption.text.icon}</span>
               {caption.text[lang]}
             </p>
           )}
-          <div className={`pointer-events-auto flex flex-wrap items-center justify-center gap-2 ${exporting ? 'hidden' : ''}`}>
+          <div className={`pointer-events-auto flex flex-wrap items-center justify-center gap-2 ${exporting || !hud ? 'hidden' : ''}`}>
             {playback}
             <button type="button" onClick={() => step(-1)} disabled={index <= 0} aria-label={w.prev[lang]} title={`${w.prev[lang]} (PgUp)`} className={`${glass} grid size-12 place-items-center text-lg font-extrabold disabled:opacity-40`}>
               ←
@@ -845,6 +846,19 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
         <p className="mt-4 border-t border-ink/10 pt-3 text-xs leading-snug text-ink-soft">{note[lang]}</p>
       </aside>
 
+      {!hud && (
+        <div className="pointer-events-none absolute top-3 right-3">
+          <ShowControls lang={lang} onShow={toggleHud} />
+        </div>
+      )}
+      {!hud && flow && caption.text && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-3 md:p-6">
+          <p className={`${glass} max-w-[min(48rem,100%)] px-5 py-3 text-center text-lg leading-snug font-extrabold md:text-2xl`} aria-live="polite">
+            <span aria-hidden="true" className="mr-2">{caption.text.icon}</span>
+            {caption.text[lang]}
+          </p>
+        </div>
+      )}
       <div className={`pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-3 md:p-4 lg:right-[22.5rem] ${hud ? '' : 'hidden'}`}>
         {/* Phones have no side panel: back and present sit at the bottom. */}
         <div className="pointer-events-auto flex flex-wrap justify-center gap-2 lg:hidden">
@@ -906,5 +920,21 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
         />
       )}
     </div>
+  )
+}
+
+/**
+ * The way back once the controls are hidden, for whoever has no keyboard (H does the same): small
+ * and faint in a corner, so the scene and its caption keep the screen.
+ */
+function ShowControls({ lang, onShow }: { lang: Lang; onShow: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onShow}
+      className={`${glass} pointer-events-auto h-9 px-3.5 text-xs font-extrabold text-ink-soft opacity-50 transition-opacity hover:opacity-100 focus-visible:opacity-100`}
+    >
+      {pw.hudShow[lang]}
+    </button>
   )
 }
