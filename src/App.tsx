@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { flushSync } from 'react-dom'
 import { loginFrom, parseRoute, useBuilding, type BuildingState, type Route } from './data/building'
 import { lotCount } from './scene/lot'
 import { demoFlats, demoOwner } from './scene/demo'
@@ -47,8 +48,26 @@ const DEMO: BuildingState = {
   trip: 'idle',
 }
 
-/** The studio (sign-in, analysis, commits) only downloads for people who open it. */
-const Studio = lazy(() => import('./studio/Studio').then((m) => ({ default: m.Studio })))
+/**
+ * The studio (sign-in, analysis, commits) only downloads for people who open it, or point at the
+ * way in. Once it's here it renders straight away, so switching never flashes an empty page.
+ */
+let studioModule: typeof import('./studio/Studio') | null = null
+const loadStudio = () => import('./studio/Studio').then((m) => (studioModule = m))
+const LazyStudio = lazy(() => loadStudio().then((m) => ({ default: m.Studio })))
+
+/**
+ * Between the building and the studio the whole page changes: the browser fades one into the
+ * other instead of cutting. The studio is fetched first, so the fade lands on it, not on a blank.
+ */
+function crossFade(toStudio: boolean, update: () => void) {
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (still || !document.startViewTransition) return update()
+  const ready = toStudio && !studioModule ? loadStudio() : Promise.resolve()
+  ready
+    .catch(() => undefined)
+    .then(() => document.startViewTransition(() => flushSync(update)))
+}
 const PrivacyPage = lazy(() => import('./privacy/PrivacyPage').then((m) => ({ default: m.PrivacyPage })))
 
 export default function App() {
@@ -77,16 +96,28 @@ export default function App() {
     if (!route.studio) lastTown.current = window.location.pathname
   }, [route])
 
+  const studioOpen = useRef(Boolean(route.studio))
+  studioOpen.current = Boolean(route.studio)
   const go = useCallback((path: string) => {
-    window.history.pushState(null, '', path)
-    setRoute(parseRoute(path))
-    setView({ mode: 'building', entering: null })
+    const next = parseRoute(path)
+    const update = () => {
+      window.history.pushState(null, '', path)
+      setRoute(next)
+      setView({ mode: 'building', entering: null })
+    }
+    if (Boolean(next.studio) === studioOpen.current) return update()
+    crossFade(Boolean(next.studio), update)
   }, [])
 
   useEffect(() => {
     const onPop = () => {
-      setRoute(parseRoute(window.location.pathname))
-      setView({ mode: 'building', entering: null })
+      const next = parseRoute(window.location.pathname)
+      const update = () => {
+        setRoute(next)
+        setView({ mode: 'building', entering: null })
+      }
+      if (Boolean(next.studio) === studioOpen.current) return update()
+      crossFade(Boolean(next.studio), update)
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
@@ -193,12 +224,14 @@ export default function App() {
       </Suspense>
     )
 
-  if (route.studio)
+  if (route.studio) {
+    const Studio = studioModule?.Studio ?? LazyStudio
     return (
       <Suspense fallback={<div className="h-dvh w-full" style={{ background: SKY.sun }} />}>
         <Studio owner={route.studio.owner} repo={route.studio.repo} lang={lang} setLang={setLang} onGo={go} onTown={() => go(lastTown.current)} />
       </Suspense>
     )
+  }
 
   return (
     <div className="relative h-dvh w-full overflow-hidden text-ink">
@@ -253,7 +286,7 @@ export default function App() {
               <span className="block text-sm leading-tight text-ink-soft">{copy.tagline[lang]}</span>
             </span>
           </a>
-          <ModeSwitch mode="town" lang={lang} onTown={() => undefined} onStudio={() => go('/studio')} />
+          <ModeSwitch mode="town" lang={lang} onTown={() => undefined} onStudio={() => go('/studio')} onPrepare={loadStudio} />
           {!landing && <SearchForm lang={lang} onGo={go} compact initial={route.login ?? ''} />}
         </div>
         <div className="pointer-events-auto ml-auto flex items-center gap-2">
@@ -610,6 +643,8 @@ function Landing({ lang, onGo }: { lang: Lang; onGo: (path: string) => void }) {
             e.preventDefault()
             onGo('/studio')
           }}
+          onPointerEnter={loadStudio}
+          onFocus={loadStudio}
           className="mt-5 flex items-center gap-3 rounded-2xl bg-white/70 px-4 py-3 text-left transition-colors hover:bg-white"
         >
           <span className="text-2xl" aria-hidden="true">🔑</span>
