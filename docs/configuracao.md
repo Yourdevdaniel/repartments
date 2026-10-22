@@ -11,6 +11,7 @@ Como rodar o Repartments na sua máquina e publicar o seu, incluindo o login do 
 | `GITHUB_TOKEN` | prédio público (`/api/building`) | Token *fine-grained* sem nenhuma permissão: só lê dados públicos. Em desenvolvimento pode faltar, o servidor pede ao GitHub CLI. |
 | `GITHUB_CLIENT_ID` | login do estúdio | O *Client ID* do GitHub App ou OAuth App. Não é segredo. Com ele sozinho, o login é pelo código (*device flow*), que precisa de **Enable Device Flow** marcado. |
 | `GITHUB_CLIENT_SECRET` | login do estúdio com "Continuar com GitHub" | Segredo do app. Só no ambiente do servidor (na Vercel, marque *Sensitive*). Sem ele, o estúdio usa o login por código. |
+| `GITHUB_APP_SLUG` | opcional, só GitHub App | O nome do app no endereço (`github.com/apps/<slug>`). Não é segredo. Com ele, o estúdio mostra o botão **Escolher repositórios no GitHub**, porque o token de um GitHub App só lê os repositórios onde o app está instalado. |
 | `GITHUB_OAUTH_SCOPE` | opcional | Só para OAuth App: `repo` (padrão, lê privados) ou `public_repo` (só públicos). GitHub App ignora. |
 
 O arquivo [`.env.example`](../.env.example) tem todas, comentadas. Copie para `.env.local` (que o git ignora).
@@ -31,11 +32,12 @@ Há dois tipos de app. Os dois funcionam com o mesmo código; a diferença é a 
 1. GitHub → **Settings → Developer settings → GitHub Apps → New GitHub App**.
 2. **Homepage URL:** o endereço do site. **Callback URL:** `https://<seu site>/api/auth/callback`. Para desenvolvimento, um GitHub App aceita mais de uma: inclua também `http://localhost:5173/api/auth/callback`. A URL precisa ser exatamente a do site, com o mesmo endereço e sem barra no final.
 3. **Enable Device Flow:** opcional. Só é preciso se o estúdio for usar o login por código (quando não há `GITHUB_CLIENT_SECRET`).
+   **Setup URL:** `https://<seu site>/studio`, com *Redirect on update* marcado: quem escolhe os repositórios no GitHub volta direto para o estúdio.
 4. **Webhook:** desmarque *Active*.
 5. **Repository permissions:** `Contents: Read-only` e `Metadata: Read-only`. Nada mais.
 6. **Where can this GitHub App be installed?** *Only on this account* para uso interno, ou *Any account* se clientes vão instalar.
 7. Crie o app, copie o **Client ID** para `GITHUB_CLIENT_ID` e, em **Client secrets**, clique em **Generate a new client secret**. Copie o segredo para `GITHUB_CLIENT_SECRET` e guarde-o só ali: o GitHub mostra o valor uma vez.
-8. **Install App** na conta ou organização dona dos repositórios. O token de um GitHub App só enxerga os repositórios onde o app está instalado: se a lista do estúdio vier vazia, falta instalar (ou incluir o repositório na instalação).
+8. **Install App** na conta ou organização dona dos repositórios. O token de um GitHub App só enxerga os repositórios onde o app está instalado: se a lista do estúdio vier vazia, falta instalar (ou incluir o repositório na instalação). Com `GITHUB_APP_SLUG` (o nome do app no endereço `github.com/apps/<slug>`), o estúdio mostra o botão **Escolher repositórios no GitHub**, e cada pessoa instala o app nos próprios repositórios sem sair do fluxo.
 
 ### OAuth App (mais simples, mais permissão)
 
