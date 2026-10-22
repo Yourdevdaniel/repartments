@@ -201,7 +201,7 @@ O prédio público só mostra o que é público e nunca mostra código. O **est�
 3. **O login dura no máximo 8 horas.** O cabeçalho mostra quanto falta ("termina em 7 h 52 min"); nos últimos 10 minutos aparece um aviso para salvar a apresentação; ao terminar, o estúdio explica e pede para entrar de novo. Fechar o site, sair, ou recarregar a página sem outra aba do estúdio aberta também encerra.
 4. A lista mostra os repositórios da conta (próprios, de colaboração e de organizações), com busca e "Carregar mais". Privados têm o selo 🔒.
 
-Sem login: **Ver um exemplo** abre um CRM de exemplo (com assistente de vendas de IA e algumas semanas de commits), e **Abrir uma apresentação salva** abre um arquivo baixado antes. Em desenvolvimento, sem app do GitHub configurado, o botão de entrar usa o login do GitHub CLI da própria máquina.
+Sem login: **Ver um exemplo** abre a loja on-line de um mercado de exemplo (produtos, carrinho e finalizar compra, com algumas semanas de commits), e **Abrir uma apresentação salva** abre um arquivo baixado antes. Em desenvolvimento, sem app do GitHub configurado, o botão de entrar usa o login do GitHub CLI da própria máquina.
 
 ### Como funciona (a apresentação)
 
