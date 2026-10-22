@@ -131,7 +131,7 @@ flowchart LR
 | `src/studio/present/*` | `Theater` (o palco: prédio, cenas, painel, modo tela cheia com avanço automático), `PresentTab`, a cena de abertura (`intro.ts`) e o editor de roteiro. |
 | `src/studio/works/*` | Commits em cena (`scenes.ts`, puro) e a aba (`WorksTab.tsx`): 12 commits por prédio, filtros, calor. |
 | `src/studio/map/*` | Mapa em faixas por camada (C4 simplificado), sobreposições de calor e do commit, grafo de decisão dos agentes. |
-| `src/studio/store.ts`, `example.ts` | Memória da aba, arquivo de apresentação (validado ao abrir) e o exemplo de CRM. |
+| `src/studio/store.ts`, `example.ts` | Memória da aba, arquivo de apresentação (validado ao abrir) e o exemplo do mercado (`market.ts`). |
 | `src/studio/export/*` | A apresentação como arquivo, feita no navegador: vídeo gravado do canvas com as legendas desenhadas (`video.ts`) e PowerPoint com uma foto por cena (`deck.ts`, carregado só quando pedido). [ADR 0007](adr/0007-video-e-powerpoint-no-navegador.md). |
 | `src/github/*` | Cliente do GitHub para o navegador; repositórios; commits, branches e calor. |
 | `src/architecture/*` | Análise estática ([analise.md](analise.md)). |
