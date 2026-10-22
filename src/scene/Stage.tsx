@@ -365,6 +365,25 @@ function FrameTap({ onFrame }: { onFrame: (canvas: HTMLCanvasElement) => void })
   return null
 }
 
+/**
+ * While a video is being made, the stage stops following the screen and draws a frame only when
+ * asked: `drive.current(dt)` moves everything on by `dt` seconds and draws once. Nothing waits for
+ * the screen, so the video goes on with the tab hidden.
+ */
+function Driver({ drive }: { drive: { current: ((dt: number) => void) | null } }) {
+  const get = useThree((s) => s.get)
+  useEffect(() => {
+    drive.current = (dt) => {
+      const s = get()
+      s.advance(s.clock.elapsedTime + dt)
+    }
+    return () => {
+      drive.current = null
+    }
+  }, [drive, get])
+  return null
+}
+
 function Clock({
   time,
   narrator,
@@ -430,9 +449,11 @@ type Props = {
   onFrame?: (canvas: HTMLCanvasElement) => void
   /** Kept on the page but out of sight (behind the studio): draw nothing until it's back. */
   asleep?: boolean
+  /** Given while a video is made: frames are drawn only when the video asks (`Driver`). */
+  drive?: { current: ((dt: number) => void) | null }
 }
 
-export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption, recenter, onMoved, lot, restart, paused, rate, clock, panel = true, onFrame, asleep = false }: Props) {
+export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption, recenter, onMoved, lot, restart, paused, rate, clock, panel = true, onFrame, asleep = false, drive }: Props) {
   const hood = useMemo(() => neighborhood(owner, lot), [owner, lot])
   const reduce = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, [])
   const time = useMemo<StoryTime>(() => ({ current: reduce ? 9 : 0, paused: reduce, rate: 1 }), [reduce])
@@ -461,13 +482,17 @@ export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onS
       flat
       orthographic
       dpr={dpr}
-      frameloop={asleep ? 'never' : 'always'}
+      frameloop={asleep || drive ? 'never' : 'always'}
       gl={{ antialias: true, alpha: true }}
       camera={{ position: [10, 8, 30], near: 0.1, far: 200, zoom: 60 }}
       onPointerMissed={() => inside && onBack()}
     >
-      <WakeClock asleep={asleep} />
-      <PerformanceMonitor onDecline={() => setDpr(1)} onIncline={() => setDpr(Math.min(window.devicePixelRatio || 1, 1.5))} />
+      <WakeClock asleep={asleep || !!drive} />
+      {drive ? (
+        <Driver drive={drive} />
+      ) : (
+        <PerformanceMonitor onDecline={() => setDpr(1)} onIncline={() => setDpr(Math.min(window.devicePixelRatio || 1, 1.5))} />
+      )}
       <WeatherContext.Provider value={weather}>
       {/* No tone mapping (flat), so the pastels come out as picked instead of washed out. */}
       <WeatherLights shadowTop={inside ? 4 : 12} indoor={inside !== null} />
