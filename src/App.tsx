@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
 import { loginFrom, parseRoute, useBuilding, type BuildingState, type Route } from './data/building'
 import { lotCount } from './scene/lot'
 import { demoFlats, demoOwner } from './scene/demo'
@@ -119,6 +119,32 @@ export default function App() {
     return () => window.clearTimeout(id)
   }, [langHint, hideLangHint])
 
+  /** How much of the top and bottom the floating bars take, so the full-screen cards start below them. */
+  const headerRef = useRef<HTMLElement>(null)
+  const footerRef = useRef<HTMLDivElement>(null)
+  const [chrome, setChrome] = useState({ top: 0, bottom: 0 })
+  useLayoutEffect(() => {
+    const header = headerRef.current
+    const footer = footerRef.current
+    if (!header || !footer) return
+    const measure = () => {
+      // The language hint hangs below the header without taking room in it.
+      const floats = [header, ...header.querySelectorAll<HTMLElement>('[data-float]')]
+      const top = Math.max(...floats.map((el) => el.getBoundingClientRect().bottom))
+      const bottom = window.innerHeight - footer.getBoundingClientRect().top
+      setChrome((c) => (c.top === top && c.bottom === bottom ? c : { top, bottom }))
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(header)
+    observer.observe(footer)
+    window.addEventListener('resize', measure)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [langHint])
+
   const setLang = (next: Lang) => {
     hideLangHint()
     setLangState(next)
@@ -201,7 +227,10 @@ export default function App() {
     )
 
   return (
-    <div className="relative h-dvh w-full overflow-hidden text-ink">
+    <div
+      className="relative h-dvh w-full overflow-hidden text-ink"
+      style={{ '--chrome-top': `${chrome.top}px`, '--chrome-bottom': `${chrome.bottom}px` } as CSSProperties}
+    >
       {WEATHERS.map((w) => (
         <div
           key={w}
@@ -237,7 +266,7 @@ export default function App() {
 
       {/* On a phone the weather and language toggles drop to a second row instead of running off screen.
           Above the full-screen cards (landing, loading, errors), or they'd swallow its clicks. */}
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-start justify-between gap-2 p-4 md:gap-3 md:p-6">
+      <header ref={headerRef} className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-start justify-between gap-2 p-4 md:gap-3 md:p-6">
         <div className="pointer-events-auto flex flex-wrap items-center gap-2">
           <a
             href="/"
@@ -413,7 +442,7 @@ export default function App() {
       </aside>
       )}
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-4 md:p-6">
+      <div ref={footerRef} className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-4 md:p-6">
         {flat && (
           <button
             type="button"
@@ -472,6 +501,7 @@ function LangHint({ lang, onSwitch, onClose }: { lang: Lang; onSwitch: () => voi
   return (
     <span
       lang={hint.lang}
+      data-float
       className="absolute top-full right-0 mt-3.5 flex w-max max-w-[min(15rem,calc(100vw-2rem))] items-center gap-1 rounded-2xl bg-ink py-1.5 pr-1.5 pl-3.5 text-white shadow-[0_18px_40px_-16px_rgba(35,38,58,0.7)] transition-opacity duration-500 starting:opacity-0 motion-safe:animate-bob"
     >
       {/* The tip, centred under the button it points at. */}
@@ -574,8 +604,8 @@ function SearchForm({ lang, onGo, compact = false, initial = '' }: { lang: Lang;
 /** The front door: what this is, a field for a username, and a few buildings to peek at. */
 function Landing({ lang, onGo }: { lang: Lang; onGo: (path: string) => void }) {
   return (
-    <div className="absolute inset-0 grid grid-cols-[minmax(0,1fr)] place-items-center p-4">
-      <div className={`${glass} w-[min(30rem,100%)] p-6 text-center md:p-8`}>
+    <div className="absolute inset-x-0 top-(--chrome-top) bottom-(--chrome-bottom) flex overflow-y-auto p-4">
+      <div className={`${glass} m-auto w-[min(30rem,100%)] p-6 text-center md:p-8`}>
         <p className="text-4xl" aria-hidden="true">
           🏢
         </p>
@@ -657,8 +687,8 @@ function Credits({ lang }: { lang: Lang }) {
 /** While the building goes up, or when it can't. */
 function Status({ state, login, lang, onGo }: { state: BuildingState; login: string; lang: Lang; onGo: (path: string) => void }) {
   return (
-    <div className="absolute inset-0 grid grid-cols-[minmax(0,1fr)] place-items-center p-4">
-      <div className={`${glass} w-[min(26rem,100%)] p-6 text-center`}>
+    <div className="absolute inset-x-0 top-(--chrome-top) bottom-(--chrome-bottom) flex overflow-y-auto p-4">
+      <div className={`${glass} m-auto w-[min(26rem,100%)] p-6 text-center`}>
         {state.kind === 'loading' ? (
           <>
             <p className="animate-bounce text-4xl" aria-hidden="true">
