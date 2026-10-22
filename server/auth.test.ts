@@ -25,6 +25,13 @@ describe('/api/auth/config', () => {
     expect(await (await handleAuth(new Request(`${BASE}/api/auth/config`), { env: {} })).json()).toEqual({ enabled: false, web: false })
     expect(await (await handleAuth(new Request(`${BASE}/api/auth/config`), { env: {}, devToken: () => 't' })).json()).toEqual({ enabled: false, web: false, devLogin: true })
   })
+
+  it("links to the GitHub App's install page only for a well-formed slug", async () => {
+    const config = async (GITHUB_APP_SLUG: string) => (await run(new Request(`${BASE}/api/auth/config`), { env: { ...env, GITHUB_APP_SLUG } })).json()
+    expect(await config('repartments-reader')).toEqual({ enabled: true, web: false, install: 'https://github.com/apps/repartments-reader/installations/new' })
+    expect(await config('../evil?x=1')).toEqual({ enabled: true, web: false })
+    expect(await (await handleAuth(new Request(`${BASE}/api/auth/config`), { env: { GITHUB_APP_SLUG: 'app' } })).json()).toEqual({ enabled: false, web: false })
+  })
 })
 
 describe('/api/auth/device', () => {

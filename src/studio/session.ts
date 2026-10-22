@@ -53,7 +53,7 @@ function landing(): Landing {
 
 /** Who is signed in, how long it lasts, and the commands to sign in and out. */
 export function useSession() {
-  const [config, setConfig] = useState<{ enabled: boolean; web: boolean; devLogin: boolean } | null>(null)
+  const [config, setConfig] = useState<{ enabled: boolean; web: boolean; devLogin: boolean; install: string | null } | null>(null)
   const [vaultState, setVaultState] = useState<VaultState | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [back] = useState(landing)
@@ -75,9 +75,9 @@ export function useSession() {
   useEffect(() => {
     let live = true
     fetch('/api/auth/config')
-      .then((r) => r.json() as Promise<{ enabled?: boolean; web?: boolean; devLogin?: boolean }>)
-      .catch(() => ({}) as { enabled?: boolean; web?: boolean; devLogin?: boolean })
-      .then((c) => live && setConfig({ enabled: !!c.enabled, web: !!c.web, devLogin: !!c.devLogin }))
+      .then((r) => r.json() as Promise<{ enabled?: boolean; web?: boolean; devLogin?: boolean; install?: string }>)
+      .catch(() => ({}) as { enabled?: boolean; web?: boolean; devLogin?: boolean; install?: string })
+      .then((c) => live && setConfig({ enabled: !!c.enabled, web: !!c.web, devLogin: !!c.devLogin, install: c.install ?? null }))
     const stop = onVaultState(setVaultState)
     // A vault that never answers (a browser blocking workers) shouldn't leave the page waiting.
     const late = window.setTimeout(() => setVaultState((s) => s ?? { status: 'signed-out', reason: 'unavailable' }), 5000)
@@ -100,7 +100,7 @@ export function useSession() {
   else if (vaultState.status === 'waiting') state = { status: 'waiting', code: vaultState }
   else {
     const error = (vaultState.reason === 'disabled' ? 'unavailable' : vaultState.reason) ?? back.error
-    state = { status: 'signed-out', ...config, ...(error ? { error } : {}) }
+    state = { status: 'signed-out', enabled: config.enabled, web: config.web, devLogin: config.devLogin, ...(error ? { error } : {}) }
   }
 
   const signIn = useCallback(() => {
@@ -110,5 +110,8 @@ export function useSession() {
     else vault.start()
   }, [config])
 
-  return { state, now, signIn, cancel: vault.cancel, signOut: vault.signOut }
+  /** GitHub App only: where the person picks which repositories the app can read. */
+  const install = config?.install ?? null
+
+  return { state, now, install, signIn, cancel: vault.cancel, signOut: vault.signOut }
 }
