@@ -31,6 +31,9 @@ const WEATHER_ICON: Record<Weather, string> = { sun: '☀️', clouds: '☁️',
 /** Seconds each weather lasts when it changes on its own. */
 const WEATHER_SECONDS = 22
 
+/** Widest the landing card gets (30rem), plus the gutter around it. */
+const CARD_WIDTH = 30 * 16 + 32
+
 /** Phones and tablets get "tap" and "pinch" in the hint instead of "click" and "scroll". */
 const TOUCH = window.matchMedia('(pointer: coarse)').matches
 
@@ -128,9 +131,19 @@ export default function App() {
     const footer = footerRef.current
     if (!header || !footer) return
     const measure = () => {
-      // The language hint hangs below the header without taking room in it.
-      const floats = [header, ...header.querySelectorAll<HTMLElement>('[data-float]')]
-      const top = Math.max(...floats.map((el) => el.getBoundingClientRect().bottom))
+      // Only what sits above the middle column counts: on a wide screen the toggles in the corners
+      // leave the card alone, on a phone everything is above it. The language hint hangs below the
+      // header without taking room in it, so it's measured on its own.
+      const half = Math.min(CARD_WIDTH, window.innerWidth) / 2
+      const mid = window.innerWidth / 2
+      const pieces = [...header.querySelectorAll<HTMLElement>(':scope > div > *, [data-float]')]
+      const top = Math.max(
+        0,
+        ...pieces
+          .map((el) => el.getBoundingClientRect())
+          .filter((r) => r.width > 0 && r.right > mid - half && r.left < mid + half)
+          .map((r) => r.bottom),
+      )
       const bottom = window.innerHeight - footer.getBoundingClientRect().top
       setChrome((c) => (c.top === top && c.bottom === bottom ? c : { top, bottom }))
     }
@@ -606,10 +619,10 @@ function Landing({ lang, onGo }: { lang: Lang; onGo: (path: string) => void }) {
   return (
     <div className="absolute inset-x-0 top-(--chrome-top) bottom-(--chrome-bottom) flex overflow-y-auto p-4">
       <div className={`${glass} m-auto w-[min(30rem,100%)] p-6 text-center md:p-8`}>
-        <p className="text-4xl" aria-hidden="true">
+        <p className="text-4xl [@media(max-height:44rem)]:hidden" aria-hidden="true">
           🏢
         </p>
-        <h1 className="mt-3 text-2xl leading-tight font-extrabold tracking-[-0.02em] md:text-3xl">{copy.landingTitle[lang]}</h1>
+        <h1 className="mt-3 text-2xl leading-tight [@media(max-height:44rem)]:mt-0 font-extrabold tracking-[-0.02em] md:text-3xl">{copy.landingTitle[lang]}</h1>
         <p className="mt-2 text-[15px] leading-snug text-ink-soft">{copy.landingLead[lang]}</p>
         <div className="mt-5 rounded-full bg-white px-4 py-2 shadow-[0_8px_24px_-14px_rgba(40,52,110,0.5)]">
           <SearchForm lang={lang} onGo={onGo} />
