@@ -388,6 +388,18 @@ function Clock({
   return null
 }
 
+/**
+ * Waking up after a while behind the studio, the first frame would otherwise see the whole time
+ * away as one step and the residents and clouds would jump. Reading the clock once resets it.
+ */
+function WakeClock({ asleep }: { asleep: boolean }) {
+  const clock = useThree((s) => s.clock)
+  useEffect(() => {
+    if (!asleep) clock.getDelta()
+  }, [asleep, clock])
+  return null
+}
+
 type Props = {
   lang: SceneLang
   weather: Weather
@@ -454,6 +466,7 @@ export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onS
       camera={{ position: [10, 8, 30], near: 0.1, far: 200, zoom: 60 }}
       onPointerMissed={() => inside && onBack()}
     >
+      <WakeClock asleep={asleep} />
       <PerformanceMonitor onDecline={() => setDpr(1)} onIncline={() => setDpr(Math.min(window.devicePixelRatio || 1, 1.5))} />
       <WeatherContext.Provider value={weather}>
       {/* No tone mapping (flat), so the pastels come out as picked instead of washed out. */}
