@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ComponentType, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { loginFrom, parseRoute, useBuilding, type BuildingState, type Route } from './data/building'
 import { lotCount } from './scene/lot'
 import { demoFlats, demoOwner } from './scene/demo'
@@ -99,7 +99,7 @@ function StudioLayer({ open, children }: { open: boolean; children: ReactNode })
   }, [open, shown])
   if (!shown) return null
   return (
-    <div ref={ref} inert={!open} className="fixed inset-0 overflow-y-auto will-change-[opacity,transform]">
+    <div ref={ref} inert={!open} className="fixed inset-0 z-50 overflow-y-auto">
       {open ? children : last.current}
     </div>
   )
@@ -137,24 +137,28 @@ export default function App() {
 
   const studioOpen = useRef(Boolean(route.studio))
   studioOpen.current = Boolean(route.studio)
+  /** Counts navigations, so one still waiting for the studio's code is dropped if another came after it. */
+  const navSeq = useRef(0)
   const go = useCallback((path: string) => {
     const next = parseRoute(path)
-    const update = () => {
+    const id = ++navSeq.current
+    whenStudioReady(Boolean(next.studio) && !studioOpen.current, () => {
+      if (id !== navSeq.current) return
       window.history.pushState(null, '', path)
       setRoute(next)
       setView({ mode: 'building', entering: null })
-    }
-    whenStudioReady(Boolean(next.studio) && !studioOpen.current, update)
+    })
   }, [])
 
   useEffect(() => {
     const onPop = () => {
       const next = parseRoute(window.location.pathname)
-      const update = () => {
+      const id = ++navSeq.current
+      whenStudioReady(Boolean(next.studio) && !studioOpen.current, () => {
+        if (id !== navSeq.current) return
         setRoute(next)
         setView({ mode: 'building', entering: null })
-      }
-      whenStudioReady(Boolean(next.studio) && !studioOpen.current, update)
+      })
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
@@ -306,7 +310,11 @@ export default function App() {
       </Suspense>
     )
 
-  const Studio = studioModule?.Studio ?? LazyStudio
+  // Chosen the first time the studio shows and kept: switching from the lazy wrapper to the loaded
+  // component later would remount the studio and lose what's on it.
+  const studioType = useRef<ComponentType<ComponentProps<typeof LazyStudio>> | null>(null)
+  if (route.studio && !studioType.current) studioType.current = studioModule?.Studio ?? LazyStudio
+  const Studio = studioType.current ?? LazyStudio
   const studio = route.studio ? (
     <Suspense fallback={<div className="h-dvh w-full" style={{ background: SKY.sun }} />}>
       <Studio owner={route.studio.owner} repo={route.studio.repo} lang={lang} setLang={setLang} onGo={go} onTown={() => go(lastTown.current)} />
@@ -318,7 +326,9 @@ export default function App() {
     <>
     <div
       inert={!townShown}
-      className="relative h-dvh w-full overflow-hidden text-ink"
+      // Hidden once the studio has faded in over it (some studio pages are see-through, like the
+      // presenter); shown again at once on the way back, so the studio fades out over it.
+      className={`relative h-dvh w-full overflow-hidden text-ink transition-[visibility] ${townShown ? 'visible' : 'invisible delay-[400ms]'}`}
       style={{ '--chrome-top': `${chrome.top}px`, '--chrome-bottom': `${chrome.bottom}px` } as CSSProperties}
     >
       {WEATHERS.map((w) => (
