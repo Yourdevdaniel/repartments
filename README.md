@@ -15,7 +15,7 @@ Switch to **Studio** at the top (or go to `/studio`) and sign in with GitHub to 
 - **Map:** the parts in bands (screens, API, security, business logic, AI, jobs, data), the arrows between them, the outside services they use, each AI agent's decision graph, and the commit heat on top.
 - **Author's script:** a `repartments.json` at the repo's root (or imported in the studio) lets whoever knows the system say what it is, name its parts and pick the scenes, replacing the ones read from the code; the studio offers a prompt to copy so your own AI can write it, and sends nothing anywhere. Format, JSON Schema and the full prompt: [docs/roteiro.md](docs/roteiro.md).
 
-No sign-in? "See an example" opens a made-up CRM with an AI sales assistant.
+No sign-in? "See an example" opens a made-up market's online shop (products, cart and checkout).
 
 Sign-in is "Continue with GitHub" when the app's client secret is configured: the server trades the sign-in code for a token with that secret (kept only in the server's environment), with no session and no database. Without the secret, sign-in uses GitHub's device flow (the GitHub CLI's "enter this code" login) with just the public client ID. The token stays in the browser tab, which talks to api.github.com directly, and the analysis runs there too: static and deterministic, no AI service ever reads the code.
 
