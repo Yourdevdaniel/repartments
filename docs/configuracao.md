@@ -58,7 +58,7 @@ npm run build
 
 - **Sem `GITHUB_CLIENT_ID`**, o botão "Entrar" do estúdio usa o login do **GitHub CLI** (`gh auth login`) direto. Isso só existe no servidor de desenvolvimento do Vite e só para quem acessa da própria máquina; as funções publicadas não têm esse atalho.
 - **Com `GITHUB_CLIENT_ID`** em `.env.local`, o login real é usado também em desenvolvimento: com `GITHUB_CLIENT_SECRET` no mesmo arquivo, o botão é **Continuar com GitHub** (vai ao GitHub e volta para a mesma página); sem ele, o código digitado no GitHub. O segredo vai em `.env.local` como as outras variáveis, e o servidor de desenvolvimento do Vite o lê.
-- **Sem login nenhum**, "Ver um exemplo" abre a apresentação de um CRM de exemplo.
+- **Sem login nenhum**, "Ver um exemplo" abre a apresentação da loja de um mercado de exemplo.
 
 ## 4. Publicar na Vercel
 
