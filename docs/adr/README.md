@@ -10,12 +10,13 @@ Cada decisão que muda a forma do sistema fica registrada aqui, no formato [MADR
 | [0004](0004-apresentacao-no-motor-de-historias.md) | Apresentação gerada sobre o motor de histórias existente | Aceito |
 | [0005](0005-commits-como-cenas.md) | Commits como cenas com os moradores, não como lista e diff | Aceito |
 | [0006](0006-escritorio-e-desvio-de-moveis.md) | Planta de escritório para cenas grandes, e moradores que desviam dos móveis | Aceito |
-| [0007](0007-video-e-powerpoint-no-navegador.md) | Vídeo e PowerPoint feitos no próprio navegador | Aceito |
+| [0007](0007-video-e-powerpoint-no-navegador.md) | Vídeo e PowerPoint feitos no próprio navegador | Aceito (o vídeo, substituído por 0013) |
 | [0008](0008-continuar-com-github.md) | Botão "Continuar com GitHub", com o segredo só para trocar o código | Aceito |
 | [0009](0009-funcionalidades-pelo-readme-e-pela-interface.md) | O que o sistema faz vem do README e da interface, não só da arquitetura | Aceito |
 | [0010](0010-roteiro-do-autor.md) | Roteiro do autor: um repartments.json escrito pela IA do cliente, sem LLM no estúdio | Aceito |
 | [0011](0011-privacidade-e-lgpd.md) | Privacidade e LGPD: política no site, aviso no login, salvar sem nomes e registro das operações | Aceito |
 | [0012](0012-jornadas-pelos-botoes.md) | Jornadas do cliente lidas dos botões e das páginas, por leitura estática no mesmo arquivo | Aceito |
+| [0013](0013-video-quadro-a-quadro.md) | Vídeo feito quadro a quadro (WebCodecs), sem precisar da aba na frente | Aceito |
 
 Para uma decisão nova, copie o modelo abaixo para `NNNN-titulo-curto.md` e adicione a linha na tabela.
 
