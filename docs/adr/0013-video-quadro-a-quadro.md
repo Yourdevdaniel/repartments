@@ -31,4 +31,4 @@ Opção 3.
 - 30 quadros por segundo e ~3 Mbit/s (cerca de 18 a 22 MB por minuto) em qualquer tela.
 - Precisa de WebCodecs (Chrome e Edge, Safari 16.4+, Firefox 130+). Sem ele, o estúdio avisa que o navegador não faz vídeos; não há mais a gravação em tempo real como reserva.
 - Alguns navegadores desenham WebGL mais devagar com a aba escondida. Nesse caso o vídeo continua igual; só fica pronto mais tarde.
-- O PowerPoint segue como em 0007 (fotos tiradas com a aba na frente).
+- O PowerPoint usa o mesmo palco guiado (`openScene`): cada cena assenta por 1,4 s de quadros não guardados, a história para no meio de um passo e a foto sai de um quadro desenhado na hora. Também dá para trocar de aba enquanto ele é montado.

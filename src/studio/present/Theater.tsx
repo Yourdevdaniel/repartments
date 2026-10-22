@@ -11,8 +11,8 @@
  * end, stop, half to double speed, hide the controls, each with a key (? lists them).
  *
  * The show can also leave as files (`../export/`): a video, made frame by frame as it plays once
- * through with the captions drawn in (the tab can be hidden meanwhile), and a PowerPoint, with a
- * still of each scene and its steps.
+ * through with the captions drawn in, and a PowerPoint, with a still of each scene and its steps.
+ * Both drive the stage themselves, so the tab can be hidden meanwhile.
  */
 import { useGLTF, useProgress } from '@react-three/drei'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
@@ -57,7 +57,6 @@ const w = {
   ended: { en: 'End of the presentation', pt: 'Fim da apresentação' },
   restart: { en: 'Restart', pt: 'Recomeçar' },
   backToBuilding: { en: 'Back to the building', pt: 'Voltar ao prédio' },
-  keepOpen: { en: 'Keep this tab open and in front until it ends.', pt: 'Deixe esta aba aberta e na frente até terminar.' },
   afk: { en: 'You can switch tabs meanwhile; just keep this one open.', pt: 'Pode trocar de aba enquanto isso; só não feche esta.' },
   cancel: { en: 'Cancel', pt: 'Cancelar' },
   cancelled: { en: 'Cancelled', pt: 'Cancelado' },
@@ -135,13 +134,12 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
   const [exporting, setExporting] = useState<'video' | 'deck' | null>(null)
   const exportKind = useRef<'video' | 'deck' | null>(null)
   exportKind.current = exporting
-  /** Gets every drawn frame while exporting; `frames` waits for some, `grab` reads one on the spot. */
+  /** Gets every frame drawn while exporting, while its picture is still on the canvas. */
   const sink = useRef<((canvas: HTMLCanvasElement) => void) | null>(null)
-  const waiting = useRef<{ n: number; grab: (canvas: HTMLCanvasElement) => unknown; done: (v: unknown) => void }[]>([])
   const cancelled = useRef(false)
-  /** Moves the stage on and draws one frame, while a video is being made (see `Stage`'s `drive`). */
+  /** Moves the stage on and draws one frame, while a file is being made (see `Stage`'s `drive`). */
   const drive = useRef<((dt: number) => void) | null>(null)
-  /** How much of the video is made, 0 to 1. */
+  /** How much of the file is made, 0 to 1. */
   const [progress, setProgress] = useState(0)
   /** The scene open (null: the building) when presenting or exporting began; undefined: nothing to put back. */
   const before = useRef<string | null | undefined>(undefined)
@@ -368,26 +366,9 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     return () => window.removeEventListener('keydown', listen)
   }, [])
 
-  /** Every frame drawn while exporting: to the recording, and to whoever waits for frames. */
-  const tap = useCallback((canvas: HTMLCanvasElement) => {
-    sink.current?.(canvas)
-    waiting.current = waiting.current.filter((w) => {
-      if (--w.n > 0) return true
-      w.done(w.grab(canvas))
-      return false
-    })
-  }, [])
-  /** Resolves after `n` frames with what `grab` read from the last one, while its picture is there. */
-  const frames = <T,>(n: number, grab: (canvas: HTMLCanvasElement) => T = () => null as T) =>
-    new Promise<T>((done) => waiting.current.push({ n, grab, done: done as (v: unknown) => void }))
-  const until = (ok: () => boolean, ms = 5000) =>
-    new Promise<boolean>((done) => {
-      const t0 = performance.now()
-      const tick = () => (ok() ? done(true) : performance.now() - t0 > ms ? done(false) : window.setTimeout(tick, 50))
-      tick()
-    })
-  const pause = (ms: number) => new Promise((done) => window.setTimeout(done, ms))
-  /** `until` without timers, for the video: a hidden tab holds timers back, not messages. */
+  /** Every frame drawn while exporting goes to the file being made. */
+  const tap = useCallback((canvas: HTMLCanvasElement) => sink.current?.(canvas), [])
+  /** Waits for `ok` without timers: a hidden tab holds timers back, not messages. */
   const settle = async (ok: () => boolean, ms = 10_000) => {
     const t0 = performance.now()
     while (!ok()) {
@@ -396,10 +377,26 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     }
     return true
   }
+  /**
+   * Opens a scene for a file: straight in, with the story held at its start, drawing frames nobody
+   * keeps until the camera has settled in (`frames` of them) and the furniture has loaded. Leaves
+   * the story paused. False when cancelled or when the scene never opened.
+   */
+  const openScene = async (id: string, frames: number) => {
+    setHovered(null)
+    setView({ mode: 'inside', id })
+    if (!(await settle(() => insideRef.current === id && clock.current !== null))) return false
+    clock.current!.paused = true
+    for (let k = 0; k < frames || (useProgress.getState().active && k < VIDEO.fps * 20); k++) {
+      if (cancelled.current) return false
+      drive.current?.(1 / VIDEO.fps)
+      await breathe()
+    }
+    return !cancelled.current
+  }
 
   const endExport = () => {
     sink.current = null
-    waiting.current = []
     setExporting(null)
     setPresenting(false)
     restoreBefore()
@@ -451,21 +448,14 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     try {
       if (!(await settle(() => drive.current !== null))) throw new Error('no stage')
       for (let i = 0; i < flows.length; i++) {
-        const id = flows[i].id
-        // Straight in: the video fades from white on its own at each scene change.
-        setHovered(null)
-        setView({ mode: 'inside', id })
-        if (!(await settle(() => insideRef.current === id && clock.current !== null))) throw new Error('no scene')
-        // The story waits at its start while the camera settles in and the furniture loads; these
-        // frames aren't kept.
-        const time = clock.current!
-        time.paused = true
+        // Straight in (the video fades from white on its own at each scene change), with a second for
+        // the camera to settle that isn't kept.
         now = null
-        for (let k = 0; k < VIDEO.fps || (useProgress.getState().active && k < VIDEO.fps * 20); k++) {
+        if (!(await openScene(flows[i].id, VIDEO.fps))) {
           if (cancelled.current) return
-          drive.current?.(dt)
-          await breathe()
+          throw new Error('no scene')
         }
+        const time = clock.current!
         time.current = 0
         time.paused = false
         const frames = sceneFrames(stories[i].duration, speed)
@@ -502,24 +492,40 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
     before.current = insideRef.current
     cancelled.current = false
     const comp = compositor(1600, 900)
+    let grab = false
+    let still: string | null = null
+    sink.current = (canvas) => {
+      if (grab && canvas.width) still = comp.still(canvas)
+    }
     setHelp(false)
+    setProgress(0)
     setExporting('deck')
     setPresenting(true)
+    const failed = () => {
+      if (cancelled.current) return
+      endExport()
+      flash(w.deckFailed[lang])
+    }
+    if (!(await settle(() => drive.current !== null))) return failed()
     const stills: (string | null)[] = []
     for (let i = 0; i < flows.length; i++) {
-      if (cancelled.current) return
-      enter(flows[i].id, true)
-      await until(() => insideRef.current === flows[i].id)
-      // The camera settles in from a wider shot and the residents load: give it a moment.
-      await pause(1400)
+      // The camera settles in from a wider shot and the residents load: 1.4 s of frames.
+      if (!(await openScene(flows[i].id, Math.round(1.4 * VIDEO.fps)))) return failed()
       const st = flats[i].stories[flats[i].narrator]
       const k = Math.min(st.captions.length - 1, Math.max(1, Math.floor(st.captions.length * 0.4)))
       const c = st.captions[k]
       if (c && clock.current) clock.current.current = c.t0 + (c.t1 - c.t0) * 0.5
-      setPaused(true)
-      await frames(4)
-      if (cancelled.current) return
-      stills.push(await frames(1, (canvas) => (canvas.width ? comp.still(canvas) : null)))
+      // A few frames for everyone to reach their places at that moment, then the still.
+      still = null
+      for (let f = 0; f < 5; f++) {
+        if (cancelled.current) return
+        grab = f === 4
+        drive.current?.(1 / VIDEO.fps)
+        await breathe()
+      }
+      grab = false
+      stills.push(still)
+      setProgress((i + 1) / flows.length)
     }
     try {
       const deck: Deck = {
@@ -614,7 +620,7 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
       clock={clock}
       panel={!presenting && hud}
       onFrame={exporting ? tap : undefined}
-      drive={exporting === 'video' ? drive : undefined}
+      drive={exporting ? drive : undefined}
     />
   )
 
@@ -683,9 +689,9 @@ export function Theater({ flows, flats, owner, lang, sceneOf, intro, listTitle, 
                 <span aria-hidden="true" className={`size-3 rounded-full ${exporting === 'video' ? 'animate-pulse bg-[#e2554f]' : 'bg-accent'}`} />
                 {(exporting === 'video' ? w.recording : w.makingDeck)[lang]}
                 {flow && <span className="font-bold text-ink-soft">· {sceneOf(index + 1, flows.length)[lang]}</span>}
-                {exporting === 'video' && <span className="font-bold text-ink-soft tabular-nums">· {Math.floor(progress * 100)}%</span>}
+                <span className="font-bold text-ink-soft tabular-nums">· {Math.floor(progress * 100)}%</span>
               </span>
-              <span className="text-xs text-ink-soft">{(exporting === 'video' ? w.afk : w.keepOpen)[lang]}</span>
+              <span className="text-xs text-ink-soft">{w.afk[lang]}</span>
               <button type="button" onClick={cancelExport} className="h-9 rounded-full bg-ink/5 px-4 text-xs font-extrabold text-ink hover:bg-ink/10">
                 {w.cancel[lang]} (Esc)
               </button>
