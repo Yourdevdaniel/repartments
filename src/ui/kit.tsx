@@ -76,7 +76,20 @@ const MODES = {
  * and the studio (sign in, open any repo, present it). Shown in both headers, so either is always
  * one click away.
  */
-export function ModeSwitch({ mode, lang, onTown, onStudio }: { mode: 'town' | 'studio'; lang: 'en' | 'pt'; onTown: () => void; onStudio: () => void }) {
+export function ModeSwitch({
+  mode,
+  lang,
+  onTown,
+  onStudio,
+  onPrepare,
+}: {
+  mode: 'town' | 'studio'
+  lang: 'en' | 'pt'
+  onTown: () => void
+  onStudio: () => void
+  /** Called when a pointer or focus reaches the other side's button, to fetch it ahead of the click. */
+  onPrepare?: () => void
+}) {
   return (
     <div className={`${glass} flex shrink-0 p-1`} role="group" aria-label={lang === 'pt' ? 'Modo' : 'Mode'}>
       {(['town', 'studio'] as const).map((m) => (
@@ -86,6 +99,8 @@ export function ModeSwitch({ mode, lang, onTown, onStudio }: { mode: 'town' | 's
           aria-pressed={mode === m}
           title={MODES[m].hint[lang]}
           onClick={mode === m ? undefined : m === 'town' ? onTown : onStudio}
+          onPointerEnter={mode === m ? undefined : onPrepare}
+          onFocus={mode === m ? undefined : onPrepare}
           className={`flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-extrabold transition-colors ${
             mode === m ? 'bg-ink text-white' : 'text-ink-soft hover:text-ink'
           }`}

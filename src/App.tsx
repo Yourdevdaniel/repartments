@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ComponentType, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { loginFrom, parseRoute, useBuilding, type BuildingState, type Route } from './data/building'
 import { lotCount } from './scene/lot'
 import { demoFlats, demoOwner } from './scene/demo'
@@ -50,8 +50,60 @@ const DEMO: BuildingState = {
   trip: 'idle',
 }
 
-/** The studio (sign-in, analysis, commits) only downloads for people who open it. */
-const Studio = lazy(() => import('./studio/Studio').then((m) => ({ default: m.Studio })))
+/**
+ * The studio (sign-in, analysis, commits) only downloads for people who open it, or point at the
+ * way in. Once it's here it renders straight away, so switching never flashes an empty page.
+ */
+let studioModule: typeof import('./studio/Studio') | null = null
+const loadStudio = () => import('./studio/Studio').then((m) => (studioModule = m))
+const LazyStudio = lazy(() => loadStudio().then((m) => ({ default: m.Studio })))
+
+/** Opening the studio waits for its code (usually already fetched on hover), so it never opens on a blank. */
+function whenStudioReady(toStudio: boolean, update: () => void) {
+  if (!toStudio || studioModule) return update()
+  loadStudio().catch(() => undefined).then(update)
+}
+
+const STILL = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+/**
+ * The studio's layer over the town. It fades and rises in over the live tower and fades out on
+ * the way back, keeping its last page on screen until it's gone. Only opacity and transform move,
+ * so the browser animates it on the compositor without touching layout or the 3D scene.
+ */
+function StudioLayer({ open, children }: { open: boolean; children: ReactNode }) {
+  const [shown, setShown] = useState(open)
+  if (open && !shown) setShown(true)
+  const last = useRef(children)
+  if (open) last.current = children
+  const ref = useRef<HTMLDivElement>(null)
+  const first = useRef(true)
+  useLayoutEffect(() => {
+    const el = ref.current
+    // Arriving at the page with the studio open: no entrance to play.
+    const skip = first.current && open
+    first.current = false
+    if (!el || skip) return
+    if (STILL) {
+      if (!open) setShown(false)
+      return
+    }
+    const motion = open
+      ? el.animate([{ opacity: 0, transform: 'translateY(14px) scale(0.985)' }, { opacity: 1, transform: 'none' }], {
+          duration: 380,
+          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+        })
+      : el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' })
+    if (!open) motion.onfinish = () => setShown(false)
+    return () => motion.cancel()
+  }, [open, shown])
+  if (!shown) return null
+  return (
+    <div ref={ref} inert={!open} className="fixed inset-0 z-50 overflow-y-auto">
+      {open ? children : last.current}
+    </div>
+  )
+}
 const PrivacyPage = lazy(() => import('./privacy/PrivacyPage').then((m) => ({ default: m.PrivacyPage })))
 
 export default function App() {
@@ -66,9 +118,12 @@ export default function App() {
   const [recenter, setRecenter] = useState(0)
   const timers = useRef<number[]>([])
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname))
-  const street = useBuilding(route.login)
-  const landing = !route.login && !route.demo && !route.studio
-  const data: BuildingState | null = route.login ? street.state : route.studio ? null : DEMO
+  /** The town's own page: the last one outside the studio, so it stays as it was while the studio is open. */
+  const [townRoute, setTownRoute] = useState<Route>(() => (route.studio ? parseRoute('/') : route))
+  if (!route.studio && townRoute !== route) setTownRoute(route)
+  const street = useBuilding(townRoute.login)
+  const landing = !townRoute.login && !townRoute.demo
+  const data: BuildingState | null = townRoute.login ? street.state : DEMO
   const ready = data?.kind === 'ready' ? data : null
   const flats = ready?.lots[ready.at].flats ?? []
   const lots = ready ? lotCount(ready.total, ready.lots[0].fetched) : 1
@@ -80,16 +135,30 @@ export default function App() {
     if (!route.studio) lastTown.current = window.location.pathname
   }, [route])
 
+  const studioOpen = useRef(Boolean(route.studio))
+  studioOpen.current = Boolean(route.studio)
+  /** Counts navigations, so one still waiting for the studio's code is dropped if another came after it. */
+  const navSeq = useRef(0)
   const go = useCallback((path: string) => {
-    window.history.pushState(null, '', path)
-    setRoute(parseRoute(path))
-    setView({ mode: 'building', entering: null })
+    const next = parseRoute(path)
+    const id = ++navSeq.current
+    whenStudioReady(Boolean(next.studio) && !studioOpen.current, () => {
+      if (id !== navSeq.current) return
+      window.history.pushState(null, '', path)
+      setRoute(next)
+      setView({ mode: 'building', entering: null })
+    })
   }, [])
 
   useEffect(() => {
     const onPop = () => {
-      setRoute(parseRoute(window.location.pathname))
-      setView({ mode: 'building', entering: null })
+      const next = parseRoute(window.location.pathname)
+      const id = ++navSeq.current
+      whenStudioReady(Boolean(next.studio) && !studioOpen.current, () => {
+        if (id !== navSeq.current) return
+        setRoute(next)
+        setView({ mode: 'building', entering: null })
+      })
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
@@ -121,6 +190,15 @@ export default function App() {
     const id = window.setTimeout(hideLangHint, 15000)
     return () => window.clearTimeout(id)
   }, [langHint, hideLangHint])
+
+  /**
+   * Once the town has been on screen it stays mounted behind the studio, asleep (no frames drawn,
+   * no keys), so coming back is instant instead of rebuilding the 3D scene. A visit that starts in
+   * the studio doesn't build the town until it's asked for.
+   */
+  const [townSeen, setTownSeen] = useState(!route.studio)
+  if (!route.studio && !townSeen) setTownSeen(true)
+  const townShown = !route.studio
 
   /** How much of the top and bottom the floating bars take, so the full-screen cards start below them. */
   const headerRef = useRef<HTMLElement>(null)
@@ -156,7 +234,7 @@ export default function App() {
       observer.disconnect()
       window.removeEventListener('resize', measure)
     }
-  }, [langHint])
+  }, [langHint, townShown])
 
   const setLang = (next: Lang) => {
     hideLangHint()
@@ -232,16 +310,25 @@ export default function App() {
       </Suspense>
     )
 
-  if (route.studio)
-    return (
-      <Suspense fallback={<div className="h-dvh w-full" style={{ background: SKY.sun }} />}>
-        <Studio owner={route.studio.owner} repo={route.studio.repo} lang={lang} setLang={setLang} onGo={go} onTown={() => go(lastTown.current)} />
-      </Suspense>
-    )
+  // Chosen the first time the studio shows and kept: switching from the lazy wrapper to the loaded
+  // component later would remount the studio and lose what's on it.
+  const studioType = useRef<ComponentType<ComponentProps<typeof LazyStudio>> | null>(null)
+  if (route.studio && !studioType.current) studioType.current = studioModule?.Studio ?? LazyStudio
+  const Studio = studioType.current ?? LazyStudio
+  const studio = route.studio ? (
+    <Suspense fallback={<div className="h-dvh w-full" style={{ background: SKY.sun }} />}>
+      <Studio owner={route.studio.owner} repo={route.studio.repo} lang={lang} setLang={setLang} onGo={go} onTown={() => go(lastTown.current)} />
+    </Suspense>
+  ) : null
+  if (!townSeen) return studio
 
   return (
+    <>
     <div
-      className="relative h-dvh w-full overflow-hidden text-ink"
+      inert={!townShown}
+      // Hidden once the studio has faded in over it (some studio pages are see-through, like the
+      // presenter); shown again at once on the way back, so the studio fades out over it.
+      className={`relative h-dvh w-full overflow-hidden text-ink transition-[visibility] ${townShown ? 'visible' : 'invisible delay-[400ms]'}`}
       style={{ '--chrome-top': `${chrome.top}px`, '--chrome-bottom': `${chrome.bottom}px` } as CSSProperties}
     >
       {WEATHERS.map((w) => (
@@ -269,6 +356,7 @@ export default function App() {
             recenter={recenter}
             onMoved={setMoved}
             lot={ready.at}
+            asleep={!townShown}
           />
         </div>
       )}
@@ -295,8 +383,8 @@ export default function App() {
               <span className="block text-sm leading-tight text-ink-soft">{copy.tagline[lang]}</span>
             </span>
           </a>
-          <ModeSwitch mode="town" lang={lang} onTown={() => undefined} onStudio={() => go('/studio')} />
-          {!landing && <SearchForm lang={lang} onGo={go} compact initial={route.login ?? ''} />}
+          <ModeSwitch mode="town" lang={lang} onTown={() => undefined} onStudio={() => go('/studio')} onPrepare={loadStudio} />
+          {!landing && <SearchForm lang={lang} onGo={go} compact initial={townRoute.login ?? ''} />}
         </div>
         <div className="pointer-events-auto ml-auto flex items-center gap-2">
           <div className={`${glass} flex p-1`} role="group" aria-label={copy.weather[lang]}>
@@ -350,7 +438,7 @@ export default function App() {
       </header>
 
       {landing && <Landing lang={lang} onGo={go} />}
-      {data && data.kind !== 'ready' && <Status state={data} login={route.login ?? ''} lang={lang} onGo={go} />}
+      {data && data.kind !== 'ready' && <Status state={data} login={townRoute.login ?? ''} lang={lang} onGo={go} />}
 
       {ready && !landing && (
       <aside className={`${glass} absolute top-24 right-4 hidden max-h-[calc(100dvh-8rem)] w-[20rem] overflow-y-auto p-4 md:right-6 lg:block`}>
@@ -366,7 +454,7 @@ export default function App() {
             <p className="text-xs font-bold tracking-wide text-ink-soft uppercase">{flat.repo}</p>
             <p className="mt-1 text-sm leading-snug text-ink-soft">{flat.intro[lang]}</p>
             <StatusChips flat={flat} lang={lang} />
-            {flat.url && route.login && (
+            {flat.url && townRoute.login && (
               <a
                 href={`/studio/${ready.owner.login}/${flat.repo}`}
                 onClick={(e) => {
@@ -421,7 +509,7 @@ export default function App() {
                 <StreetNav state={ready} lots={lots} lang={lang} onVisit={visit} />
               </div>
             )}
-            {route.demo && <p className="mt-2 text-xs font-semibold text-accent">{copy.demoNote[lang]}</p>}
+            {townRoute.demo && <p className="mt-2 text-xs font-semibold text-accent">{copy.demoNote[lang]}</p>}
             <ul className="mt-3 grid gap-2">
               {flats.map((f, i) => ({ f, i })).reverse().map(({ f, i }) => (
                 <li key={f.id}>
@@ -497,6 +585,8 @@ export default function App() {
         <Credits lang={lang} />
       </div>
     </div>
+    <StudioLayer open={!townShown}>{studio}</StudioLayer>
+    </>
   )
 }
 
@@ -653,6 +743,8 @@ function Landing({ lang, onGo }: { lang: Lang; onGo: (path: string) => void }) {
             e.preventDefault()
             onGo('/studio')
           }}
+          onPointerEnter={loadStudio}
+          onFocus={loadStudio}
           className="mt-5 flex items-center gap-3 rounded-2xl bg-white/70 px-4 py-3 text-left transition-colors hover:bg-white"
         >
           <span className="text-2xl" aria-hidden="true">🔑</span>

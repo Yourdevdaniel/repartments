@@ -238,6 +238,8 @@ function CameraRig({
     const menu = (e: MouseEvent) => live.current.free && e.preventDefault()
     const key = (e: KeyboardEvent) => {
       if (!live.current.free || e.altKey || e.ctrlKey || e.metaKey) return
+      // Asleep behind the studio: the keys belong to the page on top.
+      if (el.closest('[inert]')) return
       const t = e.target as HTMLElement | null
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return
       const o = orbit.current
@@ -386,6 +388,18 @@ function Clock({
   return null
 }
 
+/**
+ * Waking up after a while behind the studio, the first frame would otherwise see the whole time
+ * away as one step and the residents and clouds would jump. Reading the clock once resets it.
+ */
+function WakeClock({ asleep }: { asleep: boolean }) {
+  const clock = useThree((s) => s.clock)
+  useEffect(() => {
+    if (!asleep) clock.getDelta()
+  }, [asleep, clock])
+  return null
+}
+
 type Props = {
   lang: SceneLang
   weather: Weather
@@ -414,9 +428,11 @@ type Props = {
   panel?: boolean
   /** Called with the canvas after every frame is drawn, to record it (only while recording). */
   onFrame?: (canvas: HTMLCanvasElement) => void
+  /** Kept on the page but out of sight (behind the studio): draw nothing until it's back. */
+  asleep?: boolean
 }
 
-export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption, recenter, onMoved, lot, restart, paused, rate, clock, panel = true, onFrame }: Props) {
+export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onSelect, onBack, onCaption, recenter, onMoved, lot, restart, paused, rate, clock, panel = true, onFrame, asleep = false }: Props) {
   const hood = useMemo(() => neighborhood(owner, lot), [owner, lot])
   const reduce = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, [])
   const time = useMemo<StoryTime>(() => ({ current: reduce ? 9 : 0, paused: reduce, rate: 1 }), [reduce])
@@ -445,10 +461,12 @@ export function Stage({ lang, weather, flats, owner, view, hovered, onHover, onS
       flat
       orthographic
       dpr={dpr}
+      frameloop={asleep ? 'never' : 'always'}
       gl={{ antialias: true, alpha: true }}
       camera={{ position: [10, 8, 30], near: 0.1, far: 200, zoom: 60 }}
       onPointerMissed={() => inside && onBack()}
     >
+      <WakeClock asleep={asleep} />
       <PerformanceMonitor onDecline={() => setDpr(1)} onIncline={() => setDpr(Math.min(window.devicePixelRatio || 1, 1.5))} />
       <WeatherContext.Provider value={weather}>
       {/* No tone mapping (flat), so the pastels come out as picked instead of washed out. */}
