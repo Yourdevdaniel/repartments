@@ -27,6 +27,13 @@ body,
   margin: 0;
 }
 
+/* Building <-> studio: a short, soft fade (see crossFade in App.tsx). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 body {
   font-family: var(--font-sans);
   background: #e4e9ff;
