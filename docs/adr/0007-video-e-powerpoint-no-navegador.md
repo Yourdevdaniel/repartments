@@ -1,6 +1,6 @@
 # 0007. Vídeo e PowerPoint feitos no próprio navegador
 
-- Estado: aceito
+- Estado: aceito; a parte do vídeo foi substituída por [0013](0013-video-quadro-a-quadro.md)
 - Data: 2026-10-07
 
 ## Contexto e problema
