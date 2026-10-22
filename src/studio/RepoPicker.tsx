@@ -17,6 +17,9 @@ const t = {
     loading: 'Loading repositories',
     empty: 'No repositories found',
     emptyHint: 'Try another word. If you signed in through a GitHub App, install it on the repositories you want to open.',
+    emptyInstall: 'Repartments only sees the repositories you allow, and only reads them. Choose them on GitHub and you come straight back here.',
+    install: 'Choose repositories on GitHub',
+    installMore: 'Missing one? Choose more repositories on GitHub',
     private: 'Private',
     archived: 'Archived',
     updated: (rel: string) => `Updated ${rel}`,
@@ -32,6 +35,9 @@ const t = {
     loading: 'Carregando repositórios',
     empty: 'Nenhum repositório encontrado',
     emptyHint: 'Tente outra palavra. Se o login é por um GitHub App, instale o app nos repositórios que quer abrir.',
+    emptyInstall: 'O Repartments só vê os repositórios que você liberar, e só lê. Escolha no GitHub e você volta direto para cá.',
+    install: 'Escolher repositórios no GitHub',
+    installMore: 'Falta algum? Escolha mais repositórios no GitHub',
     private: 'Privado',
     archived: 'Arquivado',
     updated: (rel: string) => `Atualizado ${rel}`,
@@ -43,9 +49,10 @@ const chip = 'rounded-full bg-ink/[0.06] px-2 py-0.5 text-[11px] font-bold text-
 
 /**
  * The person's repositories (their own, their collaborations and their organisations'), searchable,
- * most recently pushed first. Picking one calls `onOpen`.
+ * most recently pushed first. Picking one calls `onOpen`. With a GitHub App, `install` is where the
+ * person picks which repositories the app can read; GitHub sends them back to the studio afterwards.
  */
-export function RepoPicker({ lang, onOpen }: { lang: Lang; onOpen: (owner: string, repo: string) => void }) {
+export function RepoPicker({ lang, install, onOpen }: { lang: Lang; install: string | null; onOpen: (owner: string, repo: string) => void }) {
   const x = t[lang]
   const [draft, setDraft] = useState('')
   const [q, setQ] = useState('')
@@ -158,7 +165,16 @@ export function RepoPicker({ lang, onOpen }: { lang: Lang; onOpen: (owner: strin
       {status === 'ready' && repos.length === 0 && (
         <div className="px-1 py-6 text-center">
           <p className="text-sm font-bold text-ink">{x.empty}</p>
-          <p className="mt-1 text-xs text-ink-soft">{x.emptyHint}</p>
+          {install && !q ? (
+            <>
+              <p className="mx-auto mt-1 max-w-[30rem] text-xs text-ink-soft">{x.emptyInstall}</p>
+              <a href={install} className="mt-4 inline-block rounded-full bg-ink px-4 py-2 text-xs font-bold text-white">
+                {x.install}
+              </a>
+            </>
+          ) : (
+            <p className="mt-1 text-xs text-ink-soft">{x.emptyHint}</p>
+          )}
         </div>
       )}
 
@@ -205,6 +221,11 @@ export function RepoPicker({ lang, onOpen }: { lang: Lang; onOpen: (owner: strin
             >
               {loadingMore ? x.loadingMore : x.more}
             </button>
+          )}
+          {install && (
+            <a href={install} className="mx-1 text-center text-xs font-semibold text-ink-soft underline-offset-2 hover:text-ink hover:underline">
+              {x.installMore}
+            </a>
           )}
           {errorCodeNow && (
             <p role="alert" className="px-1 text-xs text-[#8a2b2b]">

@@ -100,7 +100,7 @@ export function Studio({ owner, repo, lang, setLang, onGo, onTown }: Props) {
     body = (
       <div className="flex h-full justify-center overflow-y-auto p-3 md:p-6">
         <div className="w-[min(44rem,100%)]">
-          <RepoPicker lang={lang} onOpen={(o, r) => onGo(`/studio/${o}/${r}`)} />
+          <RepoPicker lang={lang} install={session.install} onOpen={(o, r) => onGo(`/studio/${o}/${r}`)} />
           <div className="mt-3 text-center">
             <OpenFile lang={lang} onOpen={open} error={fileError} onExample={() => setFile(examplePresentation())} />
           </div>
