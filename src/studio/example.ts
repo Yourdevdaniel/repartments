@@ -75,3 +75,9 @@ export function examplePresentation(now = Date.now()): PresentationFile {
   const model = buildModel({ ...marketFixture, generatedAt: new Date(now).toISOString() })
   return presentationFile(model, { ...NO_EDITS, actors: { ...NAMES } }, commits(now))
 }
+
+/** Whether the address asks the studio to open the example straight away (`/studio?example=1`). */
+export function wantsExample(search: string): boolean {
+  const value = new URLSearchParams(search).get('example')
+  return value !== null && value !== '0'
+}
