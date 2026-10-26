@@ -17,8 +17,8 @@ import { WeatherContext, type Weather } from './weather'
 import type { FlatData } from './types'
 
 // Fetch every flat's models up front, so stepping inside never waits on the network.
-for (const m of ALL_MODELS.furniture) useGLTF.preload(`/models/furniture/${m}.glb`)
-for (const m of ALL_MODELS.characters) useGLTF.preload(`/models/characters/${m}.glb`)
+for (const m of ALL_MODELS.furniture) useGLTF.preload(`/models/furniture/${m}.glb`, false, false)
+for (const m of ALL_MODELS.characters) useGLTF.preload(`/models/characters/${m}.glb`, false, false)
 
 /** Room the side panel takes on wide screens; the scene centres in what's left. */
 const PANEL = 360

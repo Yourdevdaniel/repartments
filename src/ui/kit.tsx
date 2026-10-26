@@ -67,7 +67,7 @@ const MODES = {
     icon: '🎬',
     en: 'Studio',
     pt: 'Estúdio',
-    hint: { en: 'Present how a system works and its commits, private repos too', pt: 'Apresente como um sistema funciona e seus commits, repositórios privados também' },
+    hint: { en: 'Closed for beta testing while it becomes a tool', pt: 'Fechado para testes enquanto vira uma ferramenta' },
   },
 } as const
 

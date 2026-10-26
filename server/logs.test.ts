@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 /** Every server file that runs on Vercel (tests aside). */
 function serverFiles(): { name: string; text: string }[] {
-  return ['server', 'api', 'api/auth'].flatMap((dir) =>
+  return ['server', 'api'].flatMap((dir) =>
     readdirSync(dir)
       .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
       .map((f) => ({ name: join(dir, f), text: readFileSync(join(dir, f), 'utf8') })),

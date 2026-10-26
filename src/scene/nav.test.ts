@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { scriptFlows } from '../studio/present/intro'
-import { examplePresentation } from '../studio/example'
-import { activityFlow, commitFlow } from '../studio/works/scenes'
 import { demoFlats } from './demo'
 import { footprintOf, navigator, obstaclesOf } from './nav'
 import { sample } from './story'
-import { buildTour } from './tour'
 import type { FlatData } from './types'
 
 /** Every resident, every fifth of a second: never standing inside a piece of furniture or a wall. */
@@ -55,16 +51,5 @@ describe('navigator', () => {
 describe('residents walk around furniture', () => {
   it('in every flat of the demo building', () => {
     for (const flat of demoFlats) expectNoCollisions(flat)
-  })
-
-  it('in every scene of the example presentation, and its commits', () => {
-    const { model, commits } = examplePresentation(Date.parse('2026-10-07T12:00:00Z'))
-    for (const flow of scriptFlows(model)) expectNoCollisions(buildTour(flow, 'pt'))
-    for (const c of commits) {
-      const { flow, heat } = commitFlow(c, model, 'pt')
-      expectNoCollisions(buildTour(flow, 'pt', { heat }))
-    }
-    const activity = activityFlow(commits, model)!
-    expectNoCollisions(buildTour(activity.flow, 'pt', { heat: activity.heat }))
   })
 })

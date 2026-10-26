@@ -16,7 +16,7 @@ const STUB = 0.28
 const FRONT_WALL = 0.2
 
 function Furniture({ model, at, rotY = 0, scale = 1, tint }: Placement) {
-  const gltf = useGLTF(`/models/furniture/${model}.glb`)
+  const gltf = useGLTF(`/models/furniture/${model}.glb`, false, false)
   const scene = useMemo(() => {
     const copy = gltf.scene.clone(true)
     copy.traverse((o) => {
@@ -501,7 +501,7 @@ const CARRY: Vec3 = [0, 0.245, 0.17]
 function Prop({ id, story, cast }: { id: 'letter' | 'box'; story: Story; cast: CastMember[] }) {
   const time = useStoryTime()
   const ref = useRef<Group>(null)
-  const box = useGLTF('/models/furniture/cardboardBoxClosed.glb')
+  const box = useGLTF('/models/furniture/cardboardBoxClosed.glb', false, false)
   const parcel = useMemo(() => {
     const copy = box.scene.clone(true)
     copy.traverse((o) => {
@@ -637,4 +637,4 @@ export function Flat({ flat, hovered, interactive, onHover, onSelect }: FlatProp
   )
 }
 
-useGLTF.preload('/models/furniture/cardboardBoxClosed.glb')
+useGLTF.preload('/models/furniture/cardboardBoxClosed.glb', false, false)

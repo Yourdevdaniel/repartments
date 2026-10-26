@@ -52,7 +52,7 @@ type Props = {
 }
 
 export function Resident({ id, model, story, label, color = '#999', y = 0, offset = 0, hideFlag, umbrella = false, tagScale = 1 }: Props) {
-  const gltf = useGLTF(`/models/characters/${model}.glb`)
+  const gltf = useGLTF(`/models/characters/${model}.glb`, false, false)
   const root = useRef<Group>(null)
   const time = useStoryTime()
 

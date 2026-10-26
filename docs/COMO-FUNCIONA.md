@@ -1,5 +1,7 @@
 # Como o Repartments funciona
 
+> **Estúdio fechado (2026-10-26).** O estúdio está fechado para testes e o código dele saiu do repositório ([ADR 0015](adr/0015-estudio-fechado.md)). As seções sobre ele ficam como registro de como funcionava.
+
 Um guia para entender o projeto por dentro: o que cada parte faz, por onde passa uma requisição, e como os bonequinhos sabem o que fazer.
 
 ## A ideia em uma frase

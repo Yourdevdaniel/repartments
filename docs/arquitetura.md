@@ -1,5 +1,7 @@
 # Arquitetura do Repartments
 
+> **Estúdio fechado (2026-10-26).** O estúdio está fechado para testes e o código dele saiu do repositório ([ADR 0015](adr/0015-estudio-fechado.md)). As seções sobre ele ficam como registro de como funcionava.
+
 Documento de arquitetura no formato [arc42](https://arc42.org) (resumido), com diagramas [C4](https://c4model.com) em Mermaid. O guia em linguagem do dia a dia é o [COMO-FUNCIONA.md](COMO-FUNCIONA.md); as decisões ficam nos [ADRs](adr/README.md); as rotas, na [referência da API](api.md); a leitura de repositórios, em [analise.md](analise.md).
 
 ## 1. Objetivos

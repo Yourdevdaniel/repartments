@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { POLICY, POLICY_LEAD, POLICY_UPDATED } from './policy'
 
@@ -16,14 +15,9 @@ describe('privacy policy', () => {
     expect(Number.isNaN(new Date(`${POLICY_UPDATED}T00:00:00`).getTime())).toBe(false)
   })
 
-  it('names every cookie the sign-in server sets, so a new one cannot slip in unannounced', () => {
-    const server = readFileSync('server/auth.ts', 'utf8')
-    const cookies = [...server.matchAll(/_COOKIE = '([^']+)'/g)].map((m) => m[1])
-    expect(cookies.length).toBeGreaterThan(0)
-    for (const name of cookies) {
-      expect(texts('pt')).toContain(name)
-      expect(texts('en')).toContain(name)
-    }
+  it('says the site sets no cookies, now that the studio sign-in is gone', () => {
+    expect(texts('pt')).toMatch(/não usa cookies/)
+    expect(texts('en')).toMatch(/uses no cookies/)
   })
 
   it('names who else handles the data and the international transfer', () => {

@@ -51,11 +51,11 @@ const DEMO: BuildingState = {
 }
 
 /**
- * The studio (sign-in, analysis, commits) only downloads for people who open it, or point at the
- * way in. Once it's here it renders straight away, so switching never flashes an empty page.
+ * The studio is closed while it is rebuilt as a tool: /studio shows the beta page instead (an
+ * apology, a way to sign up as a tester, a FAQ). It only downloads for people who open it.
  */
-let studioModule: typeof import('./studio/Studio') | null = null
-const loadStudio = () => import('./studio/Studio').then((m) => (studioModule = m))
+let studioModule: { Studio: typeof import('./beta/Beta').Beta } | null = null
+const loadStudio = () => import('./beta/Beta').then((m) => (studioModule = { Studio: m.Beta }))
 const LazyStudio = lazy(() => loadStudio().then((m) => ({ default: m.Studio })))
 
 /** Opening the studio waits for its code (usually already fetched on hover), so it never opens on a blank. */
