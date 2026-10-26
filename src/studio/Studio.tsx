@@ -8,7 +8,7 @@ import type { Lang } from '../ui/roles'
 import { glass, Logo, ModeSwitch } from '../ui/kit'
 import { t } from './copy'
 import { RepoPicker } from './RepoPicker'
-import { examplePresentation } from './example'
+import { examplePresentation, wantsExample } from './example'
 import { parsePresentation, type PresentationFile } from './store'
 import { timeLeft, useSession, WARN_MINUTES, type DeviceCode } from './session'
 import { Workspace } from './Workspace'
@@ -25,7 +25,8 @@ type Props = {
 
 export function Studio({ owner, repo, lang, setLang, onGo, onTown }: Props) {
   const session = useSession()
-  const [file, setFile] = useState<PresentationFile | null>(null)
+  // `/studio?example=1` (the site's "see an example" button) opens the example without signing in.
+  const [file, setFile] = useState<PresentationFile | null>(() => (wantsExample(window.location.search) ? examplePresentation() : null))
   const [fileError, setFileError] = useState(false)
   const user = session.state.status === 'signed-in' ? session.state.user : null
   const left = session.state.status === 'signed-in' ? session.state.expiresAt - session.now : null
@@ -35,8 +36,24 @@ export function Studio({ owner, repo, lang, setLang, onGo, onTown }: Props) {
     document.title = file ? `${file.model.repo.name} · ${t.studio[lang]}` : repo ? `${owner}/${repo} · ${t.studio[lang]}` : `${t.studio[lang]} · Repartments`
   }, [owner, repo, file, lang])
 
-  // Opening another repo (or going back to the list) closes a presentation opened from a file.
-  useEffect(() => setFile(null), [owner, repo])
+  // Takes `example` out of the address once it has been read, as `session.ts` does with `signin`.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (!params.has('example')) return
+    params.delete('example')
+    const rest = params.toString()
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`)
+  }, [])
+
+  // Opening another repo (or going back to the list) closes a presentation opened from a file. Not on
+  // the first render, or it would close the example the address just opened.
+  const shownRepo = useRef(`${owner}/${repo}`)
+  useEffect(() => {
+    const key = `${owner}/${repo}`
+    if (shownRepo.current === key) return
+    shownRepo.current = key
+    setFile(null)
+  }, [owner, repo])
 
   const open = async (picked: File) => {
     const parsed = parsePresentation(await picked.text())
