@@ -17,6 +17,7 @@ Cada decisão que muda a forma do sistema fica registrada aqui, no formato [MADR
 | [0011](0011-privacidade-e-lgpd.md) | Privacidade e LGPD: política no site, aviso no login, salvar sem nomes e registro das operações | Aceito |
 | [0012](0012-jornadas-pelos-botoes.md) | Jornadas do cliente lidas dos botões e das páginas, por leitura estática no mesmo arquivo | Aceito |
 | [0013](0013-video-quadro-a-quadro.md) | Vídeo feito quadro a quadro (WebCodecs), sem precisar da aba na frente | Aceito |
+| [0014](0014-token-proprio.md) | Entrar com um token da própria pessoa, que nunca passa pelo servidor | Aceito |
 
 Para uma decisão nova, copie o modelo abaixo para `NNNN-titulo-curto.md` e adicione a linha na tabela.
 

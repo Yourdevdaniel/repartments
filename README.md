@@ -17,6 +17,8 @@ Switch to **Studio** at the top (or go to `/studio`) and sign in with GitHub to 
 
 No sign-in? "See an example" opens a made-up market's online shop (products, cart and checkout).
 
+Rather not authorize any app? The sign-in card also takes a fine-grained token you make yourself (read-only, on the repositories you pick, with an expiry date). It goes from the page to the token vault and from there only to api.github.com, never to Repartments' server. Or run the studio on your own machine (see below), where nothing leaves it.
+
 Sign-in is "Continue with GitHub" when the app's client secret is configured: the server trades the sign-in code for a token with that secret (kept only in the server's environment), with no session and no database. Without the secret, sign-in uses GitHub's device flow (the GitHub CLI's "enter this code" login) with just the public client ID. The token stays in the browser tab, which talks to api.github.com directly, and the analysis runs there too: static and deterministic, no AI service ever reads the code.
 
 ## Stack
@@ -38,6 +40,8 @@ npm run build
 ```
 
 The API needs a GitHub token of your own. Either be logged in with the GitHub CLI (`gh auth login`), or make a fine-grained token (GitHub → Settings → Developer settings → Fine-grained tokens; repository access "Public repositories", no permissions) and put it in `.env.local`, following [.env.example](.env.example).
+
+**Don't want to trust the hosted site with private code?** Run it locally: `git clone`, `npm install`, `npm run dev`, and open `/studio`. Without a `GITHUB_CLIENT_ID`, "Sign in" uses your own GitHub CLI login (`gh auth login`), and the code goes from GitHub to your browser on your machine only.
 
 To put it online, import the repo on Vercel and set `GITHUB_TOKEN` there. Fine-grained tokens expire: in the last two weeks the function warns in its logs, and after that every building fails until you make a new one.
 
