@@ -6,7 +6,7 @@
 import type { L } from '../ui/roles'
 
 /** When the text last changed, shown at the top. */
-export const POLICY_UPDATED = '2026-10-08'
+export const POLICY_UPDATED = '2026-10-26'
 
 /** Who answers for the site and where to reach them about personal data. */
 export const CONTROLLER = { name: 'Daniel Bernardes', contact: 'https://bernardes.dev', github: 'https://github.com/Yourdevdaniel' }
@@ -49,6 +49,20 @@ export const POLICY: PolicySection[] = [
         text: {
           pt: 'Você entra no próprio site do GitHub; sua senha nunca passa por aqui. O estúdio recebe seu nome de usuário, nome e foto do GitHub e uma chave de acesso que só lê os repositórios que você escolheu. A chave passa pelo nosso servidor apenas para ser trocada com o GitHub, sem ser gravada, e fica trancada na aba do seu navegador por no máximo 8 horas. Ao sair, ou quando as 8 horas acabam, ela é cancelada no GitHub. Base legal: execução do serviço que você pediu (LGPD, art. 7º, V).',
           en: "You sign in on GitHub's own site; your password never comes here. The studio receives your GitHub username, name and avatar and an access key that only reads the repositories you chose. The key goes through our server only to be exchanged with GitHub, without being stored, and stays locked in your browser tab for 8 hours at most. When you sign out, or the 8 hours end, it is cancelled at GitHub. Legal basis: carrying out the service you asked for (LGPD, art. 7, V).",
+        },
+      },
+      {
+        title: { pt: 'Estúdio: entrar com um token seu', en: 'Studio: signing in with a token of your own' },
+        text: {
+          pt: 'Se preferir não autorizar o app, você cria no GitHub um token só de leitura, nos repositórios que escolher e com prazo de validade, e cola no estúdio. Esse token vai da sua aba direto para o GitHub e nunca é enviado ao nosso servidor. Só você pode revogá-lo, no GitHub, e ele vence sozinho.',
+          en: "If you'd rather not authorize the app, you create a read-only token on GitHub, on the repositories you choose and with an expiry date, and paste it into the studio. That token goes from your tab straight to GitHub and is never sent to our server. Only you can revoke it, on GitHub, and it expires by itself.",
+        },
+      },
+      {
+        title: { pt: 'O que o autor do app poderia fazer', en: 'What the app’s author could do' },
+        text: {
+          pt: 'Como dono do app no GitHub, o autor poderia, em tese, gerar uma chave do app e com ela ler os repositórios em que o app está instalado, sem você estar no site. O Repartments não usa nem guarda essa chave. Para não depender dessa confiança, libere só os repositórios que vai apresentar, use um token seu (acima) ou rode o Repartments no seu computador: o código é aberto.',
+          en: "As the app's owner on GitHub, its author could in principle create an app key and use it to read the repositories the app is installed on, without you being on the site. Repartments neither uses nor keeps such a key. To avoid relying on that trust, allow only the repositories you will present, use a token of your own (above), or run Repartments on your own computer: the code is open.",
         },
       },
       {

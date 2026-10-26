@@ -92,6 +92,7 @@ export function Studio({ owner, repo, lang, setLang, onGo, onTown }: Props) {
               </a>
             </p>
           )}
+          <OwnToken lang={lang} onUse={session.paste} />
           <OpenFile lang={lang} onOpen={open} error={fileError} onExample={() => setFile(examplePresentation())} />
         </div>
       </Centered>
@@ -262,6 +263,62 @@ function DeviceCodeCard({ code, lang, onCancel }: { code: DeviceCode; lang: Lang
         {t.cancel[lang]}
       </button>
     </div>
+  )
+}
+
+/**
+ * Signing in with a fine-grained token the person makes on GitHub, for whoever would rather not
+ * authorize the app: the token goes to the vault and from there only to api.github.com.
+ */
+function OwnToken({ lang, onUse }: { lang: Lang; onUse: (token: string) => void }) {
+  const [token, setToken] = useState('')
+  const create = `https://github.com/settings/personal-access-tokens/new?${new URLSearchParams({
+    name: 'Repartments',
+    description: 'Read-only access for the Repartments studio',
+    expires_in: '7',
+    contents: 'read',
+  })}`
+  return (
+    <details className="mt-4 rounded-2xl bg-ink/[0.04] px-4 py-3 text-left text-[13px] text-ink-soft">
+      <summary className="cursor-pointer text-center text-xs font-extrabold text-ink">
+        <span aria-hidden="true">🛡️ </span>
+        {t.ownTokenTitle[lang]}
+      </summary>
+      <ol className="mt-3 list-decimal space-y-1 pl-5">
+        {t.ownTokenSteps[lang].map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+      <a href={create} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block rounded-full bg-white/80 px-4 py-2 text-xs font-extrabold text-ink hover:bg-white">
+        {t.ownTokenCreate[lang]} ↗
+      </a>
+      <form
+        className="mt-3 flex flex-wrap gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (!token.trim()) return
+          onUse(token)
+          setToken('')
+        }}
+      >
+        <label className="min-w-0 flex-1">
+          <span className="sr-only">{t.ownTokenLabel[lang]}</span>
+          <input
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder="github_pat_…"
+            autoComplete="off"
+            spellCheck={false}
+            className="h-10 w-full rounded-full border border-ink/10 bg-white px-4 font-mono text-[13px] text-ink outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          />
+        </label>
+        <button type="submit" className="h-10 rounded-full bg-ink px-4 text-xs font-extrabold text-white">
+          {t.ownTokenUse[lang]}
+        </button>
+      </form>
+      <p className="mt-3 text-xs leading-snug">{t.ownTokenWhy[lang]}</p>
+    </details>
   )
 }
 
