@@ -155,15 +155,23 @@ export function Beta({ lang, setLang, onTown }: Props) {
         gsap.utils.toArray<HTMLElement>('[data-a=heading]').forEach((h) => {
           gsap.from(h, { y: 30, autoAlpha: 0, duration: 0.8, ease: 'power3.out', scrollTrigger: { trigger: h, start: 'top 85%' } })
         })
-        gsap.from('[data-a=card]', {
-          y: 60,
-          rotate: (i: number) => (i - 1) * 3,
-          autoAlpha: 0,
-          duration: 0.9,
-          stagger: 0.12,
-          ease: 'power3.out',
-          scrollTrigger: { trigger: '[data-a=cards]', start: 'top 80%' },
+        // The cards jump in as they come into view: a hop up, a bouncy landing, a little squash, and the icon pops.
+        ScrollTrigger.batch('[data-a=card]', {
+          scroller,
+          start: 'top 88%',
+          once: true,
+          onEnter: (cards) =>
+            cards.forEach((card, i) => {
+              gsap
+                .timeline({ delay: i * 0.15 })
+                .fromTo(card, { y: 90, autoAlpha: 0 }, { y: -36, autoAlpha: 1, duration: 0.4, ease: 'power2.out' })
+                .to(card, { y: 0, duration: 0.75, ease: 'bounce.out' })
+                .to(card, { scaleY: 0.93, scaleX: 1.04, transformOrigin: '50% 100%', duration: 0.09, ease: 'power1.out' }, '-=0.62')
+                .to(card, { scaleY: 1, scaleX: 1, duration: 0.6, ease: 'elastic.out(1, 0.35)' })
+                .from(card.querySelector('[data-a=icon]'), { scale: 0, rotate: -40, duration: 0.6, ease: 'back.out(3)' }, 0.25)
+            }),
         })
+        gsap.set('[data-a=card]', { autoAlpha: 0 })
         gsap.from('[data-a=line]', { scaleY: 0, transformOrigin: '50% 0%', ease: 'none', scrollTrigger: { trigger: '[data-a=steps]', start: 'top 70%', end: 'bottom 60%', scrub: true } })
         gsap.utils.toArray<HTMLElement>('[data-a=step]').forEach((s) => {
           gsap.from(s, { x: -30, autoAlpha: 0, duration: 0.7, ease: 'power3.out', scrollTrigger: { trigger: s, start: 'top 80%' } })
@@ -267,13 +275,17 @@ export function Beta({ lang, setLang, onTown }: Props) {
             </h2>
             <div data-a="cards" className="mt-6 grid gap-4 md:grid-cols-3">
               {x.coming.map(([icon, title, text]) => (
-                <article key={title} data-a="card" className={`${glass} group p-6 transition-transform duration-300 hover:-translate-y-1`}>
-                  <span aria-hidden="true" className="flex size-12 items-center justify-center rounded-2xl bg-[#eef1ff] text-2xl transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6">
-                    {icon}
-                  </span>
-                  <h3 className="mt-4 text-lg font-extrabold">{title}</h3>
-                  <p className="mt-2 text-[15px] leading-relaxed text-ink-soft">{text}</p>
-                </article>
+                <div key={title} data-a="card">
+                  <article className={`${glass} group h-full p-6 transition-transform duration-300 hover:-translate-y-1`}>
+                    <span data-a="icon" aria-hidden="true" className="inline-block">
+                      <span className="flex size-12 items-center justify-center rounded-2xl bg-[#eef1ff] text-2xl transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6">
+                        {icon}
+                      </span>
+                    </span>
+                    <h3 className="mt-4 text-lg font-extrabold">{title}</h3>
+                    <p className="mt-2 text-[15px] leading-relaxed text-ink-soft">{text}</p>
+                  </article>
+                </div>
               ))}
             </div>
           </section>
