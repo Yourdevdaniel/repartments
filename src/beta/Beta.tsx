@@ -22,6 +22,12 @@ const t = {
     back: 'Ver o Prédio, que continua aberto',
     sign: 'Em obras',
     scroll: 'Role para saber mais',
+    storyTitle: 'De onde veio',
+    story: [
+      'O Repartments começou como um projeto de código aberto. O Prédio, que transforma os repositórios públicos de qualquer pessoa num predinho, continua aberto no GitHub.',
+      'Com o uso, vimos a oportunidade de ir além: transformar a ideia numa ferramenta que ajude no dia a dia de quem precisa explicar um sistema para quem não programa. Por isso o estúdio fechou. Ele está sendo refeito à parte, com calma, e por enquanto com o código fechado.',
+    ],
+    storyLink: 'Ver o código do Prédio no GitHub',
     comingTitle: 'O que vem aí',
     coming: [
       ['💻', 'Na sua máquina', 'Uma ferramenta que roda no seu computador: seu código não sai dali, nem para o nosso servidor.'],
@@ -38,7 +44,8 @@ const t = {
     faq: [
       ['O que é o Repartments?', 'Ele transforma um repositório do GitHub numa apresentação animada: cada parte do sistema vira um morador de um prediozinho, e cada fluxo (uma compra, um cadastro) vira uma cena que eles encenam. É para explicar um sistema a quem não programa.'],
       ['O que era o estúdio?', 'Era onde você entrava com o GitHub, abria qualquer repositório seu, inclusive privado, via os commits e o mapa da arquitetura, e montava a apresentação para mostrar ao vivo, em vídeo ou em PowerPoint.'],
-      ['Por que fechou?', 'Para fazer direito. O estúdio vai voltar como uma ferramenta: mais rápida, mais completa e rodando na sua máquina, sem depender de um site. Enquanto isso acontece, preferimos fechar a porta a deixar uma versão pela metade. Pedimos desculpas pelo incômodo.'],
+      ['Por que fechou?', 'Porque vimos a oportunidade de transformar o estúdio numa ferramenta de verdade, que ajude no dia a dia. Ele vai voltar mais rápido, mais completo e rodando na sua máquina, sem depender de um site. Enquanto isso, preferimos fechar a porta a deixar uma versão pela metade. Pedimos desculpas pelo incômodo.'],
+      ['O código é aberto?', 'O do Prédio, sim: ele continua aberto no GitHub, e foi assim que o Repartments nasceu. O novo estúdio está sendo feito à parte e, por enquanto, com o código fechado.'],
       ['Como faço para testar?', 'Clique em "Quero ser tester" e deixe seu interesse. Quando a nova versão estiver pronta para testes, avisamos você primeiro.'],
       ['O Prédio continua?', 'Sim. A página inicial, que monta um prédio com os repositórios públicos de qualquer pessoa, continua aberta.'],
       ['E o que eu já tinha feito?', 'O estúdio nunca guardou seu código nem seus dados no nosso servidor: tudo ficava no seu navegador. Apresentações que você salvou continuam no seu computador.'],
@@ -53,6 +60,12 @@ const t = {
     back: 'See the Building, which stays open',
     sign: 'Under works',
     scroll: 'Scroll to learn more',
+    storyTitle: 'Where it came from',
+    story: [
+      "Repartments started as an open-source project. The Building, which turns anyone's public repositories into a little tower, is still open on GitHub.",
+      'As people used it, we saw the chance to go further: turn the idea into a tool that helps day to day, for whoever needs to explain a system to people who do not code. That is why the studio closed. It is being rebuilt separately, carefully, and closed source for now.',
+    ],
+    storyLink: "See the Building's code on GitHub",
     comingTitle: 'What is coming',
     coming: [
       ['💻', 'On your machine', 'A tool that runs on your computer: your code stays there, it never reaches our server.'],
@@ -69,7 +82,8 @@ const t = {
     faq: [
       ['What is Repartments?', 'It turns a GitHub repository into an animated presentation: each part of the system becomes a resident of a little building, and each flow (a purchase, a sign-up) becomes a scene they act out. It is made for explaining a system to people who do not code.'],
       ['What was the studio?', 'It was where you signed in with GitHub, opened any of your repositories, private ones too, browsed the commits and the architecture map, and built the presentation to show live, as a video or as PowerPoint.'],
-      ['Why is it closed?', 'To do it properly. The studio will come back as a tool: faster, more complete and running on your machine, without depending on a website. While that happens, we would rather close the door than leave a half-finished version up. We are sorry for the trouble.'],
+      ['Why is it closed?', 'Because we saw the chance to turn the studio into a real tool that helps day to day. It will come back faster, more complete and running on your machine, without depending on a website. Meanwhile, we would rather close the door than leave a half-finished version up. We are sorry for the trouble.'],
+      ['Is the code open?', "The Building's is: it stays open on GitHub, and that is how Repartments was born. The new studio is being built separately and, for now, closed source."],
       ['How do I take part in the tests?', 'Click "I want to test it" and leave your interest. When the new version is ready for testing, you will hear first.'],
       ['Is the Building still here?', 'Yes. The home page, which builds a tower from anyone\'s public repositories, stays open.'],
       ['What about what I had already made?', 'The studio never kept your code or data on our server: everything stayed in your browser. Presentations you saved are still on your computer.'],
@@ -177,6 +191,7 @@ export function Beta({ lang, setLang, onTown }: Props) {
             }),
         })
         gsap.set('[data-a=card]', { autoAlpha: 0 })
+        gsap.from('[data-a=story]', { y: 50, autoAlpha: 0, duration: 0.9, ease: 'power3.out', scrollTrigger: { trigger: '[data-a=story]', start: 'top 85%' } })
         gsap.from('[data-a=line]', { scaleY: 0, transformOrigin: '50% 0%', ease: 'none', scrollTrigger: { trigger: '[data-a=steps]', start: 'top 70%', end: 'bottom 60%', scrub: true } })
         gsap.utils.toArray<HTMLElement>('[data-a=step]').forEach((s) => {
           gsap.from(s, { x: -30, autoAlpha: 0, duration: 0.7, ease: 'power3.out', scrollTrigger: { trigger: s, start: 'top 80%' } })
@@ -272,6 +287,25 @@ export function Beta({ lang, setLang, onTown }: Props) {
                 ↓
               </span>
             </p>
+          </section>
+
+          <section className="mt-16" aria-labelledby="beta-story">
+            <div data-a="story" className={`${glass} p-6 md:p-10`}>
+              <h2 id="beta-story" data-a="heading" className="text-3xl font-extrabold tracking-[-0.02em] md:text-4xl">
+                {x.storyTitle}
+              </h2>
+              {x.story.map((p) => (
+                <p key={p} className="mt-4 max-w-[46rem] text-[17px] leading-relaxed text-ink-soft">
+                  {p}
+                </p>
+              ))}
+              <a
+                href="https://github.com/Yourdevdaniel/repartments"
+                className="mt-6 inline-flex items-center gap-2 text-sm font-extrabold underline decoration-2 underline-offset-4 hover:decoration-[#ee9f7f]"
+              >
+                {x.storyLink} <span aria-hidden="true">→</span>
+              </a>
+            </div>
           </section>
 
           <section className="mt-16" aria-labelledby="beta-coming">
