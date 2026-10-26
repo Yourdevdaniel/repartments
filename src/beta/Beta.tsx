@@ -164,7 +164,7 @@ export function Beta({ lang, setLang, onTown }: Props) {
             cards.forEach((card, i) => {
               gsap
                 .timeline({ delay: i * 0.15 })
-                .fromTo(card, { y: 90, autoAlpha: 0 }, { y: -36, autoAlpha: 1, duration: 0.4, ease: 'power2.out' })
+                .fromTo(card, { y: 90, autoAlpha: 0 }, { y: -24, autoAlpha: 1, duration: 0.4, ease: 'power2.out' })
                 .to(card, { y: 0, duration: 0.75, ease: 'bounce.out' })
                 .to(card, { scaleY: 0.93, scaleX: 1.04, transformOrigin: '50% 100%', duration: 0.09, ease: 'power1.out' }, '-=0.62')
                 .to(card, { scaleY: 1, scaleX: 1, duration: 0.6, ease: 'elastic.out(1, 0.35)' })
@@ -273,7 +273,7 @@ export function Beta({ lang, setLang, onTown }: Props) {
             <h2 id="beta-coming" data-a="heading" className="text-3xl font-extrabold tracking-[-0.02em] md:text-4xl">
               {x.comingTitle}
             </h2>
-            <div data-a="cards" className="mt-6 grid gap-4 md:grid-cols-3">
+            <div data-a="cards" className="mt-8 grid gap-4 md:grid-cols-3">
               {x.coming.map(([icon, title, text]) => (
                 <div key={title} data-a="card">
                   <article className={`${glass} group h-full p-6 transition-transform duration-300 hover:-translate-y-1`}>
