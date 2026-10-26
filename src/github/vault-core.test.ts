@@ -62,6 +62,29 @@ const signIn = (polls: unknown[]) => {
 }
 
 describe('Vault', () => {
+  it("keeps a pasted token of the person's own away from the site's server, even when signing out", async () => {
+    const w = signIn([])
+    await w.vault.handle({ type: 'token', token: ' github_pat_mine1234567890abcdef ' }, () => undefined)
+    expect(w.states().at(-1)).toMatchObject({ status: 'signed-in', user: { login: 'ana' } })
+    const replies: VaultMessage[] = []
+    await w.vault.handle({ type: 'fetch', id: 1, url: 'https://api.github.com/repos/acme/crm/commits', method: 'GET', body: null }, (m) => replies.push(m))
+    expect(replies[0]).toMatchObject({ type: 'response', status: 200 })
+    await w.vault.handle({ type: 'sign-out' }, () => undefined)
+    await w.pass(1)
+    expect(w.calls.every((c) => c.url.startsWith('https://api.github.com/'))).toBe(true)
+    expect(w.calls[0].init.headers).toMatchObject({ Authorization: 'Bearer github_pat_mine1234567890abcdef' })
+    expect(JSON.stringify(w.messages)).not.toContain('github_pat_mine')
+  })
+
+  it('says a pasted token was rejected, without sending it anywhere but GitHub', async () => {
+    const w = world({ 'https://api.github.com/user': () => new Response('{}', { status: 401 }) })
+    await w.vault.handle({ type: 'token', token: 'github_pat_wrong1234567890abcdef' }, () => undefined)
+    expect(w.states().at(-1)).toEqual({ status: 'signed-out', reason: 'rejected' })
+    await w.vault.handle({ type: 'token', token: 'not a token' }, () => undefined)
+    expect(w.states().at(-1)).toEqual({ status: 'signed-out', reason: 'rejected' })
+    expect(w.calls.map((c) => c.url)).toEqual(['https://api.github.com/user'])
+  })
+
   it('runs the device flow itself and tells pages who signed in, never the token', async () => {
     const w = signIn([{ error: 'authorization_pending' }, { access_token: 'ghu_secret', expires_in: 28800 }])
     void w.vault.handle({ type: 'start' }, () => undefined)

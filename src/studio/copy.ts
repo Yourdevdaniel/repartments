@@ -24,7 +24,33 @@ export const t = {
       pt: 'Por segurança, o login dura no máximo 8 horas, e este terminou. Entre de novo para continuar.',
     },
     unavailable: { en: "Couldn't reach GitHub. Please try again.", pt: 'Não deu para falar com o GitHub. Tente de novo.' },
+    rejected: {
+      en: "GitHub didn't accept that token. Check that it was copied whole and hasn't expired.",
+      pt: 'O GitHub não aceitou esse token. Confira se ele foi copiado inteiro e se não venceu.',
+    },
   },
+  ownTokenTitle: { en: "Rather not authorize any app? Use a token of your own", pt: 'Prefere não autorizar nenhum app? Use um token seu' },
+  ownTokenSteps: {
+    en: [
+      'On GitHub, create a fine-grained token (the button below opens the page).',
+      'Repository access: "Only select repositories", and pick the ones you want to present.',
+      'Permissions: Contents "Read-only" (Metadata comes along). Nothing else. Expiration: 7 days or less.',
+      'Generate it, copy it and paste it here.',
+    ],
+    pt: [
+      'No GitHub, crie um token fine-grained (o botão abaixo abre a página).',
+      'Repository access: "Only select repositories", e escolha os que quer apresentar.',
+      'Permissions: Contents "Read-only" (Metadata vem junto). Mais nada. Expiration: 7 dias ou menos.',
+      'Gere, copie e cole aqui.',
+    ],
+  },
+  ownTokenWhy: {
+    en: 'The token goes from this page straight to GitHub and is never sent to our server. Nobody, not even the author of Repartments, gets access you did not give. You revoke it on GitHub whenever you want, and it expires by itself.',
+    pt: 'O token vai desta página direto para o GitHub e nunca é enviado ao nosso servidor. Ninguém, nem o autor do Repartments, ganha um acesso que você não deu. Você revoga no GitHub quando quiser, e ele vence sozinho.',
+  },
+  ownTokenCreate: { en: 'Create the token on GitHub', pt: 'Criar o token no GitHub' },
+  ownTokenLabel: { en: 'Your token', pt: 'Seu token' },
+  ownTokenUse: { en: 'Sign in with this token', pt: 'Entrar com este token' },
   privacyWeb: {
     en: 'You sign in on GitHub itself. The key is locked away from this page’s scripts, only reads, and goes straight to GitHub: this site stores nothing. It lasts 8 hours at most; closing the site or signing out forgets it.',
     pt: 'O login é feito no próprio GitHub. A chave fica trancada longe dos scripts desta página, só faz leituras e vai direto para o GitHub: este site não guarda nada. Ela dura no máximo 8 horas; fechar o site ou sair apaga tudo.',
