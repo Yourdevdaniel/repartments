@@ -1,223 +1,170 @@
 # Arquitetura do Repartments
 
-> **Estúdio fechado (2026-10-26).** O estúdio está fechado para testes e o código dele saiu do repositório ([ADR 0015](adr/0015-estudio-fechado.md)). As seções sobre ele ficam como registro de como funcionava.
-
-Documento de arquitetura no formato [arc42](https://arc42.org) (resumido), com diagramas [C4](https://c4model.com) em Mermaid. O guia em linguagem do dia a dia é o [COMO-FUNCIONA.md](COMO-FUNCIONA.md); as decisões ficam nos [ADRs](adr/README.md); as rotas, na [referência da API](api.md); a leitura de repositórios, em [analise.md](analise.md).
+Documento de arquitetura no formato [arc42](https://arc42.org) (resumido), com diagramas [C4](https://c4model.com) em Mermaid. O guia em linguagem do dia a dia é o [COMO-FUNCIONA.md](COMO-FUNCIONA.md); as decisões ficam nos [ADRs](adr/README.md); as rotas, na [referência da API](api.md); a configuração, em [configuracao.md](configuracao.md).
 
 ## 1. Objetivos
 
-O Repartments mostra um repositório de código como um prédio de apartamentos em 3D, onde as partes do sistema são moradores que encenam como trabalham juntos.
+O Repartments mostra um repositório de código como um prédio de apartamentos em 3D, onde as partes do sistema são moradores que encenam como trabalham juntos. Este repositório tem duas coisas:
 
 | Parte | Para quem | O que entrega |
 |---|---|---|
-| **Prédio público** (`/<usuário>`) | Qualquer visitante | Os repositórios públicos de alguém, um andar por repositório, cada tecnologia um morador. |
-| **Estúdio** (`/studio`) | Quem entra com o GitHub (repositórios privados também), e quem assiste | **Como funciona:** o sistema encenado pelos moradores, incluindo como um agente de IA decide. **Commits:** cada commit encenado pelo autor visitando as partes que mudou. **Mapa:** a arquitetura em camadas, com o calor das mudanças. |
-
-O estúdio nasceu do pedido de uma software house: mostrar a um cliente, de forma visual e para leigos, como o CRM dele funciona e como o agente de IA toma decisões, e o que vem mudando nele.
+| **Prédio público** (`/<usuário>`, `/demo`) | Qualquer visitante | Os repositórios públicos de alguém, um andar por repositório, cada tecnologia um morador. Código aberto. |
+| **Página do estúdio** (`/studio`) | Quem procurava o estúdio | O estúdio está fechado para testes: a página conta de onde o projeto veio, o que vem aí, como entrar no beta, e responde as dúvidas. |
 
 Metas de qualidade, em ordem:
 
-1. **Privacidade e segurança:** nenhum token do estúdio no servidor (o segredo do app de login só troca o código de entrada, e nada fica guardado); o código de clientes vai do GitHub direto para o navegador de quem tem acesso; nada fica guardado depois que a aba fecha, a não ser o que a pessoa salvar.
-2. **Clareza para quem não é técnico:** frases simples em português e inglês, tamanhos em palavras, o roteiro editável com as palavras do cliente.
-3. **Encantar numa apresentação:** a cena 3D, o modo tela cheia, as cenas em sequência.
-4. **Previsibilidade:** a mesma análise para o mesmo commit (sem LLM); regras testadas.
-5. **Leveza de operação:** sem banco; duas funções pequenas além do prédio público.
+1. **Privacidade e segurança:** o prédio só lê dados públicos, com um token do servidor sem permissões; nenhum código de ninguém é mostrado nem guardado; nada de login, cookie ou dado pessoal.
+2. **Clareza para quem não é técnico:** frases simples em português e inglês, a animação conta o fluxo sem mostrar código.
+3. **Encantar:** a cena 3D, o clima, a vida na rua, a página do estúdio animada.
+4. **Previsibilidade:** a mesma análise para os mesmos manifestos (regras, sem LLM); regras testadas.
+5. **Leveza de operação:** sem banco; uma função além dos arquivos estáticos.
 
-## 2. Restrições
+## 2. História
 
-- Hospedagem na **Vercel**: site estático (Vite) + funções Node (`api/`), sem estado entre chamadas.
-- Front-end em **React 19 + TypeScript + Tailwind v4**, cena 3D em **three.js / react-three-fiber**.
-- Dados só da **API do GitHub** (REST e GraphQL).
-- CSP restrita: scripts só do próprio site; o navegador só fala com o próprio site e com `api.github.com`.
+O Repartments começou como um projeto de código aberto: o Prédio, que continua aqui. Depois veio o **estúdio**, onde a pessoa entrava com o GitHub, abria qualquer repositório (privado também) e o transformava numa apresentação animada para um cliente. Com o uso, apareceu a oportunidade de transformar o estúdio numa ferramenta de verdade, que roda no computador da pessoa. Por isso ele fechou para testes e o código dele saiu deste repositório, com o histórico ([ADR 0015](adr/0015-estudio-fechado.md)). A ferramenta nova é feita à parte e, por enquanto, com o código fechado.
+
+As inscrições de testers não passam por aqui: ficam no site de divulgação (`repartments-site`), que tem o formulário, o banco e o painel de quem decide.
+
+## 3. Restrições
+
+- Hospedagem na **Vercel**: site estático (Vite) + uma função Node (`api/building.ts`), sem estado entre chamadas.
+- Front-end em **React 19 + TypeScript + Tailwind v4**, cena 3D em **three.js / react-three-fiber**, animações da página do estúdio com **GSAP** e rolagem suave com **Lenis**.
+- Dados só da **API do GitHub** (GraphQL), pelo servidor.
+- CSP restrita: scripts só do próprio site, **Trusted Types** obrigatório, o navegador só fala com o próprio site e com `api.github.com`.
 - Nada relacionado a ferramentas de IA de desenvolvimento entra no repositório (pastas de plugins no `.gitignore`).
 
-## 3. Contexto (C4, nível 1)
+## 4. Contexto (C4, nível 1)
 
 ```mermaid
 flowchart LR
   visitante([Visitante])
-  pessoa([Quem apresenta<br/>ex.: software house])
-  cliente([Cliente ou stakeholder<br/>que assiste])
-  rp[Repartments<br/>site + funções]
-  gh[(GitHub<br/>API + login)]
+  rp[Repartments<br/>site + função]
+  gh[(GitHub<br/>API GraphQL)]
+  site[repartments-site<br/>inscrição de testers]
 
-  visitante -- "vê prédios públicos" --> rp
-  pessoa -- "entra, escolhe o repositório,<br/>gera e edita a apresentação" --> rp
-  pessoa -. "apresenta em tela cheia<br/>ou manda o arquivo salvo" .-> cliente
-  rp -- "prédio público: token do servidor, só público" --> gh
-  pessoa -- "estúdio: o navegador chama a API<br/>com o token da própria pessoa" --> gh
+  visitante -- "vê prédios públicos<br/>e a página do estúdio" --> rp
+  rp -- "prédio: token do servidor, só público" --> gh
+  visitante -. "Quero ser tester" .-> site
 ```
 
-## 4. Estratégia da solução
+## 5. Estratégia da solução
 
-- **Login com "Continuar com GitHub"** (fluxo web) quando o servidor tem o *client secret*: o servidor troca o código por token, e o token vai ao cofre por um cookie de 2 minutos, sem sessão nem banco ([ADR 0008](adr/0008-continuar-com-github.md)).
-- **Login pelo device flow** do GitHub, com só o *Client ID* (público), como alternativa quando não há segredo ([ADR 0001](adr/0001-login-pelo-device-flow.md)).
-- **Token só na aba** e **chamadas diretas** do navegador ao GitHub; o servidor só repassa o login ([ADR 0002](adr/0002-token-so-no-navegador.md)).
-- **Análise estática no navegador** que produz um modelo de arquitetura com as cenas já escritas ([ADR 0003](adr/0003-analise-estatica-sem-llm.md), [analise.md](analise.md)).
-- **Um palco para tudo**: o motor de histórias do prédio público toca a apresentação e os commits ([ADR 0004](adr/0004-apresentacao-no-motor-de-historias.md), [ADR 0005](adr/0005-commits-como-cenas.md)).
-- **Um contrato tipado** (`src/shared/types.ts`, `src/shared/studio.ts`) entre as partes.
+- **Uma consulta GraphQL por dono**, feita pelo servidor com um token sem permissões; a resposta só leva etiquetas e dados públicos.
+- **Análise por regras** dos manifestos (`package.json`, `requirements.txt`, compose…), sem LLM.
+- **Um motor de histórias puro** (`src/scene/story.ts`) que transforma passos em tempo, testável sem 3D.
+- **Um contrato tipado** (`src/shared/types.ts`) entre a função e a página.
+- **A página do estúdio é carregada sob demanda**, só para quem abre `/studio`.
 
-## 5. Visão de blocos
+## 6. Visão de blocos
 
-### 5.1 Contêineres (C4, nível 2)
+### 6.1 Contêineres (C4, nível 2)
 
 ```mermaid
 flowchart TB
   subgraph browser[Navegador]
     spa[SPA React<br/>src/App.tsx]
-    studio[Estúdio, carregado sob demanda<br/>src/studio/*]
-    engine[Análise de arquitetura<br/>src/architecture/*]
-    ghclient[Cliente do GitHub<br/>src/github/*]
     scene[Cena 3D<br/>src/scene/*]
-    vault[Cofre do token, worker<br/>src/github/vault*.ts]
-    tab[(sessionStorage da aba<br/>modelo, roteiro)]
+    beta[Página do estúdio, sob demanda<br/>src/beta/Beta.tsx]
+    privacy[Política de privacidade<br/>src/privacy/*]
   end
   subgraph vercel[Vercel]
     static[Arquivos estáticos<br/>dist/ + public/models]
     fn_building[api/building.ts]
-    fn_auth[api/auth/config, login, callback, claim, revoke,<br/>device, token<br/>server/auth.ts]
   end
   gh[(api.github.com)]
-  ghlogin[(github.com/login)]
 
   spa --> scene
-  spa -. "lazy" .-> studio
-  studio --> engine & ghclient & scene
-  studio <--> tab
-  ghclient -- "pedidos de leitura" --> vault
-  vault -- "Bearer token da pessoa" --> gh
-  engine --> ghclient
+  spa -. "lazy" .-> beta
+  spa -. "lazy" .-> privacy
   spa -- "GET /api/building" --> fn_building
   fn_building -- "token do servidor, só público" --> gh
-  spa -- "GET /api/auth/login, /callback (redirecionamentos)" --> fn_auth
-  vault -- "POST /api/auth/claim" --> fn_auth
-  vault -- "POST /api/auth/device, /token" --> fn_auth
-  fn_auth -- "client_id (público) e client_secret" --> ghlogin
 ```
 
-### 5.2 Servidor
+### 6.2 Servidor
 
 | Arquivo | Responsabilidade |
 |---|---|
-| `server/auth.ts` | Repasse sem estado do login: "Continuar com GitHub" (`login`, `callback`, `claim`, com o segredo) e o device flow (`device`, `token`, só com o *Client ID*); `config` diz qual está ligado; atalho do GitHub CLI só em desenvolvimento. Freios por visitante, origem própria em POST. |
+| `api/building.ts` | A função do prédio público: freio, validação, cache. |
+| `server/handler.ts` | Valida o nome, chama o GitHub, analisa, monta a resposta. |
+| `server/github.ts` | A consulta GraphQL do prédio. |
+| `server/analyze.ts` | Manifestos → moradores (regras). O texto dos arquivos morre aqui. |
 | `server/limiter.ts` | Freio por visitante, em memória. |
-| `server/handler.ts`, `github.ts`, `analyze.ts` | Prédio público (inalterados). |
 
-### 5.3 Navegador (estúdio)
-
-```mermaid
-flowchart LR
-  Studio[Studio.tsx<br/>moldura, login, exemplo] --> Session[session.ts<br/>login web ou device flow, token na aba]
-  Studio --> Picker[RepoPicker.tsx]
-  Studio --> Workspace[Workspace.tsx<br/>abas, modelo, roteiro, commits]
-  Workspace --> Present[present/PresentTab<br/>+ intro.ts + ScriptEditor]
-  Workspace --> Works[works/WorksTab<br/>+ scenes.ts]
-  Workspace --> Map[map/MapTab<br/>+ AgentGraph]
-  Present --> Theater[present/Theater.tsx<br/>palco, modo apresentação]
-  Works --> Theater
-  Theater --> Tour[scene/tour.ts<br/>cena → apartamento]
-  Tour --> Story[scene/story.ts<br/>motor de histórias]
-  Workspace --> Api[api.ts]
-  Api --> GH[github/*]
-  Api --> Arch[architecture/*]
-```
+### 6.3 Navegador
 
 | Pasta / arquivo | Responsabilidade |
 |---|---|
-| `src/studio/Studio.tsx` | Cabeçalho, botão "Continuar com GitHub" (ou os estados do login pelo código, sem segredo), lista de repositórios, exemplo embutido, abrir apresentação salva. |
-| `src/studio/session.ts` | O estado do login para as telas (vindo do cofre), contagem regressiva das 8 horas. |
-| `src/github/vault*.ts`, `allow.ts` | O cofre do token: um worker que recebe o token pelo login web (`claim`) ou faz o device flow, guarda o token na memória, só deixa passar leituras e esquece tudo em 8 horas; ao soltar um token, pede ao servidor para encerrá-lo no GitHub (`revoke`). |
+| `src/App.tsx` | Tela inicial, rotas (`/`, `/demo`, `/<usuário>`, `/studio`, `/privacidade`), painéis, troca Prédio / Estúdio. |
+| `src/data/building.ts` | Rotas, busca de `/api/building` e conversão em apartamentos. |
+| `src/scene/*` | O motor de histórias (`story.ts`), o gerador de apartamentos (`rooms.ts`), o caminho que desvia de móveis (`nav.ts`, [ADR 0006](adr/0006-escritorio-e-desvio-de-moveis.md)), o prédio, os apartamentos, o clima e a rua. |
+| `src/beta/Beta.tsx` | A página do estúdio fechado: história, o que vem aí, como funciona o beta, perguntas e o botão de tester (`TESTER_URL`). |
+| `src/privacy/*` | A política de privacidade do app ([ADR 0011](adr/0011-privacidade-e-lgpd.md)). |
 | `src/security.ts` | Política de Trusted Types: só scripts do próprio site, nunca texto virando HTML. |
-| `src/studio/api.ts` | Todas as chamadas ao GitHub feitas pela página, com erros traduzidos. |
-| `src/studio/Workspace.tsx` | Abas Como funciona / Commits / Mapa; guarda o modelo, o roteiro, o commit em cena e o calor; aplica os nomes do roteiro no mapa e nos commits; salvar apresentação. |
-| `src/studio/present/*` | `Theater` (o palco: prédio, cenas, painel, modo tela cheia com avanço automático), `PresentTab`, a cena de abertura (`intro.ts`) e o editor de roteiro. |
-| `src/studio/works/*` | Commits em cena (`scenes.ts`, puro) e a aba (`WorksTab.tsx`): 12 commits por prédio, filtros, calor. |
-| `src/studio/map/*` | Mapa em faixas por camada (C4 simplificado), sobreposições de calor e do commit, grafo de decisão dos agentes. |
-| `src/studio/store.ts`, `example.ts` | Memória da aba, arquivo de apresentação (validado ao abrir) e o exemplo do mercado (`market.ts`). |
-| `src/studio/export/*` | A apresentação como arquivo, feita no navegador: vídeo gravado do canvas com as legendas desenhadas (`video.ts`) e PowerPoint com uma foto por cena (`deck.ts`, carregado só quando pedido). [ADR 0007](adr/0007-video-e-powerpoint-no-navegador.md). |
-| `src/github/*` | Cliente do GitHub para o navegador; repositórios; commits, branches e calor. |
-| `src/architecture/*` | Análise estática ([analise.md](analise.md)). |
-| `src/scene/tour.ts` | Gera um apartamento jogável a partir de uma cena (fileira para cenas pequenas, escritório com corredor para as grandes); aplica o roteiro; paredes aquecidas pelo calor. |
-| `src/scene/nav.ts`, `footprints.ts` | Caminhos que desviam de móveis e paredes (A* numa grade), usados por todas as histórias ([ADR 0006](adr/0006-escritorio-e-desvio-de-moveis.md)). |
+| `src/ui/*` | Textos em PT/EN, peças comuns e a cidade borrada do fundo. |
 
-## 6. Visão de execução
-
-### 6.1 Login
-
-Diagramas completos em [api.md](api.md#login-do-estúdio-serverauthts). Com o *client secret* configurado, o caminho principal é **Continuar com GitHub**: a página leva a aba inteira ao GitHub, a pessoa autoriza, o GitHub volta ao servidor com um código, o servidor troca o código por token com o segredo e deixa o token num cookie de 2 minutos; a página volta ao estúdio já com `signin=1`, e o cofre pega o token com `claim`, guarda-o na aba e pergunta ao GitHub quem é a pessoa. Sem o segredo, vale o device flow: a página pede um código pelo repasse, mostra o código e abre `github.com/login/device`, consulta o repasse no ritmo que o GitHub pede e, aprovado, segue igual.
-
-### 6.2 Análise da arquitetura
+## 7. Visão de execução
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant P as Página (estúdio)
-  participant A as api.github.com
-  P->>A: GET /repos/{o}/{r} e /commits/{branch}
-  P->>A: GET /git/trees/{sha}?recursive=1
-  loop lotes de 60 arquivos, 4 ao mesmo tempo
-    P->>A: POST /graphql object(expression:"sha:caminho") { text }
-  end
-  P->>P: imports → partes → rotas → externos → agentes → cenas
-  P->>P: guarda o modelo na aba e monta os andares (tour.ts)
+  participant P as Página
+  participant F as api/building.ts
+  participant G as api.github.com
+  P->>F: GET /api/building?user=<login>
+  F->>F: freio (20/min), valida o nome
+  F->>G: POST /graphql (repositórios, manifestos, PRs, status)
+  G-->>F: dados públicos
+  F->>F: analyze(): manifestos → etiquetas, descarta o texto
+  F-->>P: JSON só com etiquetas (cache na borda: 1 h)
+  P->>P: buildFlat() por repositório → cena 3D
 ```
 
-### 6.3 Commits em cena
-
-1. A aba **Commits** lista os commits dos filtros (`GET /commits`) e lê os arquivos dos 12 do prédio (`GET /commits/{sha}`, 4 por vez).
-2. `scenes.ts` agrupa os arquivos por parte (`componentOf`), escreve a cena de cada commit e a do térreo ("Onde o trabalho acontece") e calcula o calor de cada cômodo.
-3. O commit em cena e a soma dos commits vão para o `Workspace`: o **Mapa** destaca as partes daquele commit ou pinta todas pelo calor.
-
-## 7. Implantação
+## 8. Implantação
 
 ```mermaid
 flowchart LR
   dev[Máquina de desenvolvimento<br/>npm run dev] -- "push (feito por quem mantém)" --> gh[GitHub]
-  gh -- "build automático" --> vercel[Vercel<br/>CDN + funções Node]
-  env["Variáveis: GITHUB_TOKEN (sensível),<br/>GITHUB_CLIENT_ID (público)"] --> vercel
+  gh -- "build automático" --> vercel[Vercel<br/>CDN + função Node]
+  env["Variável: GITHUB_TOKEN (sensível)"] --> vercel
 ```
 
-Passo a passo em [configuracao.md](configuracao.md). `vercel.json` define rotas da SPA e cabeçalhos de segurança.
+Passo a passo em [configuracao.md](configuracao.md). `vercel.json` define as rotas da SPA e os cabeçalhos de segurança. O build termina com `scripts/check-dist.mjs`, que interrompe o deploy se algum arquivo publicado tiver cara de segredo.
 
-## 8. Conceitos transversais
+## 9. Conceitos transversais
 
-- **Segurança.** Nenhum segredo do estúdio no servidor. O token fica trancado no cofre (um worker): nem a página o vê, ele só faz leituras de uma lista fechada e some em 8 horas (com contagem no cabeçalho e aviso nos últimos 10 minutos). CSP: `script-src 'self'`, `connect-src 'self' https://api.github.com`, Trusted Types obrigatório. Todo texto renderizado pelo React (nada de `innerHTML`). Arquivos de apresentação abertos são validados e reconstruídos campo a campo. O repasse do login valida o código, exige origem própria e tem freio. Nomes de dono e repositório validados antes de chamar o GitHub.
-- **Privacidade.** O código vai do GitHub direto para a aba; nenhum serviço de IA; nunca lê `.env`, chaves e certificados. Modelo e roteiro somem com a aba; o arquivo salvo leva roteiro, nomes de partes e arquivos e o começo das instruções dos agentes, nunca código.
-- **Erros.** Um conjunto pequeno de códigos (`StudioErrorCode`), traduzidos na interface; 401 encerra o login.
-- **Idiomas.** Todo texto visível em `pt` e `en`; o modelo traz as frases nas duas línguas.
-- **Acessibilidade.** Botões reais, abas com `role="tab"`, passos com `aria-current`, legendas com `aria-live`; foco visível; movimento reduzido respeitado.
-- **Desempenho.** O estúdio é carregado sob demanda (fica fora do pacote do prédio público); os modelos 3D da apresentação são pré-carregados.
+- **Segurança.** O único segredo é o `GITHUB_TOKEN`, só no servidor, sem permissões de repositório. Nomes validados antes de chamar o GitHub (sem SSRF). Todo texto renderizado pelo React (nada de `innerHTML`). CSP com `script-src 'self'`, `connect-src 'self' https://api.github.com` e Trusted Types obrigatório. Logs sem segredo, token ou pedido (teste em `server/logs.test.ts`).
+- **Privacidade.** Sem login, cookie ou dado pessoal; nenhum serviço de IA; o texto dos manifestos não sai da função. Política em `/privacidade` e `/privacy`; registro em [privacidade.md](privacidade.md).
+- **Erros.** Um conjunto pequeno de códigos (`BuildingError`), traduzidos na interface.
+- **Idiomas.** Todo texto visível em `pt` e `en`.
+- **Acessibilidade.** Botões reais, foco visível, legendas com `aria-live`, movimento reduzido respeitado (a página do estúdio desliga as animações e a rolagem suave).
+- **Desempenho.** A página do estúdio e a política carregam sob demanda; os modelos 3D são pré-carregados ao abrir um prédio.
 
-## 9. Decisões
+## 10. Decisões
 
 Ver [adr/README.md](adr/README.md).
 
-## 10. Qualidade e testes
+## 11. Qualidade e testes
 
-- `npm test` (Vitest): analisador público, motor de histórias, geradores de apartamento, de apresentação e de cenas de commits, cena de abertura, repasse do login, cliente do GitHub (repositórios, commits), análise de arquitetura (com um CRM de exemplo), mapa e grafo dos agentes, utilitários.
-- `npm run build` checa os tipos (`tsc --noEmit`) antes do build.
-- Visual conferido no navegador em desktop e celular: login, exemplo, apresentação, commits e mapa.
+- `npm test` (Vitest): analisador, motor de histórias, gerador de apartamentos, caminhos, rotas, política de privacidade, logs sem segredo.
+- `npm run build` checa os tipos (`tsc --noEmit`) antes do build e procura segredos no que vai ser publicado.
+- `npm run check:site -- <endereço>` confere o site publicado de fora (scripts, arquivos sensíveis, cabeçalhos).
 
-## 11. Riscos e dívidas técnicas
+## 12. Riscos e dívidas técnicas
 
 | Risco | Efeito | Mitigação atual / próximo passo |
 |---|---|---|
-| Script injetado na página | Poderia pedir leituras ao cofre enquanto o login dura | Token fora do alcance da página, só leituras permitidas, 8 h no máximo, CSP com Trusted Types, React escapando texto. |
-| Heurísticas erram nomes e fluxos | Cena estranha para o cliente | Roteiro editável (renomeia em todas as abas); nota "gerado a partir do código". |
-| Agente de IA não reconhecido | Falta a cena mais pedida | Aviso na apresentação com os SDKs reconhecidos; ampliar as regras com casos reais. |
-| Repositório muito grande | Análise parcial (`truncated`) | Orçamento de 700 arquivos / 7 MB; o mapa avisa. Próximo: escolher pastas. |
-| Cota do GitHub da pessoa | Análise e commits param por um tempo | 12 commits por prédio, 4 chamadas por vez; mensagem clara de `rate-limited`. |
-| Arquivo salvo circula | Nomes internos e instruções do agente de um cliente | Aviso no botão; revisar o roteiro antes de enviar. |
+| Cota do token do servidor | Prédios param por um tempo | Cache de 1 h na borda, freio por visitante, mensagem clara de `rate-limited`. |
+| Repositórios enormes | Primeira consulta lenta (~20 s) | Lista curta de manifestos; cache depois. |
+| Detecção por nomes de dependência | Morador a mais (ex.: um framework só nos testes) | Regras com prioridade; ampliar com casos reais. |
+| `TESTER_URL` aponta para uma issue pública | Quem se inscreve por lá deixa nome e contato à vista | Trocar para o formulário do site (`/beta/`) assim que ele estiver no ar. |
 
-## 12. Glossário
+## 13. Glossário
 
 | Termo | Significado |
 |---|---|
-| Prédio | Repositórios de alguém (público), as cenas de um repositório ou os commits recentes (estúdio). |
-| Andar | Um repositório (público), uma cena ou um commit (estúdio). |
-| Morador | Uma tecnologia (público) ou uma parte do sistema, ferramenta, serviço, autor (estúdio). |
-| Parte / componente | Uma pasta do repositório (ou os arquivos soltos nela) com um papel. |
-| Camada | Telas, API, segurança, regras, IA, tarefas, dados, compartilhado, infraestrutura, testes. |
-| Cena (`Flow`) | Uma sequência de passos entre participantes. |
-| Calor | Quanto cada parte mudou nos commits em cena. |
-| Roteiro | Os textos da apresentação, editáveis por quem apresenta. |
+| Prédio | Os repositórios públicos de alguém. |
+| Andar | Um repositório. |
+| Morador | Uma tecnologia do repositório (React, Django, PostgreSQL…). |
+| Cômodo | O lugar de um papel no apartamento (sala, portaria, escritório, arquivo…). |
+| História | A sequência de passos que os moradores encenam (`story.ts`). |
+| Estúdio | A ferramenta de apresentações, hoje fechada para testes e feita à parte. |

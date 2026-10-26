@@ -2,12 +2,12 @@
 
 Registro das operações com dados pessoais do Repartments (LGPD, art. 37) e o que fazer para mantê-lo em dia. O texto que o público lê está em `src/privacy/policy.ts` e aparece em `/privacidade` (e `/privacy`); os dois mudam juntos. Decisão em [ADR 0011](adr/0011-privacidade-e-lgpd.md).
 
-Isto descreve o que o código faz. Não substitui a revisão de um advogado, que vale fazer antes de vender o estúdio a uma empresa (e com um contrato que diga o papel de cada um).
+Isto descreve o que o código faz. Não substitui a revisão de um advogado, que vale fazer antes de oferecer a ferramenta nova a empresas (e com um contrato que diga o papel de cada um).
 
 ## Quem é quem
 
 - **Controlador:** Daniel Bernardes, autor do Repartments. Contato público: o que está em `CONTROLLER.contact` (`src/privacy/policy.ts`).
-- **Operadores (quem trata em nome do controlador):** GitHub, Inc. (login e repositórios) e Vercel Inc. (hospedagem e funções do servidor). Os dois ficam nos Estados Unidos.
+- **Operadores (quem trata em nome do controlador):** GitHub, Inc. (dados públicos dos repositórios) e Vercel Inc. (hospedagem e a função do servidor). Os dois ficam nos Estados Unidos.
 - **Encarregado:** como agente de tratamento de pequeno porte, o projeto não precisa nomear um (Resolução CD/ANPD nº 2/2022), mas precisa manter um canal para os titulares: o contato acima.
 
 ## Inventário
@@ -32,16 +32,14 @@ GitHub e Vercel tratam os dados nos Estados Unidos (LGPD, art. 33). A transferê
 
 Como o servidor não guarda dados das pessoas, a maioria dos pedidos se resolve sem intervenção:
 
-- **Acesso e eliminação:** "Sair" cancela o token; fechar a aba apaga o que estava nela; não há cópia no servidor.
-- **Revogação:** a pessoa revoga o app em GitHub → Settings → Applications, a qualquer momento. Quem entrou com token próprio o apaga em GitHub → Settings → Developer settings → Fine-grained tokens.
 - **Dados do Prédio:** são públicos no GitHub; se o dono da conta pedir, o cache some sozinho em ~1 hora, e a conta pode ser deixada privada no próprio GitHub.
 - **Outros pedidos:** pelo contato da política, com resposta em até 15 dias (art. 19, II).
 
 ## Segurança e incidentes
 
-Medidas: token só de leitura e trancado longe dos scripts da página ([ADR 0002](adr/0002-token-so-no-navegador.md)), segredo do app só no servidor e conferido no build ([ADR 0008](adr/0008-continuar-com-github.md)), cabeçalhos de segurança e HTTPS, registros do servidor sem tokens, cookies ou conteúdo (testado em `server/logs.test.ts`).
+Medidas: o token do servidor só lê dados públicos e é conferido no build (nenhum arquivo publicado pode carregá-lo), cabeçalhos de segurança e HTTPS, registros do servidor sem tokens, cookies ou conteúdo (testado em `server/logs.test.ts`).
 
-Se houver um incidente que possa trazer risco ou dano relevante aos titulares (por exemplo, o segredo do app vazar): trocar o segredo no GitHub e na Vercel, avaliar o que foi exposto e comunicar a ANPD e os titulares afetados em prazo razoável (art. 48), registrando o que aconteceu e o que foi feito.
+Se houver um incidente que possa trazer risco ou dano relevante aos titulares (por exemplo, o token do servidor vazar): trocar o token no GitHub e na Vercel, avaliar o que foi exposto e comunicar a ANPD e os titulares afetados em prazo razoável (art. 48), registrando o que aconteceu e o que foi feito.
 
 ## Quando mudar este documento
 
@@ -51,4 +49,5 @@ Sempre que o site passar a tratar um dado novo, guardar algo por mais tempo, usa
 
 - Definir um e-mail de contato para privacidade e trocar `CONTROLLER.contact` (hoje aponta para o site do autor).
 - Aceitar o DPA da Vercel na conta que hospeda o site.
-- Revisão jurídica da política e um contrato com o cliente que use o estúdio em nome dele.
+- Revisão jurídica da política antes de a ferramenta nova tratar dados de clientes.
+- As inscrições de testers ficam no site de divulgação (`repartments-site`), com política e registro próprios.

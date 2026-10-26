@@ -5,7 +5,7 @@
 
 ## Contexto e problema
 
-Com o "Continuar com GitHub" ([0008](0008-continuar-com-github.md)) e o estúdio aberto a clientes, o site passa a tratar dados pessoais de quem entra (nome de usuário, nome, foto, um token de acesso), de quem aparece nos commits (nomes de autores) e de quem é pesquisado no Prédio (dados públicos do GitHub). A LGPD (Lei 13.709/2018) pede que cada tratamento tenha finalidade, base legal e prazo, que a pessoa seja informada com clareza, que os direitos do art. 18 possam ser exercidos e que haja um canal de contato. O desenho já guarda pouco ([0001](0001-login-pelo-device-flow.md), [0002](0002-token-so-no-navegador.md)), mas nada disso estava escrito para o público.
+Com o "Continuar com GitHub" (ADR 0008, removido com o estúdio, ver [0015](0015-estudio-fechado.md)) e o estúdio aberto a clientes, o site passa a tratar dados pessoais de quem entra (nome de usuário, nome, foto, um token de acesso), de quem aparece nos commits (nomes de autores) e de quem é pesquisado no Prédio (dados públicos do GitHub). A LGPD (Lei 13.709/2018) pede que cada tratamento tenha finalidade, base legal e prazo, que a pessoa seja informada com clareza, que os direitos do art. 18 possam ser exercidos e que haja um canal de contato. O desenho já guarda pouco (ADRs 0001 e 0002, removidos com o estúdio), mas nada disso estava escrito para o público.
 
 ## Opções consideradas
 
