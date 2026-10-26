@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import Lenis from 'lenis'
@@ -79,6 +79,9 @@ const t = {
   },
 } as const
 
+/** How crooked each "what is coming" card sits. */
+const TILT = [-2.5, 1.5, -1.5]
+
 type Props = {
   owner: string | null
   repo: string | null
@@ -155,7 +158,8 @@ export function Beta({ lang, setLang, onTown }: Props) {
         gsap.utils.toArray<HTMLElement>('[data-a=heading]').forEach((h) => {
           gsap.from(h, { y: 30, autoAlpha: 0, duration: 0.8, ease: 'power3.out', scrollTrigger: { trigger: h, start: 'top 85%' } })
         })
-        // The cards jump in as they come into view: a hop up, a bouncy landing, a little squash, and the icon pops.
+        // The cards jump in as they come into view: a hop, a bouncy landing,
+        // a little squash, a wobble back onto its tilt, and the icon pops.
         ScrollTrigger.batch('[data-a=card]', {
           scroller,
           start: 'top 88%',
@@ -164,11 +168,12 @@ export function Beta({ lang, setLang, onTown }: Props) {
             cards.forEach((card, i) => {
               gsap
                 .timeline({ delay: i * 0.15 })
-                .fromTo(card, { y: 90, autoAlpha: 0 }, { y: -24, autoAlpha: 1, duration: 0.4, ease: 'power2.out' })
+                .fromTo(card, { y: 90, rotate: (i % 2 ? 1 : -1) * 10, autoAlpha: 0 }, { y: -24, autoAlpha: 1, duration: 0.4, ease: 'power2.out' })
                 .to(card, { y: 0, duration: 0.75, ease: 'bounce.out' })
                 .to(card, { scaleY: 0.93, scaleX: 1.04, transformOrigin: '50% 100%', duration: 0.09, ease: 'power1.out' }, '-=0.62')
                 .to(card, { scaleY: 1, scaleX: 1, duration: 0.6, ease: 'elastic.out(1, 0.35)' })
                 .from(card.querySelector('[data-a=icon]'), { scale: 0, rotate: -40, duration: 0.6, ease: 'back.out(3)' }, 0.25)
+                .to(card, { rotate: 0, duration: 1, ease: 'elastic.out(1, 0.3)' }, 0.3)
             }),
         })
         gsap.set('[data-a=card]', { autoAlpha: 0 })
@@ -274,9 +279,13 @@ export function Beta({ lang, setLang, onTown }: Props) {
               {x.comingTitle}
             </h2>
             <div data-a="cards" className="mt-8 grid gap-4 md:grid-cols-3">
-              {x.coming.map(([icon, title, text]) => (
+              {x.coming.map(([icon, title, text], i) => (
+                // A little crooked, like notes pinned to a board (straightened on hover); the jump moves the wrapper.
                 <div key={title} data-a="card">
-                  <article className={`${glass} group h-full p-6 transition-transform duration-300 hover:-translate-y-1`}>
+                  <article
+                    className={`${glass} group h-full p-6 transition-[translate,rotate] duration-300 rotate-(--tilt) hover:-translate-y-1 hover:rotate-0`}
+                    style={{ '--tilt': `${TILT[i % TILT.length]}deg` } as CSSProperties}
+                  >
                     <span data-a="icon" aria-hidden="true" className="inline-block">
                       <span className="flex size-12 items-center justify-center rounded-2xl bg-[#eef1ff] text-2xl transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6">
                         {icon}
