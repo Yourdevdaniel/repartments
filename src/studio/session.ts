@@ -15,7 +15,7 @@ export type DeviceCode = { userCode: string; verificationUri: string; expiresAt:
 
 export type SessionState =
   | { status: 'loading' }
-  | { status: 'signed-out'; enabled: boolean; web: boolean; devLogin: boolean; error?: 'denied' | 'expired' | 'unavailable' }
+  | { status: 'signed-out'; enabled: boolean; web: boolean; devLogin: boolean; error?: 'denied' | 'expired' | 'unavailable' | 'rejected' }
   | { status: 'waiting'; code: DeviceCode }
   | { status: 'signed-in'; user: Viewer; expiresAt: number }
 
@@ -113,5 +113,5 @@ export function useSession() {
   /** GitHub App only: where the person picks which repositories the app can read. */
   const install = config?.install ?? null
 
-  return { state, now, install, signIn, cancel: vault.cancel, signOut: vault.signOut }
+  return { state, now, install, signIn, paste: vault.paste, cancel: vault.cancel, signOut: vault.signOut }
 }

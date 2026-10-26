@@ -16,6 +16,7 @@ Isto descreve o que o código faz. Não substitui a revisão de um advogado, que
 |---|---|---|---|---|---|---|
 | Prédio (página inicial) | nome de usuário pesquisado, dados públicos da conta no GitHub (repositórios públicos, linguagens, contagens) | dono da conta pesquisada | desenhar o prédio | dados tornados públicos pelo titular, usados para essa finalidade; legítimo interesse (art. 7º, IX e § 4º) | resposta em cache na borda da Vercel | ~1 hora |
 | Login no estúdio | nome de usuário, nome e foto do GitHub; token de acesso só de leitura | quem entra | ler os repositórios que a pessoa escolheu | execução do serviço pedido (art. 7º, V) | o token passa pelo servidor só para ser trocado (sem gravação) e fica no cofre da aba | até 8 horas; cancelado no GitHub ao sair |
+| Login com token próprio | token fine-grained criado pela pessoa; nome de usuário, nome e foto do GitHub | quem entra | ler os repositórios que a pessoa liberou no token | execução do serviço pedido (art. 7º, V) | só no cofre da aba; nunca vai ao servidor, nem para ser revogado | até 8 horas no cofre; no GitHub, até a pessoa revogar ou o prazo do token vencer |
 | Cookies do login | `gh_flow` (estado e PKCE), `gh_handoff` (entrega do token) | quem entra | proteger o login e entregar a chave à aba | execução do serviço (art. 7º, V); cookies estritamente necessários | navegador | 10 e 2 minutos |
 | Análise e commits | código, nomes de arquivos, mensagens e autores de commits | empresa dona do repositório; desenvolvedores | montar a apresentação | execução do serviço (art. 7º, V) | só no navegador de quem analisa (`sessionStorage`) | enquanto a aba está aberta |
 | Arquivos salvos | apresentação (pode ter autores de commits), roteiro, vídeo, PowerPoint | os mesmos | apresentar depois | o arquivo fica com quem o salvou, que passa a responder por ele | computador de quem salvou | a critério de quem salvou |
@@ -23,6 +24,16 @@ Isto descreve o que o código faz. Não substitui a revisão de um advogado, que
 | Registros da hospedagem | endereço IP, data, caminho, navegador | quem acessa | operar e proteger o site | legítimo interesse (art. 7º, IX) | Vercel | prazo do plano da Vercel |
 
 O que **não** existe: cadastro, banco de dados, sessão no servidor, cookies de análise ou propaganda, envio de código a serviços de IA.
+
+## O que o dono do app poderia fazer
+
+Quem é dono do GitHub App (hoje, o controlador) pode gerar uma chave privada do app em GitHub → Settings → Developer settings → GitHub Apps → repartments-reader → Private keys. Com ela, listaria as instalações e criaria tokens de leitura para cada repositório liberado, sem a pessoa estar no site. O Repartments não precisa dessa chave: ele só usa o token da própria pessoa.
+
+Compromissos:
+
+- **Não gerar chave privada do app.** Se alguma existir, apagar. Conferir na mesma tela sempre que mexer no app.
+- **2FA forte na conta dona do app** (passkey ou aplicativo autenticador). Quem tomar a conta herda o acesso a todas as instalações.
+- **Dizer isso na política** (seção "O que o autor do app poderia fazer"), com as saídas para quem não quer confiar: liberar só o que vai apresentar, usar um token próprio ou rodar localmente ([ADR 0014](adr/0014-token-proprio.md)).
 
 ## Transferência internacional
 
@@ -33,7 +44,7 @@ GitHub e Vercel tratam os dados nos Estados Unidos (LGPD, art. 33). A transferê
 Como o servidor não guarda dados das pessoas, a maioria dos pedidos se resolve sem intervenção:
 
 - **Acesso e eliminação:** "Sair" cancela o token; fechar a aba apaga o que estava nela; não há cópia no servidor.
-- **Revogação:** a pessoa revoga o app em GitHub → Settings → Applications, a qualquer momento.
+- **Revogação:** a pessoa revoga o app em GitHub → Settings → Applications, a qualquer momento. Quem entrou com token próprio o apaga em GitHub → Settings → Developer settings → Fine-grained tokens.
 - **Dados do Prédio:** são públicos no GitHub; se o dono da conta pedir, o cache some sozinho em ~1 hora, e a conta pode ser deixada privada no próprio GitHub.
 - **Outros pedidos:** pelo contato da política, com resposta em até 15 dias (art. 19, II).
 

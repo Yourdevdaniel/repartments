@@ -12,6 +12,10 @@
  * be, stops working too (with "Continue with GitHub"; the device flow has no secret to do that).
  * Closing every tab of the site ends the worker, and the token with it.
  *
+ * A person who'd rather not authorize any app can paste a token of their own (a fine-grained token,
+ * read-only, on the repositories they pick). That token goes from the page into the vault and from
+ * there only to api.github.com: it is never sent to the site's server, not even to be revoked.
+ *
  * This file is the vault's logic with its surroundings passed in (fetch, clock, timers), so it can
  * be tested; `vault.worker.ts` plugs it into a real worker.
  */
@@ -24,7 +28,7 @@ export type VaultUser = { login: string; name: string | null; avatarUrl: string 
 
 /** What every page is told about the sign-in. Never includes the token. */
 export type VaultState =
-  | { status: 'signed-out'; reason?: 'denied' | 'expired' | 'unavailable' | 'disabled' }
+  | { status: 'signed-out'; reason?: 'denied' | 'expired' | 'unavailable' | 'disabled' | 'rejected' }
   | { status: 'waiting'; userCode: string; verificationUri: string; expiresAt: number }
   | { status: 'signed-in'; user: VaultUser; expiresAt: number }
 
@@ -34,6 +38,8 @@ export type VaultRequest =
   | { type: 'start' }
   | { type: 'claim' }
   | { type: 'dev' }
+  /** A token the person made themselves on GitHub, pasted into the page. */
+  | { type: 'token'; token: string }
   | { type: 'cancel' }
   | { type: 'sign-out' }
   | { type: 'fetch'; id: number; url: string; method: string; body: string | null }
@@ -60,6 +66,8 @@ const PASS_HEADERS = ['link', 'x-ratelimit-remaining', 'content-type']
 
 export class Vault {
   private token: string | null = null
+  /** The token is the person's own: only they can revoke it, so it never goes to the site's server. */
+  private own = false
   private state: VaultState = { status: 'signed-out' }
   private flow: { cancelled: boolean } | null = null
   private expiry: unknown = null
@@ -81,8 +89,9 @@ export class Vault {
   }
 
   private forget(reason?: Extract<VaultState, { status: 'signed-out' }>['reason']) {
-    if (this.token) this.revoke(this.token)
+    if (this.token && !this.own) this.revoke(this.token)
     this.token = null
+    this.own = false
     if (this.flow) this.flow.cancelled = true
     this.flow = null
     if (this.expiry !== null) this.deps.clearTimeout(this.expiry)
@@ -98,22 +107,24 @@ export class Vault {
   }
 
   /** Keeps a fresh token: asks GitHub who it belongs to and starts the 8-hour clock. */
-  private async adopt(token: string, expiresIn: number | null) {
+  private async adopt(token: string, expiresIn: number | null, own = false) {
     let user: VaultUser
     try {
       const res = await this.deps.fetch('https://api.github.com/user', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } })
       if (!res.ok) {
+        if (own) return this.forget(res.status === 401 ? 'rejected' : 'unavailable')
         this.revoke(token)
         return this.forget(res.status === 401 ? 'expired' : 'unavailable')
       }
       const u = (await res.json()) as { login: string; name: string | null; avatar_url: string }
       user = { login: u.login, name: u.name ?? null, avatarUrl: u.avatar_url ?? '' }
     } catch {
-      this.revoke(token)
+      if (!own) this.revoke(token)
       return this.forget('unavailable')
     }
     const lasts = Math.min(MAX_SESSION_MS, expiresIn ? expiresIn * 1000 : MAX_SESSION_MS)
     this.token = token
+    this.own = own
     this.expiry = this.deps.setTimeout(() => this.forget('expired'), lasts)
     this.set({ status: 'signed-in', user, expiresAt: this.deps.now() + lasts })
   }
@@ -227,6 +238,12 @@ export class Vault {
         return reply({ type: 'claimed', ok: await this.claim() })
       case 'dev':
         return this.dev()
+      case 'token': {
+        const token = message.token.trim()
+        // GitHub's tokens are short and plain; anything else is a paste gone wrong.
+        if (!/^[\w-]{20,255}$/.test(token)) return this.forget('rejected')
+        return this.adopt(token, null, true)
+      }
       case 'cancel':
       case 'sign-out':
         return this.forget()
