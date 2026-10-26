@@ -74,6 +74,8 @@ export const vault = {
     }),
   /** Development only: sign in with the GitHub CLI's token. */
   dev: () => connect().postMessage({ type: 'dev' }),
+  /** Signs in with a token the person made on GitHub; it goes to the vault, never to the server. */
+  paste: (token: string) => connect().postMessage({ type: 'token', token }),
   cancel: () => connect().postMessage({ type: 'cancel' }),
   signOut: () => connect().postMessage({ type: 'sign-out' }),
 }

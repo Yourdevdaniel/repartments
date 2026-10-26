@@ -20,6 +20,14 @@ const t = {
     emptyInstall: 'Repartments only sees the repositories you allow, and only reads them. Choose them on GitHub and you come straight back here.',
     install: 'Choose repositories on GitHub',
     installMore: 'Missing one? Choose more repositories on GitHub',
+    helpTitle: 'How do I add my private repositories?',
+    helpSteps: [
+      'Signing in only tells Repartments who you are. To read a repository, it has to be allowed on GitHub.',
+      'Click the button below and pick the account that owns the repositories (yours or an organization).',
+      'Choose "Only select repositories", tick the ones you will present and save. GitHub sends you back here and they show up. To check later: github.com/settings/installations.',
+    ],
+    helpOrg: 'Repositories of an organization need an owner of that organization to approve. Until then the request stays pending on GitHub.',
+    helpReadOnly: 'Repartments only reads: it can never change your code. Rather not install the app? Sign out and use a token of your own.',
     private: 'Private',
     archived: 'Archived',
     updated: (rel: string) => `Updated ${rel}`,
@@ -38,6 +46,14 @@ const t = {
     emptyInstall: 'O Repartments só vê os repositórios que você liberar, e só lê. Escolha no GitHub e você volta direto para cá.',
     install: 'Escolher repositórios no GitHub',
     installMore: 'Falta algum? Escolha mais repositórios no GitHub',
+    helpTitle: 'Como adicionar meus repositórios privados?',
+    helpSteps: [
+      'Entrar só diz ao Repartments quem você é. Para ler um repositório, ele precisa ser liberado no GitHub.',
+      'Clique no botão abaixo e escolha a conta dona dos repositórios (a sua ou a de uma organização).',
+      'Marque "Only select repositories", escolha os que vai apresentar e salve. O GitHub traz você de volta e eles aparecem aqui. Para conferir depois: github.com/settings/installations.',
+    ],
+    helpOrg: 'Repositórios de organização precisam da aprovação de um owner dela. Até lá, o pedido fica pendente no GitHub.',
+    helpReadOnly: 'O Repartments só lê: nunca altera o seu código. Prefere não instalar o app? Saia e use um token seu.',
     private: 'Privado',
     archived: 'Arquivado',
     updated: (rel: string) => `Atualizado ${rel}`,
@@ -126,6 +142,26 @@ export function RepoPicker({ lang, install, onOpen }: { lang: Lang; install: str
         </h2>
         <p className="text-[13px] text-ink-soft">{x.subtitle}</p>
       </header>
+
+      {/* Signing in through a GitHub App doesn't open any repository by itself; this says how. */}
+      {install && (
+        <details className="mx-1 rounded-2xl bg-ink/[0.04] px-3.5 py-2.5 text-[13px] text-ink-soft">
+          <summary className="cursor-pointer font-bold text-ink">
+            <span aria-hidden="true">🔒 </span>
+            {x.helpTitle}
+          </summary>
+          <ol className="mt-2 list-decimal space-y-1 pl-5">
+            {x.helpSteps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+          <p className="mt-2 text-xs">{x.helpOrg}</p>
+          <p className="mt-1 text-xs">{x.helpReadOnly}</p>
+          <a href={install} className="mt-3 inline-block rounded-full bg-ink px-4 py-2 text-xs font-bold text-white">
+            {x.install}
+          </a>
+        </details>
+      )}
 
       <form role="search" onSubmit={submit} className="px-1">
         <label className="block">
