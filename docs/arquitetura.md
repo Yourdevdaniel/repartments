@@ -156,7 +156,6 @@ Ver [adr/README.md](adr/README.md).
 | Cota do token do servidor | Prédios param por um tempo | Cache de 1 h na borda, freio por visitante, mensagem clara de `rate-limited`. |
 | Repositórios enormes | Primeira consulta lenta (~20 s) | Lista curta de manifestos; cache depois. |
 | Detecção por nomes de dependência | Morador a mais (ex.: um framework só nos testes) | Regras com prioridade; ampliar com casos reais. |
-| `TESTER_URL` aponta para uma issue pública | Quem se inscreve por lá deixa nome e contato à vista | Trocar para o formulário do site (`/beta/`) assim que ele estiver no ar. |
 
 ## 13. Glossário
 

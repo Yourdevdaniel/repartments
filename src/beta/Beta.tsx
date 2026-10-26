@@ -8,11 +8,11 @@ import type { Lang } from '../ui/roles'
 
 gsap.registerPlugin(ScrollTrigger)
 
-/**
- * Where people sign up to test the new Repartments. Not decided yet; one place to change it.
- * For now it opens a pre-filled issue on the public repository.
- */
-export const TESTER_URL = 'https://github.com/Yourdevdaniel/repartments/issues/new?title=Quero%20ser%20tester%20%2F%20I%20want%20to%20test&labels=beta'
+/** Where people sign up to test the new Repartments: the form on the project's site, in their language. */
+export const TESTER_URL: Record<Lang, string> = {
+  pt: 'https://repartments-site.vercel.app/beta/',
+  en: 'https://repartments-site.vercel.app/en/beta/',
+}
 
 const t = {
   pt: {
@@ -262,7 +262,7 @@ export function Beta({ lang, setLang, onTown }: Props) {
               <div data-a="cta" className="mt-8 flex flex-wrap items-center gap-5">
                 <Magnetic>
                   <a
-                    href={TESTER_URL}
+                    href={TESTER_URL[lang]}
                     className="group inline-flex h-13 items-center gap-2 rounded-full bg-ink px-7 text-[15px] font-extrabold text-white shadow-[0_14px_30px_-12px_rgba(35,38,58,0.7)] transition-colors hover:bg-[#33374f]"
                   >
                     {x.cta}
@@ -374,7 +374,7 @@ export function Beta({ lang, setLang, onTown }: Props) {
                 <p className="mt-2 max-w-[32rem] text-[15px] leading-relaxed text-white/75">{x.endLead}</p>
               </div>
               <Magnetic>
-                <a href={TESTER_URL} className="inline-flex h-13 shrink-0 items-center gap-2 rounded-full bg-[#ffe08a] px-7 text-[15px] font-extrabold text-ink transition-colors hover:bg-white">
+                <a href={TESTER_URL[lang]} className="inline-flex h-13 shrink-0 items-center gap-2 rounded-full bg-[#ffe08a] px-7 text-[15px] font-extrabold text-ink transition-colors hover:bg-white">
                   {x.cta} <span aria-hidden="true">→</span>
                 </a>
               </Magnetic>
