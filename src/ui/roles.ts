@@ -104,8 +104,8 @@ export const copy = {
     night: { en: 'Night', pt: 'Noite' },
   } as Record<string, L>,
   note: {
-    en: 'An illustration of how the pieces talk. It never shows code, routes or data.',
-    pt: 'Uma ilustração de como as partes conversam. Nunca mostra código, rotas ou dados.',
+    en: "An illustration of how the pieces talk, put together automatically from what is public on GitHub: it can be inaccurate at times (a technology too many or too few, a role guessed wrong). It never shows code, routes or data.",
+    pt: 'Uma ilustração de como as partes conversam, montada automaticamente a partir do que está público no GitHub: às vezes ela pode ser imprecisa (uma tecnologia a mais ou a menos, um papel adivinhado errado). Nunca mostra código, rotas ou dados.',
   },
   credits: { en: 'Characters and furniture: Kenney (CC0)', pt: 'Personagens e móveis: Kenney (CC0)' },
   madeBy: { en: 'Made by', pt: 'Feito por' },
