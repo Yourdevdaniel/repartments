@@ -17,17 +17,17 @@ export const TESTER_URL: Record<Lang, string> = {
 const t = {
   pt: {
     title: 'O estúdio está fechado para testes',
-    lead: 'Desculpe! Fechamos o estúdio ao público por um tempo. Estamos reconstruindo o Repartments para deixá-lo melhor e transformá-lo numa ferramenta que você usa no seu próprio computador.',
+    lead: 'O estúdio está em beta fechado. Estamos reconstruindo o Repartments para deixá-lo melhor e transformá-lo numa ferramenta que você usa no seu próprio computador.',
     cta: 'Quero ser tester',
     back: 'Ver o Prédio, que continua aberto',
     sign: 'Em obras',
     scroll: 'Role para saber mais',
     storyTitle: 'De onde veio',
     story: [
-      'O Repartments começou como um projeto de código aberto. O Prédio, que transforma os repositórios públicos de qualquer pessoa num predinho, continua aberto no GitHub.',
+      'O Repartments começou como um projeto de código aberto. O Prédio, que transforma os repositórios públicos de qualquer pessoa num predinho, continua no ar; no momento, o código dele está fechado.',
       'Com o uso, vimos a oportunidade de ir além: transformar a ideia numa ferramenta que ajude no dia a dia de quem precisa explicar um sistema para quem não programa. Por isso o estúdio fechou. Ele está sendo refeito à parte, com calma, e por enquanto com o código fechado.',
     ],
-    storyLink: 'Ver o código do Prédio no GitHub',
+    storyLink: 'Ver o Prédio',
     comingTitle: 'O que vem aí',
     coming: [
       ['💻', 'Na sua máquina', 'Uma ferramenta que roda no seu computador: seu código não sai dali, nem para o nosso servidor.'],
@@ -55,17 +55,17 @@ const t = {
   },
   en: {
     title: 'The studio is closed for beta testing',
-    lead: "Sorry! We have closed the studio to the public for a while. We are rebuilding Repartments to make it better and turn it into a tool you use on your own computer.",
+    lead: "The studio is in closed beta. We are rebuilding Repartments to make it better and turn it into a tool you use on your own computer.",
     cta: 'I want to test it',
     back: 'See the Building, which stays open',
     sign: 'Under works',
     scroll: 'Scroll to learn more',
     storyTitle: 'Where it came from',
     story: [
-      "Repartments started as an open-source project. The Building, which turns anyone's public repositories into a little tower, is still open on GitHub.",
+      "Repartments started as an open-source project. The Building, which turns anyone's public repositories into a little tower, is still online; at the moment, its code is closed.",
       'As people used it, we saw the chance to go further: turn the idea into a tool that helps day to day, for whoever needs to explain a system to people who do not code. That is why the studio closed. It is being rebuilt separately, carefully, and closed source for now.',
     ],
-    storyLink: "See the Building's code on GitHub",
+    storyLink: 'See the Building',
     comingTitle: 'What is coming',
     coming: [
       ['💻', 'On your machine', 'A tool that runs on your computer: your code stays there, it never reaches our server.'],
@@ -300,7 +300,7 @@ export function Beta({ lang, setLang, onTown }: Props) {
                 </p>
               ))}
               <a
-                href="https://github.com/Yourdevdaniel/repartments"
+                href="/"
                 className="mt-6 inline-flex items-center gap-2 text-sm font-extrabold underline decoration-2 underline-offset-4 hover:decoration-[#ee9f7f]"
               >
                 {x.storyLink} <span aria-hidden="true">→</span>
