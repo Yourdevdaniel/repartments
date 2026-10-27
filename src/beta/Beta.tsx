@@ -10,8 +10,8 @@ gsap.registerPlugin(ScrollTrigger)
 
 /** Where people sign up to test the new Repartments: the form on the project's site, in their language. */
 export const TESTER_URL: Record<Lang, string> = {
-  pt: 'https://repartments-site.vercel.app/beta/',
-  en: 'https://repartments-site.vercel.app/en/beta/',
+  pt: 'https://repartments.dev/beta/',
+  en: 'https://repartments.dev/en/beta/',
 }
 
 const t = {

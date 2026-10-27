@@ -47,8 +47,8 @@ export const POLICY: PolicySection[] = [
       {
         title: { pt: 'Estúdio (fechado para testes)', en: 'Studio (closed for beta testing)' },
         text: {
-          pt: 'O estúdio, onde se entrava com o GitHub para abrir um repositório, está fechado enquanto vira uma ferramenta. Hoje ele não recebe login, não lê repositório nenhum e não trata dado pessoal. O botão "Quero ser tester" leva ao formulário no site do projeto (repartments-site.vercel.app), que tem a própria política de privacidade. Se você autorizou o app do estúdio antes, pode revogar o acesso a qualquer momento nas configurações do GitHub (Settings → Applications).',
-          en: "The studio, where you signed in with GitHub to open a repository, is closed while it becomes a tool. Today it takes no sign-in, reads no repository and handles no personal data. The \"I want to test it\" button takes you to the form on the project's site (repartments-site.vercel.app), which has its own privacy policy. If you authorised the studio's app before, you can revoke its access at any time in GitHub's settings (Settings → Applications).",
+          pt: 'O estúdio, onde se entrava com o GitHub para abrir um repositório, está fechado enquanto vira uma ferramenta. Hoje ele não recebe login, não lê repositório nenhum e não trata dado pessoal. O botão "Quero ser tester" leva ao formulário no site do projeto (repartments.dev), que tem a própria política de privacidade. Se você autorizou o app do estúdio antes, pode revogar o acesso a qualquer momento nas configurações do GitHub (Settings → Applications).',
+          en: "The studio, where you signed in with GitHub to open a repository, is closed while it becomes a tool. Today it takes no sign-in, reads no repository and handles no personal data. The \"I want to test it\" button takes you to the form on the project's site (repartments.dev), which has its own privacy policy. If you authorised the studio's app before, you can revoke its access at any time in GitHub's settings (Settings → Applications).",
         },
       },
       {
