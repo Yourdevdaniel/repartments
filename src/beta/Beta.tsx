@@ -24,7 +24,7 @@ const t = {
     scroll: 'Role para saber mais',
     storyTitle: 'De onde veio',
     story: [
-      'O Repartments começou como um projeto de código aberto. O Prédio, que transforma os repositórios públicos de qualquer pessoa num predinho, continua no ar; no momento, o código dele está fechado.',
+      'O Repartments começou como um projeto de código aberto. O Prédio, que transforma os repositórios públicos de qualquer pessoa num predinho, continua no ar, com o código aberto aqui no GitHub.',
       'Com o uso, vimos a oportunidade de ir além: transformar a ideia numa ferramenta que ajude no dia a dia de quem precisa explicar um sistema para quem não programa. Por isso o estúdio fechou. Ele está sendo refeito à parte, com calma, e por enquanto com o código fechado.',
     ],
     storyLink: 'Ver o Prédio',
@@ -62,7 +62,7 @@ const t = {
     scroll: 'Scroll to learn more',
     storyTitle: 'Where it came from',
     story: [
-      "Repartments started as an open-source project. The Building, which turns anyone's public repositories into a little tower, is still online; at the moment, its code is closed.",
+      "Repartments started as an open-source project. The Building, which turns anyone's public repositories into a little tower, is still online, with its code open here on GitHub.",
       'As people used it, we saw the chance to go further: turn the idea into a tool that helps day to day, for whoever needs to explain a system to people who do not code. That is why the studio closed. It is being rebuilt separately, carefully, and closed source for now.',
     ],
     storyLink: 'See the Building',
