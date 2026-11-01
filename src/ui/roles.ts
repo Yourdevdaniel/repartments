@@ -122,6 +122,14 @@ export const copy = {
   vacant: { en: 'No code here yet, so nobody has moved in.', pt: 'Ainda não tem código aqui, então ninguém se mudou.' },
   noCode: { en: 'no code', pt: 'sem código' },
   nextBuilding: { en: 'Visit the next building', pt: 'Visitar o próximo prédio' },
+  /** The way to the rest of the owner's repos: says they exist, since nothing else on screen does. */
+  moreRepos: (n: number, buildings: number): L => {
+    const where = { en: buildings > 1 ? 'the next buildings' : 'the next building', pt: buildings > 1 ? 'nos próximos prédios' : 'no próximo prédio' }
+    return {
+      en: `${n} more ${n === 1 ? 'repo' : 'repos'} in ${where.en}`,
+      pt: `Mais ${n} ${n === 1 ? 'repositório' : 'repositórios'} ${where.pt}`,
+    }
+  },
   prevBuilding: { en: 'Previous building', pt: 'Prédio anterior' },
   walking: { en: 'Walking over…', pt: 'Indo até lá…' },
   lost: { en: "Couldn't get there, try again", pt: 'Não deu para chegar, tente de novo' },
