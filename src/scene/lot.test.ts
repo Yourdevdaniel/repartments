@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { lotCount, neighborhood } from './lot'
+import { lotCount, neighborhood, reposAhead } from './lot'
 import { TOWER } from './Tower'
 
 describe('neighborhood', () => {
@@ -34,5 +34,16 @@ describe('lotCount', () => {
     expect(lotCount(13, 12)).toBe(2)
     expect(lotCount(30, 12)).toBe(4)
     expect(lotCount(30, 6)).toBe(5)
+  })
+})
+
+describe('reposAhead', () => {
+  it('counts the repos past the buildings walked so far', () => {
+    expect(reposAhead(30, [12])).toBe(18)
+    expect(reposAhead(30, [12, 6])).toBe(12)
+  })
+
+  it('never goes below zero when the owner lost repos since the first building loaded', () => {
+    expect(reposAhead(12, [12, 6])).toBe(0)
   })
 })

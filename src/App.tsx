@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ComponentType, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { loginFrom, parseRoute, useBuilding, type BuildingState, type Route } from './data/building'
-import { lotCount } from './scene/lot'
+import { lotCount, reposAhead } from './scene/lot'
 import { demoFlats, demoOwner } from './scene/demo'
 import { Stage, type View } from './scene/Stage'
 import type { Caption } from './scene/story'
@@ -641,6 +641,8 @@ function StreetNav({
   label?: boolean
 }) {
   const ahead = state.at + 1 < state.lots.length || state.lots[state.at].next !== null
+  const more = reposAhead(state.total, state.lots.slice(0, state.at + 1).map((lot) => lot.fetched))
+  const onward = more > 0 ? copy.moreRepos(more, lots - state.at - 1) : copy.nextBuilding
   return (
     <nav className="flex flex-wrap items-center justify-center gap-2" aria-label={copy.lotOf(state.at + 1, lots)[lang]}>
       {state.at > 0 && (
@@ -660,9 +662,9 @@ function StreetNav({
           type="button"
           onClick={() => onVisit(1)}
           disabled={state.trip === 'moving'}
-          className="h-11 rounded-full bg-ink px-5 text-sm font-extrabold text-white shadow-[0_18px_50px_-22px_rgba(40,52,110,0.6)] transition-transform active:scale-[0.97] disabled:opacity-70"
+          className="min-h-11 rounded-full bg-ink px-5 py-2 text-sm font-extrabold text-white shadow-[0_18px_50px_-22px_rgba(40,52,110,0.6)] transition-transform active:scale-[0.97] disabled:opacity-70"
         >
-          {state.trip === 'moving' ? copy.walking[lang] : state.trip === 'failed' ? copy.lost[lang] : copy.nextBuilding[lang]}{' '}
+          {state.trip === 'moving' ? copy.walking[lang] : state.trip === 'failed' ? copy.lost[lang] : onward[lang]}{' '}
           <span aria-hidden="true">→</span>
         </button>
       )}

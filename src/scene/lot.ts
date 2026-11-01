@@ -97,3 +97,8 @@ export function neighborhood(owner: string, lot: number): Neighborhood {
 export function lotCount(total: number, first: number) {
   return 1 + Math.ceil(Math.max(0, total - first) / NEXT_FLOORS)
 }
+
+/** How many of the owner's repos are still further down the street, given what each building so far took. */
+export function reposAhead(total: number, walked: number[]) {
+  return Math.max(0, total - walked.reduce((sum, fetched) => sum + fetched, 0))
+}
