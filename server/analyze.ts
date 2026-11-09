@@ -357,11 +357,42 @@ export function statusOf(repo: RawRepo): RepoStatus {
   return status
 }
 
+/** The studio's limit for `about`. */
+const ABOUT_MAX = 300
+
+/**
+ * `about` from a root repartments.json: a string for both languages, or `{ pt, en }` where the missing
+ * one copies the other. Anything else in the file is left alone, and a broken file is simply skipped.
+ */
+export function aboutFrom(text: string | null): { pt: string; en: string } | undefined {
+  if (!text) return undefined
+  let about: unknown
+  try {
+    about = (JSON.parse(text) as { about?: unknown } | null)?.about
+  } catch {
+    return undefined
+  }
+  const clean = (v: unknown) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, ABOUT_MAX) : '')
+  if (typeof about === 'string') {
+    const t = clean(about)
+    return t ? { pt: t, en: t } : undefined
+  }
+  if (about && typeof about === 'object') {
+    const { pt, en } = about as { pt?: unknown; en?: unknown }
+    const p = clean(pt) || clean(en)
+    const e = clean(en) || clean(pt)
+    return p ? { pt: p, en: e } : undefined
+  }
+  return undefined
+}
+
 export function analyze(repo: RawRepo): Apartment {
   const primary = repo.primaryLanguage?.name ?? null
+  const about = aboutFrom(blob(repo, 'repartments.json'))
   return {
     name: repo.name,
     description: repo.description,
+    ...(about && { about }),
     url: repo.url,
     stars: repo.stargazerCount,
     createdAt: repo.createdAt,

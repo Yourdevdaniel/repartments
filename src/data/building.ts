@@ -64,6 +64,7 @@ const list = (items: string[], and: string) =>
 
 /** When a repo has no description, say what it's made of. */
 function intro(a: Apartment) {
+  if (a.about) return a.about
   if (a.description) return { en: a.description, pt: a.description }
   if (!a.residents.length) return copy.vacant
   const techs = a.residents.map((r) => r.tech)
