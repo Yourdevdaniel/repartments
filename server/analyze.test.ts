@@ -85,6 +85,29 @@ describe('analyze', () => {
   })
 })
 
+describe('repartments.json', () => {
+  const about = (text: string) => analyze(repo({ 'repartments.json': text })).about
+
+  it("takes the author's about, in one or two languages", () => {
+    expect(about(JSON.stringify({ about: 'Um CRM.' }))).toEqual({ pt: 'Um CRM.', en: 'Um CRM.' })
+    expect(about(JSON.stringify({ about: { pt: 'Um CRM.', en: 'A CRM.' } }))).toEqual({ pt: 'Um CRM.', en: 'A CRM.' })
+    expect(about(JSON.stringify({ about: { en: 'A CRM.' } }))).toEqual({ pt: 'A CRM.', en: 'A CRM.' })
+  })
+
+  it('cuts long text and skips broken or empty files', () => {
+    expect(about(JSON.stringify({ about: 'x'.repeat(500) }))?.pt).toHaveLength(300)
+    expect(about('{ not json')).toBeUndefined()
+    expect(about(JSON.stringify({ about: '  ' }))).toBeUndefined()
+    expect(about(JSON.stringify({ about: 42 }))).toBeUndefined()
+    expect(about('null')).toBeUndefined()
+  })
+
+  it('returns only about, nothing else from the file', () => {
+    const file = JSON.stringify({ about: 'Um CRM.', parts: [{ id: 'SECRET_PART', name: 'x' }] })
+    expect(JSON.stringify(analyze(repo({ 'repartments.json': file })))).not.toContain('SECRET_PART')
+  })
+})
+
 describe('unusual repos', () => {
   it('does not move a library in with the frameworks it only tests against', () => {
     const plugin = { name: 'eslint-plugin-x', exports: './index.js', files: ['index.js'], devDependencies: { svelte: '^5', vue: '^3', vitest: '^3' } }

@@ -40,8 +40,8 @@ export const POLICY: PolicySection[] = [
       {
         title: { pt: 'Prédio (página inicial)', en: 'Building (home page)' },
         text: {
-          pt: 'O nome de usuário que você digita e os dados públicos dessa conta no GitHub (repositórios públicos, linguagens, contagens) servem para desenhar o prédio. São dados que o titular tornou públicos, usados para essa finalidade (LGPD, art. 7º, IX e § 4º). A resposta fica em cache por cerca de 1 hora. Nenhum arquivo nem código é baixado: só nomes de tecnologias e números.',
-          en: "The username you type and that account's public GitHub data (public repositories, languages, counts) are used to draw the building. This is data its owner made public, used for that purpose (LGPD, art. 7, IX and § 4). The answer is cached for about 1 hour. No file or code is downloaded: only technology names and numbers.",
+          pt: 'O nome de usuário que você digita e os dados públicos dessa conta no GitHub (repositórios públicos, linguagens, contagens) servem para desenhar o prédio. São dados que o titular tornou públicos, usados para essa finalidade (LGPD, art. 7º, IX e § 4º). A resposta fica em cache por cerca de 1 hora. Nenhum código é baixado: só nomes de tecnologias, números e, se o repositório tiver um repartments.json, a frase de apresentação (about) que o autor escreveu nele.',
+          en: "The username you type and that account's public GitHub data (public repositories, languages, counts) are used to draw the building. This is data its owner made public, used for that purpose (LGPD, art. 7, IX and § 4). The answer is cached for about 1 hour. No code is downloaded: only technology names, numbers and, if the repository has a repartments.json, the short introduction (about) its author wrote there.",
         },
       },
       {

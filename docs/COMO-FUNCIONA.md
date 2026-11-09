@@ -108,6 +108,7 @@ Uma única consulta GraphQL (`server/github.ts`) pede, para o dono (usuário **o
   - nomes dos arquivos da raiz e se existe `.github/workflows`;
   - o texto de alguns manifestos, na raiz e nas pastas comuns de monorepo (`frontend/`, `backend/`, `web/`, `client/`, `server/`):
     `package.json`, `requirements.txt`, `pyproject.toml`, `docker-compose.yml`/`compose.yaml`, `Dockerfile`, `pom.xml`, `build.gradle`, `go.mod`, `Cargo.toml`, `Gemfile`, `composer.json`, `pubspec.yaml`;
+  - o `repartments.json` da raiz, se existir: só o `about` é usado, e ele vira a frase do apartamento no lugar da descrição do GitHub;
   - quantos PRs abertos e se algum está com conflito (`mergeable: CONFLICTING`);
   - o status dos testes no branch principal (`statusCheckRollup`).
 

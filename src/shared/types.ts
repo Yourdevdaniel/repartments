@@ -30,6 +30,8 @@ export type RepoStatus = {
 export type Apartment = {
   name: string
   description: string | null
+  /** The `about` of the repo's own repartments.json, when it has one: the author's words win. */
+  about?: { pt: string; en: string }
   url: string
   stars: number
   createdAt: string

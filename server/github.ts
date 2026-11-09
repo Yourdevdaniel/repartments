@@ -16,9 +16,11 @@ export const MANIFESTS = {
   other: ['pom.xml', 'build.gradle', 'go.mod', 'Cargo.toml', 'Gemfile', 'composer.json', 'pubspec.yaml'],
   // Game projects often sit in a subfolder; the root .gitignore still names the engine.
   ignore: ['.gitignore'],
+  // The author's own words about the repo (the studio's format): only `about` is read.
+  authored: ['repartments.json'],
 } as const
 
-const ALL = [...MANIFESTS.packageJson, ...MANIFESTS.python, ...MANIFESTS.compose, ...MANIFESTS.docker, ...MANIFESTS.other, ...MANIFESTS.ignore]
+const ALL = [...MANIFESTS.packageJson, ...MANIFESTS.python, ...MANIFESTS.compose, ...MANIFESTS.docker, ...MANIFESTS.other, ...MANIFESTS.ignore, ...MANIFESTS.authored]
 
 /** GraphQL aliases can't contain dots or slashes. */
 export const alias = (path: string) => 'f_' + path.replace(/[^a-zA-Z0-9]/g, '_')
